@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "name": "request-mailbox",
+      "namespace": "blind-mailbox",
+      "compact": false,
+      "flagsPosition": 1,
+      "fields": [
+        {
+          "name": "autobase",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "blockEncryptionKey",
+          "type": "fixed32",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "response-mailbox",
+      "namespace": "blind-mailbox",
+      "compact": false,
+      "flagsPosition": 2,
+      "fields": [
+        {
+          "name": "autobase",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "writer",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "open",
+          "type": "bool",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "request-post",
+      "namespace": "blind-mailbox",
+      "compact": false,
+      "flagsPosition": 1,
+      "fields": [
+        {
+          "name": "autobase",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "response-post",
+      "namespace": "blind-mailbox",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "length",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "mailbox",
+      "namespace": "blind-mailbox",
+      "compact": false,
+      "flagsPosition": 2,
+      "fields": [
+        {
+          "name": "autobase",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "writer",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "blockEncryptionKey",
+          "type": "fixed32",
+          "version": 1
+        }
+      ]
+    }
+  ]
+}

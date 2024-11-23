@@ -1,0 +1,28 @@
+{
+  "name": "blind-mailbox",
+  "version": "0.0.0",
+  "description": "WIP - nothing to see here",
+  "main": "index.js",
+  "dependencies": {
+    "autobase-light-writer": "github:holepunchto/autobase-light-writer",
+    "corestore": "^6.18.4",
+    "hyperdb": "^4.1.2",
+    "hyperschema": "^1.0.3",
+    "hyperswarm": "^4.8.4",
+    "protomux-rpc": "^1.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mafintosh/blind-mailbox.git"
+  },
+  "author": "Mathias Buus (@mafintosh)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mafintosh/blind-mailbox/issues"
+  },
+  "homepage": "https://github.com/mafintosh/blind-mailbox",
+  "devDependencies": {
+    "debounceify": "^1.1.0",
+    "standard": "^17.1.2"
+  }
+}
