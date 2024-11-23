@@ -1,5 +1,5 @@
 {
-  "name": "blind-mailbox",
+  "name": "blind-peer",
   "version": "0.0.0",
   "description": "WIP - nothing to see here",
   "main": "index.js",
@@ -11,18 +11,21 @@
     "hyperswarm": "^4.8.4",
     "protomux-rpc": "^1.6.0"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/mafintosh/blind-mailbox.git"
-  },
-  "author": "Mathias Buus (@mafintosh)",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/mafintosh/blind-mailbox/issues"
-  },
-  "homepage": "https://github.com/mafintosh/blind-mailbox",
   "devDependencies": {
     "debounceify": "^1.1.0",
     "standard": "^17.1.2"
   }
+  "scripts": {
+    "test": "standard"
+  }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mafintosh/blind-peer.git"
+  },
+  "author": "Holepunch Inc.",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/mafintosh/blind-peer/issues"
+  },
+  "homepage": "https://github.com/mafintosh/blind-peer"
 }

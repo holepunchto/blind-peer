@@ -1,5 +1,4 @@
 import BlindPeerClient from '../client.js'
-import c from 'compact-encoding'
 import Hyperswarm from 'hyperswarm'
 
 const publicKey = Buffer.from(process.argv[2], 'hex')
