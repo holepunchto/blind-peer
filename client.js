@@ -3,13 +3,13 @@ const c = require('compact-encoding')
 const ProtomuxRPC = require('protomux-rpc')
 
 const addMailboxEncoding = {
-  requestEncoding: schema.resolveStruct('@blind-mailbox/request-mailbox'),
-  responseEncoding: schema.resolveStruct('@blind-mailbox/response-mailbox')
+  requestEncoding: schema.resolveStruct('@blind-peer/request-mailbox'),
+  responseEncoding: schema.resolveStruct('@blind-peer/response-mailbox')
 }
 
 const postEncoding = {
-  requestEncoding: schema.resolveStruct('@blind-mailbox/request-post'),
-  responseEncoding: schema.resolveStruct('@blind-mailbox/response-post')
+  requestEncoding: schema.resolveStruct('@blind-peer/request-post'),
+  responseEncoding: schema.resolveStruct('@blind-peer/response-post')
 }
 
 module.exports = class BlindPeerClient {

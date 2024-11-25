@@ -4,11 +4,11 @@
   "schema": [
     {
       "name": "mailbox",
-      "namespace": "blind-mailbox",
+      "namespace": "blind-peer",
       "id": 0,
       "type": 1,
       "indexes": [],
-      "schema": "@blind-mailbox/mailbox",
+      "schema": "@blind-peer/mailbox",
       "derived": false,
       "key": [
         "autobase"

@@ -9,7 +9,7 @@ const { c } = require('hyperschema/runtime')
 // eslint-disable-next-line no-unused-vars
 let version = VERSION
 
-// @blind-mailbox/request-mailbox
+// @blind-peer/request-mailbox
 const encoding0 = {
   preencode (state, m) {
     let flags = 0
@@ -43,7 +43,7 @@ const encoding0 = {
   }
 }
 
-// @blind-mailbox/response-mailbox
+// @blind-peer/response-mailbox
 const encoding1 = {
   preencode (state, m) {
     let flags = 0
@@ -77,7 +77,7 @@ const encoding1 = {
   }
 }
 
-// @blind-mailbox/request-post
+// @blind-peer/request-post
 const encoding2 = {
   preencode (state, m) {
     let flags = 0
@@ -111,7 +111,7 @@ const encoding2 = {
   }
 }
 
-// @blind-mailbox/response-post
+// @blind-peer/response-post
 const encoding3 = {
   preencode (state, m) {
     c.uint.preencode(state, m.length)
@@ -129,7 +129,7 @@ const encoding3 = {
   }
 }
 
-// @blind-mailbox/mailbox
+// @blind-peer/mailbox
 const encoding4 = {
   preencode (state, m) {
     let flags = 0
@@ -169,11 +169,11 @@ const encoding4 = {
 
 function getStructByName (name) {
   switch (name) {
-    case '@blind-mailbox/request-mailbox': return encoding0
-    case '@blind-mailbox/response-mailbox': return encoding1
-    case '@blind-mailbox/request-post': return encoding2
-    case '@blind-mailbox/response-post': return encoding3
-    case '@blind-mailbox/mailbox': return encoding4
+    case '@blind-peer/request-mailbox': return encoding0
+    case '@blind-peer/response-mailbox': return encoding1
+    case '@blind-peer/request-post': return encoding2
+    case '@blind-peer/response-post': return encoding3
+    case '@blind-peer/mailbox': return encoding4
     default: throw new Error('Encoder not found ' + name)
   }
 }

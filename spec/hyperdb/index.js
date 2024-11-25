@@ -5,7 +5,7 @@ const { IndexEncoder, c } = require('hyperdb/runtime')
 
 const { version, resolveStruct } = require('./messages.js')
 
-// '@blind-mailbox/mailbox' collection key
+// '@blind-peer/mailbox' collection key
 const collection0_key = new IndexEncoder([
   IndexEncoder.BUFFER
 ], { prefix: 0 })
@@ -15,17 +15,17 @@ function collection0_indexify (record) {
   return a === undefined ? [] : [a]
 }
 
-// '@blind-mailbox/mailbox' reconstruction function
+// '@blind-peer/mailbox' reconstruction function
 function collection0_reconstruct (version, keyBuf, valueBuf) {
   const key = collection0_key.decode(keyBuf)
-  const value = c.decode(resolveStruct('@blind-mailbox/mailbox/value', version), valueBuf)
+  const value = c.decode(resolveStruct('@blind-peer/mailbox/value', version), valueBuf)
   // TODO: This should be fully code generated
   return {
     autobase: key[0],
     ...value
   }
 }
-// '@blind-mailbox/mailbox' key reconstruction function
+// '@blind-peer/mailbox' key reconstruction function
 function collection0_reconstruct_key (keyBuf) {
   const key = collection0_key.decode(keyBuf)
   return {
@@ -33,9 +33,9 @@ function collection0_reconstruct_key (keyBuf) {
   }
 }
 
-// '@blind-mailbox/mailbox'
+// '@blind-peer/mailbox'
 const collection0 = {
-  name: '@blind-mailbox/mailbox',
+  name: '@blind-peer/mailbox',
   id: 0,
   encodeKey (record) {
     const key = [record.autobase]
@@ -50,7 +50,7 @@ const collection0 = {
     })
   },
   encodeValue (version, record) {
-    return c.encode(resolveStruct('@blind-mailbox/mailbox/value', version), record)
+    return c.encode(resolveStruct('@blind-peer/mailbox/value', version), record)
   },
   trigger: null,
   reconstruct: collection0_reconstruct,
@@ -71,7 +71,7 @@ module.exports = {
 
 function resolveCollection (name) {
   switch (name) {
-    case '@blind-mailbox/mailbox': return collection0
+    case '@blind-peer/mailbox': return collection0
     default: return null
   }
 }

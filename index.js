@@ -25,13 +25,13 @@ module.exports = class BlindPeer {
     })
 
     rpc.respond('add-mailbox', {
-      requestEncoding: schema.resolveStruct('@blind-mailbox/request-mailbox'),
-      responseEncoding: schema.resolveStruct('@blind-mailbox/response-mailbox')
+      requestEncoding: schema.resolveStruct('@blind-peer/request-mailbox'),
+      responseEncoding: schema.resolveStruct('@blind-peer/response-mailbox')
     }, this._onrpcadd.bind(this))
 
     rpc.respond('post', {
-      requestEncoding: schema.resolveStruct('@blind-mailbox/request-post'),
-      responseEncoding: schema.resolveStruct('@blind-mailbox/response-post')
+      requestEncoding: schema.resolveStruct('@blind-peer/request-post'),
+      responseEncoding: schema.resolveStruct('@blind-peer/response-post')
     }, this._onrpcpost.bind(this))
   }
 
@@ -51,7 +51,7 @@ module.exports = class BlindPeer {
 
   async _oncoreopen (core) {
     try {
-      const entry = await this.db.get('@blind-mailbox/mailbox', { autobase: core.key })
+      const entry = await this.db.get('@blind-peer/mailbox', { autobase: core.key })
       if (!entry || !entry.blockEncryptionKey) return
 
       const w = new AutobaseLightWriter(this.store.namespace(entry.autobase), entry.autobase, {
@@ -89,16 +89,16 @@ module.exports = class BlindPeer {
   }
 
   async get ({ autobase }) {
-    return await this.db.get('@blind-mailbox/mailbox', { autobase })
+    return await this.db.get('@blind-peer/mailbox', { autobase })
   }
 
   async add ({ autobase, blockEncryptionKey = null }) {
-    const prev = await this.db.get('@blind-mailbox/mailbox', { autobase })
+    const prev = await this.db.get('@blind-peer/mailbox', { autobase })
 
     if (prev) {
       if (prev.blockEncryptionKey) return prev
       prev.blockEncryptionKey = blockEncryptionKey
-      await this.db.insert('@blind-mailbox/mailbox', prev)
+      await this.db.insert('@blind-peer/mailbox', prev)
       await this.db.flush()
       return prev
     }
@@ -106,7 +106,7 @@ module.exports = class BlindPeer {
     const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, { active: false })
     await w.ready()
     const entry = { autobase, writer: w.local.key, blockEncryptionKey }
-    await this.db.insert('@blind-mailbox/mailbox', entry)
+    await this.db.insert('@blind-peer/mailbox', entry)
     await this.db.flush()
     await w.close()
 
@@ -114,7 +114,7 @@ module.exports = class BlindPeer {
   }
 
   async post ({ autobase, message }) {
-    const entry = await this.db.get('@blind-mailbox/mailbox', { autobase })
+    const entry = await this.db.get('@blind-peer/mailbox', { autobase })
     if (!entry || !entry.blockEncryptionKey) return false
 
     const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, {

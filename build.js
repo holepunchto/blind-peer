@@ -5,7 +5,7 @@ const SCHEMA_DIR = './spec/hyperschema'
 const DB_DIR = './spec/hyperdb'
 
 const schema = Hyperschema.from(SCHEMA_DIR)
-const blind = schema.namespace('blind-mailbox')
+const blind = schema.namespace('blind-peer')
 
 blind.register({
   name: 'request-mailbox',
@@ -91,11 +91,11 @@ blind.register({
 Hyperschema.toDisk(schema)
 
 const db = HyperDB.from(SCHEMA_DIR, DB_DIR)
-const blindDB = db.namespace('blind-mailbox')
+const blindDB = db.namespace('blind-peer')
 
 blindDB.collections.register({
   name: 'mailbox',
-  schema: '@blind-mailbox/mailbox',
+  schema: '@blind-peer/mailbox',
   key: ['autobase']
 })
 
