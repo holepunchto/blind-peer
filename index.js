@@ -80,9 +80,10 @@ module.exports = class BlindPeer {
     return this.swarm.server.publicKey
   }
 
-  async listen () {
+  async listen ({ bootstrap } = {}) {
     this.swarm = new Hyperswarm({
-      keyPair: await this.store.createKeyPair('blind-mailbox')
+      keyPair: await this.store.createKeyPair('blind-mailbox'),
+      bootstrap
     })
     this.swarm.on('connection', this._onconnection.bind(this))
     return this.swarm.listen()
