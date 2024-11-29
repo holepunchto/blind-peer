@@ -86,7 +86,7 @@ const encoding2 = {
     c.fixed32.preencode(state, m.autobase)
     c.uint.preencode(state, flags)
 
-    if (m.message) c.string.preencode(state, m.message)
+    if (m.message) c.buffer.preencode(state, m.message)
   },
   encode (state, m) {
     let flags = 0
@@ -95,7 +95,7 @@ const encoding2 = {
     c.fixed32.encode(state, m.autobase)
     c.uint.encode(state, flags)
 
-    if (m.message) c.string.encode(state, m.message)
+    if (m.message) c.buffer.encode(state, m.message)
   },
   decode (state) {
     const res = {}
@@ -105,7 +105,7 @@ const encoding2 = {
     res.autobase = c.fixed32.decode(state)
 
     const flags = state.start < state.end ? c.uint.decode(state) : 0
-    if ((flags & 1) !== 0) res.message = c.string.decode(state)
+    if ((flags & 1) !== 0) res.message = c.buffer.decode(state)
 
     return res
   }
