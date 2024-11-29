@@ -4,7 +4,7 @@
   "description": "WIP - nothing to see here",
   "main": "index.js",
   "dependencies": {
-    "autobase-light-writer": "github:holepunchto/autobase-light-writer",
+    "autobase-light-writer": "^1.1.0",
     "corestore": "^6.18.4",
     "hyperdb": "^4.1.2",
     "hyperschema": "^1.0.3",
