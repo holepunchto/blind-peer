@@ -1,3 +1,4 @@
+const { EventEmitter } = require('events')
 const AutobaseLightWriter = require('autobase-light-writer')
 const HyperDB = require('hyperdb')
 const Corestore = require('corestore')
@@ -8,8 +9,10 @@ const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
 
-module.exports = class BlindPeer {
+module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
+    super()
+
     this.db = HyperDB.rocks(path.join(storage, 'hyperdb'), definition)
     this.store = new Corestore(path.join(storage, 'corestore'))
     this.store.on('core-open', this._oncoreopen.bind(this))
@@ -36,6 +39,8 @@ module.exports = class BlindPeer {
   }
 
   async _onrpcadd (req) {
+    this.emit('add-mailbox-received', req)
+
     const res = await this.add(req)
 
     return {
@@ -46,6 +51,7 @@ module.exports = class BlindPeer {
   }
 
   async _onrpcpost (req) {
+    this.emit('post-received', req)
     return await this.post(req)
   }
 
