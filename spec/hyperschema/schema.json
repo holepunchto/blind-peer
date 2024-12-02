@@ -59,7 +59,7 @@
         },
         {
           "name": "message",
-          "type": "string",
+          "type": "buffer",
           "version": 1
         }
       ]

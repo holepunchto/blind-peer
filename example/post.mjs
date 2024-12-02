@@ -3,7 +3,10 @@ import Hyperswarm from 'hyperswarm'
 
 const publicKey = Buffer.from(process.argv[2], 'hex')
 const autobase = Buffer.from(process.argv[3], 'hex')
-const message = process.argv[4]
+const rawMessage = process.argv[4]
+const message = Buffer.from(
+  JSON.stringify({ mailbox: true, message: rawMessage })
+)
 
 const s = new Hyperswarm()
 

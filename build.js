@@ -52,7 +52,7 @@ blind.register({
     },
     {
       name: 'message',
-      type: 'string'
+      type: 'buffer'
     }
   ]
 })
