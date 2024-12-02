@@ -15,7 +15,7 @@ const cmd = command('blind-peer',
 
     blindPeer.on('add-mailbox-received', req => {
       try {
-        console.log(`add mailbox received for autobase ${idEnc.normalize(req.autobase)}`)
+        console.log(`Add-mailbox request received for autobase ${idEnc.normalize(req.autobase)}`)
       } catch {
         console.log('Invalid add-mailbox request received')
         console.log(req)
@@ -24,7 +24,7 @@ const cmd = command('blind-peer',
 
     blindPeer.on('post-received', req => {
       try {
-        console.log(`Post received for autobase ${idEnc.normalize(req.autobase)}`)
+        console.log(`Post request received to autobase ${idEnc.normalize(req.autobase)}`)
       } catch {
         console.log('Invalid post request received')
         console.log(req)
