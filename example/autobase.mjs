@@ -4,6 +4,7 @@ import c from 'compact-encoding'
 import Corestore from 'corestore'
 import Hyperswarm from 'hyperswarm'
 import debounce from 'debounceify'
+import IdEnc from 'hypercore-id-encoding'
 
 const base = new Autobase(new Corestore('/tmp/my-corestore'), {
   encryptionKey: Buffer.alloc(30).fill('secret'),
@@ -31,7 +32,7 @@ base.view.on('append', debounce(async function () {
 }))
 
 // TODO: record in autobase
-const publicKey = Buffer.from(process.argv[2], 'hex')
+const publicKey = IdEnc.decode(process.argv[2])
 
 const s = new Hyperswarm({ keyPair: await base.store.createKeyPair('tmp') })
 
