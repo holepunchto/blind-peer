@@ -7,14 +7,14 @@ import debounce from 'debounceify'
 
 const base = new Autobase(new Corestore('/tmp/my-corestore'), {
   encryptionKey: Buffer.alloc(30).fill('secret'),
-  valueEncoding: c.json,
   open (store) {
     return store.get('view', { valueEncoding: c.json })
   },
   async apply (nodes, view, base) {
     for (const node of nodes) {
-      if (node.value.add) await base.addWriter(Buffer.from(node.value.key, 'hex'), { indexer: false })
-      view.append(node.value)
+      const jsonValue = JSON.parse(node.value.toString())
+      if (jsonValue.add) await base.addWriter(Buffer.from(jsonValue.key, 'hex'), { indexer: false })
+      view.append(jsonValue)
     }
   }
 })
@@ -45,7 +45,10 @@ s.on('connection', async c => {
   const info = await peer.addMailbox({ autobase: base.key })
 
   if (info.open === false) {
-    await base.append({ add: true, key: info.writer.toString('hex') })
+    const message = Buffer.from(
+      JSON.stringify({ add: true, key: info.writer.toString('hex') })
+    )
+    await base.append(message)
     await base.update()
 
     const core = base.store.get({ key: info.writer, active: false })

@@ -56,8 +56,7 @@ module.exports = class BlindPeer {
 
       const w = new AutobaseLightWriter(this.store.namespace(entry.autobase), entry.autobase, {
         active: false,
-        blockEncryptionKey: entry.blockEncryptionKey,
-        valueEncoding: c.json
+        blockEncryptionKey: entry.blockEncryptionKey
       })
 
       for (const peer of core.peers) {
@@ -120,10 +119,9 @@ module.exports = class BlindPeer {
 
     const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, {
       active: false,
-      blockEncryptionKey: entry.blockEncryptionKey,
-      valueEncoding: c.json
+      blockEncryptionKey: entry.blockEncryptionKey
     })
-    await w.append({ mailbox: true, text: message })
+    await w.append(message)
     const length = w.local.length
     await w.close()
 
