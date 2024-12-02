@@ -3,12 +3,18 @@
   "version": "0.0.2",
   "description": "WIP - nothing to see here",
   "main": "index.js",
+  "bin": {
+    "blind-peer": "bin.js"
+  },
   "dependencies": {
     "autobase-light-writer": "^1.1.0",
     "corestore": "^6.18.4",
+    "graceful-goodbye": "^1.3.2",
+    "hypercore-id-encoding": "^1.3.0",
     "hyperdb": "^4.1.2",
     "hyperschema": "^1.0.3",
     "hyperswarm": "^4.8.4",
+    "paparam": "^1.6.1",
     "protomux-rpc": "^1.6.0"
   },
   "devDependencies": {

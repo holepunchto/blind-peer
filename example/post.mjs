@@ -1,8 +1,9 @@
 import BlindPeerClient from '../client.js'
 import Hyperswarm from 'hyperswarm'
+import IdEnc from 'hypercore-id-encoding'
 
-const publicKey = Buffer.from(process.argv[2], 'hex')
-const autobase = Buffer.from(process.argv[3], 'hex')
+const publicKey = IdEnc.decode(process.argv[2])
+const autobase = IdEnc.decode(process.argv[3])
 const rawMessage = process.argv[4]
 const message = Buffer.from(
   JSON.stringify({ mailbox: true, message: rawMessage })
