@@ -90,7 +90,7 @@ blind.register({
 
 Hyperschema.toDisk(schema)
 
-const db = HyperDB.from(SCHEMA_DIR, DB_DIR)
+const db = HyperDB.from(SCHEMA_DIR, DB_DIR, { offset: 64 })
 const blindDB = db.namespace('blind-peer')
 
 blindDB.collections.register({

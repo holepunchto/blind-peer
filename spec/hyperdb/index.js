@@ -6,18 +6,18 @@ const { IndexEncoder, c } = require('hyperdb/runtime')
 const { version, resolveStruct } = require('./messages.js')
 
 // '@blind-peer/mailbox' collection key
-const collection0_key = new IndexEncoder([
+const collection64_key = new IndexEncoder([
   IndexEncoder.BUFFER
-], { prefix: 0 })
+], { prefix: 64 })
 
-function collection0_indexify (record) {
+function collection64_indexify (record) {
   const a = record.autobase
   return a === undefined ? [] : [a]
 }
 
 // '@blind-peer/mailbox' reconstruction function
-function collection0_reconstruct (version, keyBuf, valueBuf) {
-  const key = collection0_key.decode(keyBuf)
+function collection64_reconstruct (version, keyBuf, valueBuf) {
+  const key = collection64_key.decode(keyBuf)
   const value = c.decode(resolveStruct('@blind-peer/mailbox/value', version), valueBuf)
   // TODO: This should be fully code generated
   return {
@@ -26,42 +26,42 @@ function collection0_reconstruct (version, keyBuf, valueBuf) {
   }
 }
 // '@blind-peer/mailbox' key reconstruction function
-function collection0_reconstruct_key (keyBuf) {
-  const key = collection0_key.decode(keyBuf)
+function collection64_reconstruct_key (keyBuf) {
+  const key = collection64_key.decode(keyBuf)
   return {
     autobase: key[0]
   }
 }
 
 // '@blind-peer/mailbox'
-const collection0 = {
+const collection64 = {
   name: '@blind-peer/mailbox',
-  id: 0,
+  id: 64,
   encodeKey (record) {
     const key = [record.autobase]
-    return collection0_key.encode(key)
+    return collection64_key.encode(key)
   },
   encodeKeyRange ({ gt, lt, gte, lte } = {}) {
-    return collection0_key.encodeRange({
-      gt: gt ? collection0_indexify(gt) : null,
-      lt: lt ? collection0_indexify(lt) : null,
-      gte: gte ? collection0_indexify(gte) : null,
-      lte: lte ? collection0_indexify(lte) : null
+    return collection64_key.encodeRange({
+      gt: gt ? collection64_indexify(gt) : null,
+      lt: lt ? collection64_indexify(lt) : null,
+      gte: gte ? collection64_indexify(gte) : null,
+      lte: lte ? collection64_indexify(lte) : null
     })
   },
   encodeValue (version, record) {
     return c.encode(resolveStruct('@blind-peer/mailbox/value', version), record)
   },
   trigger: null,
-  reconstruct: collection0_reconstruct,
-  reconstructKey: collection0_reconstruct_key,
+  reconstruct: collection64_reconstruct,
+  reconstructKey: collection64_reconstruct_key,
   indexes: []
 }
 
 module.exports = {
   version,
   collections: [
-    collection0
+    collection64
   ],
   indexes: [
   ],
@@ -71,7 +71,7 @@ module.exports = {
 
 function resolveCollection (name) {
   switch (name) {
-    case '@blind-peer/mailbox': return collection0
+    case '@blind-peer/mailbox': return collection64
     default: return null
   }
 }

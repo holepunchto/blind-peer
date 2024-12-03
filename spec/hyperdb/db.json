@@ -1,11 +1,11 @@
 {
   "version": 0,
-  "offset": 0,
+  "offset": 64,
   "schema": [
     {
       "name": "mailbox",
       "namespace": "blind-peer",
-      "id": 0,
+      "id": 64,
       "type": 1,
       "indexes": [],
       "schema": "@blind-peer/mailbox",
