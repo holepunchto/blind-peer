@@ -40,8 +40,8 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async _onrpcadd (req) {
     this.emit('add-mailbox-received', req)
-
     const res = await this.add(req)
+    this.emit('add-mailbox-handled', req)
 
     return {
       autobase: res.autobase,
@@ -52,7 +52,10 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async _onrpcpost (req) {
     this.emit('post-received', req)
-    return await this.post(req)
+    const res = await this.post(req)
+    this.emit('post-handled', req)
+
+    return res
   }
 
   async _oncoreopen (core) {
