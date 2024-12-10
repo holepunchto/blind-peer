@@ -39,9 +39,9 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async _onrpcadd (req) {
-    this.emit('add-mailbox-received', req)
+    this.emit('add-request', req)
     const res = await this.add(req)
-    this.emit('add-mailbox-handled', req)
+    this.emit('add-response', req, res)
 
     return {
       autobase: res.autobase,
@@ -51,9 +51,9 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async _onrpcpost (req) {
-    this.emit('post-received', req)
+    this.emit('post-request', req)
     const res = await this.post(req)
-    this.emit('post-handled', req)
+    this.emit('post-response', req, res)
 
     return res
   }

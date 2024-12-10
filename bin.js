@@ -13,7 +13,7 @@ const cmd = command('blind-peer',
     const storage = flags.storage || 'blind-peer'
     const blindPeer = new BlindPeer(storage)
 
-    blindPeer.on('add-mailbox-received', req => {
+    blindPeer.on('add-request', req => {
       try {
         console.log(`Add-mailbox request received for autobase ${idEnc.normalize(req.autobase)}`)
       } catch {
@@ -22,7 +22,7 @@ const cmd = command('blind-peer',
       }
     })
 
-    blindPeer.on('post-received', req => {
+    blindPeer.on('post-request', req => {
       try {
         console.log(`Post request received to autobase ${idEnc.normalize(req.autobase)}`)
       } catch {
