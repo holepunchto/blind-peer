@@ -9,7 +9,6 @@
   "files": [
     "spec/",
     "bin.js",
-    "build.js",
     "client.js",
     "index.js"
   ],
