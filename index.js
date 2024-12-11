@@ -124,7 +124,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async post ({ autobase, message }) {
     const entry = await this.db.get('@blind-peer/mailbox', { autobase })
-    if (!entry || !entry.blockEncryptionKey) return false
+    if (!entry || !entry.blockEncryptionKey) throw new Error('Autobase not found')
 
     const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, {
       active: false,
