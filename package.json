@@ -6,6 +6,13 @@
   "bin": {
     "blind-peer": "bin.js"
   },
+  "files": [
+    "spec/",
+    "bin.js",
+    "build.js",
+    "client.js",
+    "index.js"
+  ],
   "dependencies": {
     "autobase-light-writer": "^1.1.0",
     "corestore": "^6.18.4",
