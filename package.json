@@ -1,6 +1,6 @@
 {
   "name": "blind-peer",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "WIP - nothing to see here",
   "main": "index.js",
   "bin": {
