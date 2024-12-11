@@ -21,6 +21,10 @@ module.exports = class BlindPeerClient {
     })
   }
 
+  async close () {
+    await this.rpc.end()
+  }
+
   addMailbox (data) {
     return this.rpc.request('add-mailbox', data, addMailboxEncoding)
   }
