@@ -139,6 +139,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async close () {
     if (this.swarm !== null) await this.swarm.destroy()
+    await this.db.close()
     await this.store.close()
   }
 }
