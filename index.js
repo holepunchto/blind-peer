@@ -44,7 +44,6 @@ module.exports = class BlindPeer extends EventEmitter {
     this.emit('add-response', req, res)
 
     return {
-      autobase: res.autobase,
       writer: res.writer,
       open: !!res.blockEncryptionKey // TODO: get rid of the encryption for these guys with a manifest upgrade, then no attacks cause self-described
     }
@@ -60,10 +59,10 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async _oncoreopen (core) {
     try {
-      const entry = await this.db.get('@blind-peer/mailbox', { autobase: core.key })
+      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
       if (!entry || !entry.blockEncryptionKey) return
 
-      const w = new AutobaseLightWriter(this.store.namespace(entry.autobase), entry.autobase, {
+      const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
         active: false,
         blockEncryptionKey: entry.blockEncryptionKey
       })
@@ -97,24 +96,24 @@ module.exports = class BlindPeer extends EventEmitter {
     return this.swarm.listen()
   }
 
-  async get ({ autobase }) {
-    return await this.db.get('@blind-peer/mailbox', { autobase })
+  async get ({ id }) {
+    return await this.db.get('@blind-peer/mailbox', { id })
   }
 
-  async add ({ autobase, blockEncryptionKey = null }) {
-    const prev = await this.db.get('@blind-peer/mailbox', { autobase })
+  async add ({ id, autobase, blockEncryptionKey = null }) {
+    const prev = await this.db.get('@blind-peer/mailbox', { id })
 
     if (prev) {
-      if (prev.blockEncryptionKey) return prev
+      if (prev.blockEncryptionKey) return prev // fully open, immut
       prev.blockEncryptionKey = blockEncryptionKey
       await this.db.insert('@blind-peer/mailbox', prev)
       await this.db.flush()
       return prev
     }
 
-    const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, { active: false })
+    const w = new AutobaseLightWriter(this.store.namespace(id), autobase, { active: false })
     await w.ready()
-    const entry = { autobase, writer: w.local.key, blockEncryptionKey }
+    const entry = { id, autobase, writer: w.local.key, blockEncryptionKey }
     await this.db.insert('@blind-peer/mailbox', entry)
     await this.db.flush()
     await w.close()
@@ -122,19 +121,16 @@ module.exports = class BlindPeer extends EventEmitter {
     return entry
   }
 
-  async post ({ autobase, message }) {
-    const entry = await this.db.get('@blind-peer/mailbox', { autobase })
+  async post ({ id, message }) {
+    const entry = await this.db.get('@blind-peer/mailbox', { id })
     if (!entry || !entry.blockEncryptionKey) throw new Error('Autobase not found')
 
-    const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, {
+    const w = new AutobaseLightWriter(this.store.namespace(id), entry.autobase, {
       active: false,
       blockEncryptionKey: entry.blockEncryptionKey
     })
     await w.append(message)
-    const length = w.local.length
     await w.close()
-
-    return { length }
   }
 
   async close () {

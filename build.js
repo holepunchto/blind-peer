@@ -11,6 +11,11 @@ blind.register({
   name: 'request-mailbox',
   fields: [
     {
+      name: 'id',
+      type: 'fixed32',
+      required: true
+    },
+    {
       name: 'autobase',
       type: 'fixed32',
       required: true
@@ -25,11 +30,6 @@ blind.register({
 blind.register({
   name: 'response-mailbox',
   fields: [
-    {
-      name: 'autobase',
-      type: 'fixed32',
-      required: true
-    },
     {
       name: 'writer',
       type: 'fixed32',
@@ -46,7 +46,7 @@ blind.register({
   name: 'request-post',
   fields: [
     {
-      name: 'autobase',
+      name: 'id',
       type: 'fixed32',
       required: true
     },
@@ -59,18 +59,17 @@ blind.register({
 
 blind.register({
   name: 'response-post',
-  fields: [
-    {
-      name: 'length',
-      type: 'uint',
-      required: true
-    }
-  ]
+  fields: []
 })
 
 blind.register({
   name: 'mailbox',
   fields: [
+    {
+      name: 'id',
+      type: 'fixed32',
+      required: true
+    },
     {
       name: 'autobase',
       type: 'fixed32',
@@ -90,13 +89,20 @@ blind.register({
 
 Hyperschema.toDisk(schema)
 
-const db = HyperDB.from(SCHEMA_DIR, DB_DIR, { offset: 64 })
+const db = HyperDB.from(SCHEMA_DIR, DB_DIR)
 const blindDB = db.namespace('blind-peer')
 
 blindDB.collections.register({
   name: 'mailbox',
   schema: '@blind-peer/mailbox',
-  key: ['autobase']
+  key: ['id']
+})
+
+blindDB.indexes.register({
+  name: 'mailbox-by-autobase',
+  collection: '@blind-peer/mailbox',
+  key: ['autobase'],
+  unique: false
 })
 
 HyperDB.toDisk(db)
