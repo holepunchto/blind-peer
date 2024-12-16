@@ -58,12 +58,48 @@ const collection0 = {
   indexes: []
 }
 
+// '@blind-peer/mailbox-by-autobase' collection key
+const index1_key = new IndexEncoder([
+  IndexEncoder.BUFFER
+], { prefix: 1 })
+
+function index1_indexify (record) {
+  const a = record.autobase
+  return a === undefined ? [] : [a]
+}
+
+// '@blind-peer/mailbox-by-autobase'
+const index1 = {
+  name: '@blind-peer/mailbox-by-autobase',
+  id: 1,
+  encodeKey (record) {
+    return index1_key.encode(index1_indexify(record))
+  },
+  encodeKeyRange ({ gt, lt, gte, lte } = {}) {
+    return index1_key.encodeRange({
+      gt: gt ? index1_indexify(gt) : null,
+      lt: lt ? index1_indexify(lt) : null,
+      gte: gte ? index1_indexify(gte) : null,
+      lte: lte ? index1_indexify(lte) : null
+    })
+  },
+  encodeValue: (doc) => index1.collection.encodeKey(doc),
+  encodeIndexKeys (record, context) {
+    return [index1_key.encode([record.autobase])]
+  },
+  reconstruct: (keyBuf, valueBuf) => valueBuf,
+  offset: collection0.indexes.length,
+  collection: collection0
+}
+collection0.indexes.push(index1)
+
 module.exports = {
   version,
   collections: [
     collection0
   ],
   indexes: [
+    index1
   ],
   resolveCollection,
   resolveIndex
@@ -78,6 +114,7 @@ function resolveCollection (name) {
 
 function resolveIndex (name) {
   switch (name) {
+    case '@blind-peer/mailbox-by-autobase': return index1
     default: return null
   }
 }

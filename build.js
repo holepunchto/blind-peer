@@ -58,11 +58,6 @@ blind.register({
 })
 
 blind.register({
-  name: 'response-post',
-  fields: []
-})
-
-blind.register({
   name: 'mailbox',
   fields: [
     {
@@ -102,7 +97,7 @@ blindDB.indexes.register({
   name: 'mailbox-by-autobase',
   collection: '@blind-peer/mailbox',
   key: ['autobase'],
-  unique: false
+  unique: true
 })
 
 HyperDB.toDisk(db)

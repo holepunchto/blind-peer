@@ -111,23 +111,8 @@ const encoding2 = {
   }
 }
 
-// @blind-peer/response-post
-const encoding3 = {
-  preencode (state, m) {
-
-  },
-  encode (state, m) {
-
-  },
-  decode (state) {
-    const res = {}
-
-    return res
-  }
-}
-
 // @blind-peer/mailbox
-const encoding4 = {
+const encoding3 = {
   preencode (state, m) {
     let flags = 0
     if (m.blockEncryptionKey) flags |= 1
@@ -169,7 +154,7 @@ const encoding4 = {
 }
 
 // @blind-peer/mailbox/value
-const encoding5 = {
+const encoding4 = {
   preencode (state, m) {
     let flags = 0
     if (m.blockEncryptionKey) flags |= 1
@@ -211,9 +196,8 @@ function getStructByName (name) {
     case '@blind-peer/request-mailbox': return encoding0
     case '@blind-peer/response-mailbox': return encoding1
     case '@blind-peer/request-post': return encoding2
-    case '@blind-peer/response-post': return encoding3
-    case '@blind-peer/mailbox': return encoding4
-    case '@blind-peer/mailbox/value': return encoding5
+    case '@blind-peer/mailbox': return encoding3
+    case '@blind-peer/mailbox/value': return encoding4
     default: throw new Error('Encoder not found ' + name)
   }
 }

@@ -65,13 +65,6 @@
       ]
     },
     {
-      "name": "response-post",
-      "namespace": "blind-peer",
-      "compact": false,
-      "flagsPosition": -1,
-      "fields": []
-    },
-    {
       "name": "mailbox",
       "namespace": "blind-peer",
       "compact": false,

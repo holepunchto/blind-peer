@@ -15,7 +15,7 @@ s.on('connection', async c => {
   if (!c.remotePublicKey.equals(publicKey)) return
 
   const peer = new BlindPeerClient(c)
-  const reply = await peer.post({ id: autobase, autobase, message })
+  const reply = await peer.post({ id: autobase, message })
 
   console.log(reply)
 

@@ -8,6 +8,7 @@ const path = require('path')
 const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
+const DBLock = require('db-lock')
 
 module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
@@ -17,6 +18,15 @@ module.exports = class BlindPeer extends EventEmitter {
     this.store = new Corestore(path.join(storage, 'corestore'))
     this.store.on('core-open', this._oncoreopen.bind(this))
     this.swarm = null
+
+    this.lock = new DBLock({
+      enter: () => {
+        return this.db.transaction()
+      },
+      exit (tx) {
+        return tx.flush()
+      }
+    })
   }
 
   _onconnection (connection) {
@@ -34,7 +44,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
     rpc.respond('post', {
       requestEncoding: schema.resolveStruct('@blind-peer/request-post'),
-      responseEncoding: schema.resolveStruct('@blind-peer/response-post')
+      responseEncoding: c.none
     }, this._onrpcpost.bind(this))
   }
 
@@ -51,10 +61,8 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async _onrpcpost (req) {
     this.emit('post-request', req)
-    const res = await this.post(req)
-    this.emit('post-response', req, res)
-
-    return res
+    await this.post(req)
+    this.emit('post-response', req)
   }
 
   async _oncoreopen (core) {
@@ -106,16 +114,21 @@ module.exports = class BlindPeer extends EventEmitter {
     if (prev) {
       if (prev.blockEncryptionKey) return prev // fully open, immut
       prev.blockEncryptionKey = blockEncryptionKey
-      await this.db.insert('@blind-peer/mailbox', prev)
-      await this.db.flush()
+
+      const tx = await this.lock.enter()
+      await tx.insert('@blind-peer/mailbox', prev)
+      await this.lock.exit()
       return prev
     }
 
     const w = new AutobaseLightWriter(this.store.namespace(id), autobase, { active: false })
     await w.ready()
     const entry = { id, autobase, writer: w.local.key, blockEncryptionKey }
-    await this.db.insert('@blind-peer/mailbox', entry)
-    await this.db.flush()
+
+    const tx = await this.lock.enter()
+    await tx.insert('@blind-peer/mailbox', entry)
+    await this.lock.exit()
+
     await w.close()
 
     return entry
