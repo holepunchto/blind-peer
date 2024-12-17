@@ -43,7 +43,7 @@ s.on('connection', async c => {
 
   const peer = new BlindPeerClient(c)
 
-  const info = await peer.addMailbox({ autobase: base.key })
+  const info = await peer.addMailbox({ id: base.key, autobase: base.key })
 
   if (info.open === false) {
     const message = Buffer.from(
@@ -54,7 +54,7 @@ s.on('connection', async c => {
 
     const core = base.store.get({ key: info.writer, active: false })
     await core.setEncryptionKey(base.encryptionKey)
-    const req = { autobase: base.key, blockEncryptionKey: core.encryption.blockKey }
+    const req = { id: base.key, autobase: base.key, blockEncryptionKey: core.encryption.blockKey }
     await core.close()
 
     await peer.addMailbox(req)

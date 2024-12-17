@@ -9,7 +9,7 @@ const addMailboxEncoding = {
 
 const postEncoding = {
   requestEncoding: schema.resolveStruct('@blind-peer/request-post'),
-  responseEncoding: schema.resolveStruct('@blind-peer/response-post')
+  responseEncoding: c.none
 }
 
 module.exports = class BlindPeerClient {
@@ -29,7 +29,7 @@ module.exports = class BlindPeerClient {
     return this.rpc.request('add-mailbox', data, addMailboxEncoding)
   }
 
-  post ({ autobase, message }) {
-    return this.rpc.request('post', { autobase, message }, postEncoding)
+  post ({ id, message }) {
+    return this.rpc.request('post', { id, message }, postEncoding)
   }
 }

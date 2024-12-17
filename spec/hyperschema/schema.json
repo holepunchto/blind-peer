@@ -5,8 +5,14 @@
       "name": "request-mailbox",
       "namespace": "blind-peer",
       "compact": false,
-      "flagsPosition": 1,
+      "flagsPosition": 2,
       "fields": [
+        {
+          "name": "id",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
         {
           "name": "autobase",
           "required": true,
@@ -24,14 +30,8 @@
       "name": "response-mailbox",
       "namespace": "blind-peer",
       "compact": false,
-      "flagsPosition": 2,
+      "flagsPosition": 1,
       "fields": [
-        {
-          "name": "autobase",
-          "required": true,
-          "type": "fixed32",
-          "version": 1
-        },
         {
           "name": "writer",
           "required": true,
@@ -52,7 +52,7 @@
       "flagsPosition": 1,
       "fields": [
         {
-          "name": "autobase",
+          "name": "id",
           "required": true,
           "type": "fixed32",
           "version": 1
@@ -65,25 +65,17 @@
       ]
     },
     {
-      "name": "response-post",
-      "namespace": "blind-peer",
-      "compact": false,
-      "flagsPosition": -1,
-      "fields": [
-        {
-          "name": "length",
-          "required": true,
-          "type": "uint",
-          "version": 1
-        }
-      ]
-    },
-    {
       "name": "mailbox",
       "namespace": "blind-peer",
       "compact": false,
-      "flagsPosition": 2,
+      "flagsPosition": 3,
       "fields": [
+        {
+          "name": "id",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
         {
           "name": "autobase",
           "required": true,

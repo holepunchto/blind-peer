@@ -15,6 +15,7 @@ const encoding0 = {
     let flags = 0
     if (m.blockEncryptionKey) flags |= 1
 
+    c.fixed32.preencode(state, m.id)
     c.fixed32.preencode(state, m.autobase)
     c.uint.preencode(state, flags)
 
@@ -24,6 +25,7 @@ const encoding0 = {
     let flags = 0
     if (m.blockEncryptionKey) flags |= 1
 
+    c.fixed32.encode(state, m.id)
     c.fixed32.encode(state, m.autobase)
     c.uint.encode(state, flags)
 
@@ -31,9 +33,11 @@ const encoding0 = {
   },
   decode (state) {
     const res = {}
+    res.id = null
     res.autobase = null
     res.blockEncryptionKey = null
 
+    res.id = c.fixed32.decode(state)
     res.autobase = c.fixed32.decode(state)
 
     const flags = state.start < state.end ? c.uint.decode(state) : 0
@@ -49,7 +53,6 @@ const encoding1 = {
     let flags = 0
     if (m.open) flags |= 1
 
-    c.fixed32.preencode(state, m.autobase)
     c.fixed32.preencode(state, m.writer)
     c.uint.preencode(state, flags)
   },
@@ -57,17 +60,14 @@ const encoding1 = {
     let flags = 0
     if (m.open) flags |= 1
 
-    c.fixed32.encode(state, m.autobase)
     c.fixed32.encode(state, m.writer)
     c.uint.encode(state, flags)
   },
   decode (state) {
     const res = {}
-    res.autobase = null
     res.writer = null
     res.open = false
 
-    res.autobase = c.fixed32.decode(state)
     res.writer = c.fixed32.decode(state)
 
     const flags = state.start < state.end ? c.uint.decode(state) : 0
@@ -83,7 +83,7 @@ const encoding2 = {
     let flags = 0
     if (m.message) flags |= 1
 
-    c.fixed32.preencode(state, m.autobase)
+    c.fixed32.preencode(state, m.id)
     c.uint.preencode(state, flags)
 
     if (m.message) c.buffer.preencode(state, m.message)
@@ -92,17 +92,17 @@ const encoding2 = {
     let flags = 0
     if (m.message) flags |= 1
 
-    c.fixed32.encode(state, m.autobase)
+    c.fixed32.encode(state, m.id)
     c.uint.encode(state, flags)
 
     if (m.message) c.buffer.encode(state, m.message)
   },
   decode (state) {
     const res = {}
-    res.autobase = null
+    res.id = null
     res.message = null
 
-    res.autobase = c.fixed32.decode(state)
+    res.id = c.fixed32.decode(state)
 
     const flags = state.start < state.end ? c.uint.decode(state) : 0
     if ((flags & 1) !== 0) res.message = c.buffer.decode(state)
@@ -111,30 +111,13 @@ const encoding2 = {
   }
 }
 
-// @blind-peer/response-post
-const encoding3 = {
-  preencode (state, m) {
-    c.uint.preencode(state, m.length)
-  },
-  encode (state, m) {
-    c.uint.encode(state, m.length)
-  },
-  decode (state) {
-    const res = {}
-    res.length = 0
-
-    res.length = c.uint.decode(state)
-
-    return res
-  }
-}
-
 // @blind-peer/mailbox
-const encoding4 = {
+const encoding3 = {
   preencode (state, m) {
     let flags = 0
     if (m.blockEncryptionKey) flags |= 1
 
+    c.fixed32.preencode(state, m.id)
     c.fixed32.preencode(state, m.autobase)
     c.fixed32.preencode(state, m.writer)
     c.uint.preencode(state, flags)
@@ -145,6 +128,7 @@ const encoding4 = {
     let flags = 0
     if (m.blockEncryptionKey) flags |= 1
 
+    c.fixed32.encode(state, m.id)
     c.fixed32.encode(state, m.autobase)
     c.fixed32.encode(state, m.writer)
     c.uint.encode(state, flags)
@@ -153,10 +137,12 @@ const encoding4 = {
   },
   decode (state) {
     const res = {}
+    res.id = null
     res.autobase = null
     res.writer = null
     res.blockEncryptionKey = null
 
+    res.id = c.fixed32.decode(state)
     res.autobase = c.fixed32.decode(state)
     res.writer = c.fixed32.decode(state)
 
@@ -172,8 +158,7 @@ function getStructByName (name) {
     case '@blind-peer/request-mailbox': return encoding0
     case '@blind-peer/response-mailbox': return encoding1
     case '@blind-peer/request-post': return encoding2
-    case '@blind-peer/response-post': return encoding3
-    case '@blind-peer/mailbox': return encoding4
+    case '@blind-peer/mailbox': return encoding3
     default: throw new Error('Encoder not found ' + name)
   }
 }

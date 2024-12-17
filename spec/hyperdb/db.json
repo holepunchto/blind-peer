@@ -1,19 +1,32 @@
 {
   "version": 0,
-  "offset": 64,
+  "offset": 0,
   "schema": [
     {
       "name": "mailbox",
       "namespace": "blind-peer",
-      "id": 64,
+      "id": 0,
       "type": 1,
-      "indexes": [],
+      "indexes": [
+        "@blind-peer/mailbox-by-autobase"
+      ],
       "schema": "@blind-peer/mailbox",
       "derived": false,
       "key": [
-        "autobase"
+        "id"
       ],
       "trigger": null
+    },
+    {
+      "name": "mailbox-by-autobase",
+      "namespace": "blind-peer",
+      "id": 1,
+      "type": 2,
+      "collection": "@blind-peer/mailbox",
+      "unique": true,
+      "key": [
+        "autobase"
+      ]
     }
   ]
 }

@@ -8,6 +8,7 @@ const path = require('path')
 const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
+const DBLock = require('db-lock')
 
 module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
@@ -17,6 +18,15 @@ module.exports = class BlindPeer extends EventEmitter {
     this.store = new Corestore(path.join(storage, 'corestore'))
     this.store.on('core-open', this._oncoreopen.bind(this))
     this.swarm = null
+
+    this.lock = new DBLock({
+      enter: () => {
+        return this.db.transaction()
+      },
+      exit (tx) {
+        return tx.flush()
+      }
+    })
   }
 
   _onconnection (connection) {
@@ -34,7 +44,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
     rpc.respond('post', {
       requestEncoding: schema.resolveStruct('@blind-peer/request-post'),
-      responseEncoding: schema.resolveStruct('@blind-peer/response-post')
+      responseEncoding: c.none
     }, this._onrpcpost.bind(this))
   }
 
@@ -44,7 +54,6 @@ module.exports = class BlindPeer extends EventEmitter {
     this.emit('add-response', req, res)
 
     return {
-      autobase: res.autobase,
       writer: res.writer,
       open: !!res.blockEncryptionKey // TODO: get rid of the encryption for these guys with a manifest upgrade, then no attacks cause self-described
     }
@@ -52,18 +61,16 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async _onrpcpost (req) {
     this.emit('post-request', req)
-    const res = await this.post(req)
-    this.emit('post-response', req, res)
-
-    return res
+    await this.post(req)
+    this.emit('post-response', req)
   }
 
   async _oncoreopen (core) {
     try {
-      const entry = await this.db.get('@blind-peer/mailbox', { autobase: core.key })
+      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
       if (!entry || !entry.blockEncryptionKey) return
 
-      const w = new AutobaseLightWriter(this.store.namespace(entry.autobase), entry.autobase, {
+      const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
         active: false,
         blockEncryptionKey: entry.blockEncryptionKey
       })
@@ -97,44 +104,46 @@ module.exports = class BlindPeer extends EventEmitter {
     return this.swarm.listen()
   }
 
-  async get ({ autobase }) {
-    return await this.db.get('@blind-peer/mailbox', { autobase })
+  async get ({ id }) {
+    return await this.db.get('@blind-peer/mailbox', { id })
   }
 
-  async add ({ autobase, blockEncryptionKey = null }) {
-    const prev = await this.db.get('@blind-peer/mailbox', { autobase })
+  async add ({ id, autobase, blockEncryptionKey = null }) {
+    const prev = await this.db.get('@blind-peer/mailbox', { id })
 
     if (prev) {
-      if (prev.blockEncryptionKey) return prev
+      if (prev.blockEncryptionKey) return prev // fully open, immut
       prev.blockEncryptionKey = blockEncryptionKey
-      await this.db.insert('@blind-peer/mailbox', prev)
-      await this.db.flush()
+
+      const tx = await this.lock.enter()
+      await tx.insert('@blind-peer/mailbox', prev)
+      await this.lock.exit()
       return prev
     }
 
-    const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, { active: false })
+    const w = new AutobaseLightWriter(this.store.namespace(id), autobase, { active: false })
     await w.ready()
-    const entry = { autobase, writer: w.local.key, blockEncryptionKey }
-    await this.db.insert('@blind-peer/mailbox', entry)
-    await this.db.flush()
+    const entry = { id, autobase, writer: w.local.key, blockEncryptionKey }
+
+    const tx = await this.lock.enter()
+    await tx.insert('@blind-peer/mailbox', entry)
+    await this.lock.exit()
+
     await w.close()
 
     return entry
   }
 
-  async post ({ autobase, message }) {
-    const entry = await this.db.get('@blind-peer/mailbox', { autobase })
+  async post ({ id, message }) {
+    const entry = await this.db.get('@blind-peer/mailbox', { id })
     if (!entry || !entry.blockEncryptionKey) throw new Error('Autobase not found')
 
-    const w = new AutobaseLightWriter(this.store.namespace(autobase), autobase, {
+    const w = new AutobaseLightWriter(this.store.namespace(id), entry.autobase, {
       active: false,
       blockEncryptionKey: entry.blockEncryptionKey
     })
     await w.append(message)
-    const length = w.local.length
     await w.close()
-
-    return { length }
   }
 
   async close () {
