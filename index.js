@@ -42,7 +42,7 @@ module.exports = class BlindPeer extends EventEmitter {
       responseEncoding: schema.resolveStruct('@blind-peer/response-mailbox')
     }, this._onrpcadd.bind(this))
 
-    rpc.respond('post', {
+    rpc.respond('post-to-mailbox', {
       requestEncoding: schema.resolveStruct('@blind-peer/request-post'),
       responseEncoding: c.none
     }, this._onrpcpost.bind(this))
@@ -50,7 +50,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async _onrpcadd (req) {
     this.emit('add-request', req)
-    const res = await this.add(req)
+    const res = await this.addMailbox(req)
     this.emit('add-response', req, res)
 
     return {
@@ -61,7 +61,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async _onrpcpost (req) {
     this.emit('post-request', req)
-    await this.post(req)
+    await this.postToMailbox(req)
     this.emit('post-response', req)
   }
 
@@ -108,7 +108,7 @@ module.exports = class BlindPeer extends EventEmitter {
     return await this.db.get('@blind-peer/mailbox', { id })
   }
 
-  async add ({ id, autobase, blockEncryptionKey = null }) {
+  async addMailbox ({ id, autobase, blockEncryptionKey = null }) {
     const prev = await this.db.get('@blind-peer/mailbox', { id })
 
     if (prev) {
@@ -134,7 +134,7 @@ module.exports = class BlindPeer extends EventEmitter {
     return entry
   }
 
-  async post ({ id, message }) {
+  async postToMailbox ({ id, message }) {
     const entry = await this.db.get('@blind-peer/mailbox', { id })
     if (!entry || !entry.blockEncryptionKey) throw new Error('Autobase not found')
 

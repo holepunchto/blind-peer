@@ -15,7 +15,7 @@ const Client = require('../client')
 const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 
-test('client uses blind-peer to add an autobase message', async t => {
+test('client can use a blind-peer to add an autobase message', async t => {
   t.plan(1)
 
   const { bootstrap } = await getTestnet(t)
@@ -27,7 +27,6 @@ test('client uses blind-peer to add an autobase message', async t => {
   baseSwarm.joinPeer(blindPeer.publicKey)
   await once(blindPeer, 'add-response') // ensure mailbox registered
 
-  console.log('registered')
   const swarm = new Hyperswarm({ bootstrap })
 
   base.view.on('append', async () => {
@@ -41,7 +40,7 @@ test('client uses blind-peer to add an autobase message', async t => {
 
   swarm.on('connection', async (conn) => {
     const client = new Client(conn)
-    await client.post({
+    await client.postToMailbox({
       id: mailboxId,
       message: b4a.from(JSON.stringify({ hi: 'there' }))
     })
