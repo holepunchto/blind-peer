@@ -1,5 +1,3 @@
-const { once } = require('events')
-
 const test = require('brittle')
 const setupTestnet = require('hyperdht/testnet')
 const Hyperswarm = require('hyperswarm')
