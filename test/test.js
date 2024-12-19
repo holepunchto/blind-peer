@@ -27,8 +27,6 @@ test('client can use a blind-peer to add an autobase message', async t => {
   baseSwarm.joinPeer(blindPeer.publicKey)
   await once(blindPeer, 'add-response') // ensure mailbox registered
 
-  const swarm = new Hyperswarm({ bootstrap })
-
   base.view.on('append', async () => {
     const message = await base.view.get(base.view.length - 1)
     t.alike(
@@ -38,6 +36,7 @@ test('client can use a blind-peer to add an autobase message', async t => {
     )
   })
 
+  const swarm = new Hyperswarm({ bootstrap })
   swarm.on('connection', async (conn) => {
     const client = new Client(conn)
     await client.postToMailbox({
