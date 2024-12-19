@@ -24,7 +24,7 @@ test('client can use a blind-peer to add an autobase message', async t => {
   const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
   baseSwarm.joinPeer(blindPeer.publicKey)
   await new Promise(resolve => { // ensure mailbox fully registered
-    blindPeer.on('add-response', (req, res) => {
+    blindPeer.on('add-mailbox-response', (req, res) => {
       // Set when the mailbox is fully open
       // (which with the autobase connection flow currently happens
       //  after 2 add-mailbox requests when starting from scratch)
@@ -78,17 +78,17 @@ async function setupBlindPeer (t, bootstrap) {
   const peer = new BlindPeer(storage)
 
   if (DEBUG) {
-    peer.on('add-request', () => {
+    peer.on('add-mailbox-request', () => {
       console.log('add mailbox received')
     })
-    peer.on('add-response', () => {
+    peer.on('add-mailbox-response', () => {
       console.log('add mailbox response')
     })
-    peer.on('post-request', () => {
-      console.log('post req received')
+    peer.on('post-to-mailbox-request', () => {
+      console.log('post-to-mailbox req received')
     })
-    peer.on('post-response', () => {
-      console.log('post response')
+    peer.on('post-to-mailbox-response', () => {
+      console.log('post to mailbox response')
     })
   }
 
