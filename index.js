@@ -131,7 +131,6 @@ module.exports = class BlindPeer extends EventEmitter {
 
     await w.close()
 
-    console.log('added the mailbox')
     return entry
   }
 
