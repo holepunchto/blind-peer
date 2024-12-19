@@ -12,42 +12,55 @@ const tmpDir = require('test-tmp')
 const BlindPeer = require('..')
 const Client = require('../client')
 
-const DEBUG = false
+const DEBUG = true
 let clientCounter = 0 // For clean teardown order
 
-test('client can use a blind-peer to add an autobase message', async t => {
-  t.plan(1)
+for (let i = 0; i < 100; i++) {
+  test('client can use a blind-peer to add an autobase message', async t => {
+    t.plan(2)
 
-  const { bootstrap } = await getTestnet(t)
+    const { bootstrap } = await getTestnet(t)
 
-  const blindPeer = await setupBlindPeer(t, bootstrap)
-  await blindPeer.swarm.flush()
+    const blindPeer = await setupBlindPeer(t, bootstrap)
+    await blindPeer.swarm.flush()
 
-  const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
-  baseSwarm.joinPeer(blindPeer.publicKey)
-  await once(blindPeer, 'add-response') // ensure mailbox registered
+    const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
+    baseSwarm.joinPeer(blindPeer.publicKey)
+    await once(blindPeer, 'add-response') // ensure mailbox registered
 
-  base.view.on('append', async () => {
-    const message = await base.view.get(base.view.length - 1)
-    t.alike(
-      message,
-      { hi: 'there' },
-      'Message processed by autobase'
-    )
-  })
-
-  const swarm = new Hyperswarm({ bootstrap })
-  swarm.on('connection', async (conn) => {
-    const client = new Client(conn)
-    await client.postToMailbox({
-      id: mailboxId,
-      message: b4a.from(JSON.stringify({ hi: 'there' }))
+    base.view.on('append', async () => {
+      const message = await base.view.get(base.view.length - 1)
+      t.alike(
+        message,
+        { hi: 'there' },
+        'Message processed by autobase'
+      )
     })
-    await client.close()
-    await swarm.destroy()
+
+    const swarm = new Hyperswarm({ bootstrap })
+    swarm.on('connection', async (conn) => {
+      try {
+        const client = new Client(conn)
+        await client.postToMailbox({
+          id: mailboxId,
+          message: b4a.from(JSON.stringify({ hi: 'there' }))
+        })
+        console.log('posted to mailbox')
+        swarm.leavePeer(blindPeer.publicKey)
+        await client.close()
+        await swarm.destroy()
+      } catch (e) {
+        console.error('unexpected error while posting to mailbox')
+        console.error(e)
+        t.fail('error while posting to mailbox')
+        return
+      }
+
+      t.pass('Successfully posted to mailbox')
+    })
+    swarm.joinPeer(blindPeer.publicKey)
   })
-  swarm.joinPeer(blindPeer.publicKey)
-})
+}
 
 async function getTestnet (t) {
   const testnet = await setupTestnet()
@@ -145,12 +158,14 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
 
       if (DEBUG) console.log('autobase opened mailbox')
     }
+
+    await peer.close()
   })
 
   const order = clientCounter++
   t.teardown(async () => {
-    await base.close()
     await swarm.destroy()
+    await base.close()
   }, { order })
 
   return { base, swarm, mailboxId: id }
