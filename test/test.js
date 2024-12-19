@@ -26,7 +26,14 @@ for (let i = 0; i < 100; i++) {
 
     const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
     baseSwarm.joinPeer(blindPeer.publicKey)
-    await once(blindPeer, 'add-response') // ensure mailbox registered
+    await new Promise(resolve => { // ensure mailbox fully registered
+      blindPeer.on('add-response', (req, res) => {
+        // Set when the mailbox is fully open
+        // (which happens across 2 requests)
+        if (res.blockEncryptionKey) resolve()
+        console.log('res', res)
+      })
+    })
 
     base.view.on('append', async () => {
       const message = await base.view.get(base.view.length - 1)
