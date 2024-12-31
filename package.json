@@ -7,8 +7,8 @@
     "blind-peer": "bin.js"
   },
   "dependencies": {
-    "autobase-light-writer": "^1.1.0",
-    "corestore": "^6.18.4",
+    "autobase-light-writer": "^2.0.0",
+    "corestore": "holepunchto/corestore#v7",
     "db-lock": "^1.2.0",
     "graceful-goodbye": "^1.3.2",
     "hypercore-id-encoding": "^1.3.0",
@@ -19,10 +19,11 @@
     "protomux-rpc": "^1.6.0"
   },
   "devDependencies": {
-    "autobase": "^6.5.13",
+    "autobase": "holepunchto/autobase#rocksdb-atomic",
     "b4a": "^1.6.7",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
+    "hypercore": "holepunchto/hypercore#rocksdb",
     "hypercore-crypto": "^3.4.2",
     "hyperdht": "^6.20.1",
     "random-access-memory": "^6.2.1",

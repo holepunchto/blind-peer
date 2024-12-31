@@ -2,6 +2,7 @@ const { EventEmitter } = require('events')
 const AutobaseLightWriter = require('autobase-light-writer')
 const HyperDB = require('hyperdb')
 const Corestore = require('corestore')
+const Hypercore = require('hypercore')
 const definition = require('./spec/hyperdb')
 const schema = require('./spec/hyperschema')
 const path = require('path')
@@ -16,7 +17,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
     this.db = HyperDB.rocks(path.join(storage, 'hyperdb'), definition)
     this.store = new Corestore(path.join(storage, 'corestore'))
-    this.store.on('core-open', this._oncoreopen.bind(this))
+    this.store.cores.on('add', this._oncoreopen.bind(this))
     this.swarm = null
 
     this.lock = new DBLock({
@@ -66,8 +67,11 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async _oncoreopen (core) {
+    const s = new Hypercore({ core, weak: true })
+
     try {
-      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
+      await s.ready()
+      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: s.key })
       if (!entry || !entry.blockEncryptionKey) return
 
       const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
@@ -79,11 +83,11 @@ module.exports = class BlindPeer extends EventEmitter {
         w.local.replicate(peer.stream)
       }
 
-      core.on('peer-add', (peer) => {
+      s.on('peer-add', (peer) => {
         w.local.replicate(peer.stream)
       })
 
-      core.on('close', () => {
+      s.on('close', () => {
         w.close().catch(noop)
       })
     } catch (err) {

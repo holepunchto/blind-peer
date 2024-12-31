@@ -3,7 +3,6 @@ const setupTestnet = require('hyperdht/testnet')
 const Hyperswarm = require('hyperswarm')
 const Autobase = require('autobase')
 const Corestore = require('corestore')
-const RAM = require('random-access-memory')
 const b4a = require('b4a')
 const hypCrypto = require('hypercore-crypto')
 const tmpDir = require('test-tmp')
@@ -22,6 +21,7 @@ test('client can use a blind-peer to add an autobase message', async t => {
   await blindPeer.swarm.flush()
 
   const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
+
   baseSwarm.joinPeer(blindPeer.publicKey)
   await new Promise(resolve => { // ensure mailbox fully registered
     blindPeer.on('add-mailbox-response', (req, res) => {
@@ -108,8 +108,9 @@ async function setupBlindPeer (t, bootstrap) {
 }
 
 async function setupAutobase (t, bootstrap, blindPeerKey) {
+  const storage = await tmpDir(t)
   const base = new Autobase(
-    new Corestore(RAM.reusable()),
+    new Corestore(storage),
     null,
     {
       encryptionKey: Buffer.alloc(30).fill('secret'),
