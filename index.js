@@ -71,6 +71,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
     try {
       await s.ready()
+
       const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: s.key })
       if (!entry || !entry.blockEncryptionKey) return
 
@@ -79,7 +80,7 @@ module.exports = class BlindPeer extends EventEmitter {
         blockEncryptionKey: entry.blockEncryptionKey
       })
 
-      for (const peer of core.peers) {
+      for (const peer of s.peers) {
         w.local.replicate(peer.stream)
       }
 
@@ -91,7 +92,7 @@ module.exports = class BlindPeer extends EventEmitter {
         w.close().catch(noop)
       })
     } catch (err) {
-      console.log(err)
+      console.error(err)
     }
   }
 

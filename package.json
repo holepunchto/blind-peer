@@ -9,6 +9,7 @@
   "dependencies": {
     "autobase-light-writer": "^2.0.0",
     "corestore": "holepunchto/corestore#v7",
+    "hypercore": "holepunchto/hypercore#rocksdb",
     "db-lock": "^1.2.0",
     "graceful-goodbye": "^1.3.2",
     "hypercore-id-encoding": "^1.3.0",
@@ -19,7 +20,7 @@
     "protomux-rpc": "^1.6.0"
   },
   "devDependencies": {
-    "autobase": "holepunchto/autobase#rocksdb-atomic",
+    "autobase": "holepunchto/autobase#rocksdb",
     "b4a": "^1.6.7",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
