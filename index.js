@@ -17,8 +17,12 @@ module.exports = class BlindPeer extends EventEmitter {
 
     this.db = HyperDB.rocks(path.join(storage, 'hyperdb'), definition)
     this.store = new Corestore(path.join(storage, 'corestore'))
-    this.store.cores.on('add', this._oncoreopen.bind(this))
     this.swarm = null
+
+    this._oncoreopenBound = this._oncoreopen.bind(this)
+    this.store.watch(this._oncoreopenBound)
+
+    this._openLightWriters = new Set()
 
     this.lock = new DBLock({
       enter: () => {
@@ -78,6 +82,7 @@ module.exports = class BlindPeer extends EventEmitter {
         active: false,
         blockEncryptionKey: entry.blockEncryptionKey
       })
+      this._openLightWriters.add(w)
 
       for (const peer of s.peers) {
         w.local.replicate(peer.stream)
@@ -88,6 +93,7 @@ module.exports = class BlindPeer extends EventEmitter {
       })
 
       s.on('close', () => {
+        this._openLightWriters.delete(w)
         w.close().catch(noop)
       })
     } catch (err) {
@@ -151,8 +157,11 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async close () {
+    this.store.unwatch(this._oncoreopenBound)
     if (this.swarm !== null) await this.swarm.destroy()
     await this.db.close()
+
+    await Promise.all([...this._openLightWriters].map(w => w.close()))
     await this.store.close()
   }
 }
