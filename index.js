@@ -93,8 +93,9 @@ module.exports = class BlindPeer extends EventEmitter {
       })
 
       s.on('close', () => {
-        this._openLightWriters.delete(w)
-        w.close().catch(noop)
+        w.close()
+          .then(() => this._openLightWriters.delete(w))
+          .catch(noop)
       })
     } catch (err) {
       console.error(err)
