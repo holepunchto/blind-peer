@@ -71,7 +71,6 @@ module.exports = class BlindPeer extends EventEmitter {
 
     try {
       await s.ready()
-
       const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: s.key })
       if (!entry || !entry.blockEncryptionKey) return
 
