@@ -96,6 +96,10 @@ module.exports = class BlindPeer extends EventEmitter {
     // Must be sync up till the line above, for the accounting
 
     await s.ready()
+    if (s.closing) {
+      this._openCores.delete(discKey)
+      return
+    }
 
     const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
       active: false,
