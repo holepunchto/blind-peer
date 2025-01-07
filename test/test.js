@@ -3,7 +3,6 @@ const setupTestnet = require('hyperdht/testnet')
 const Hyperswarm = require('hyperswarm')
 const Autobase = require('autobase')
 const Corestore = require('corestore')
-const RAM = require('random-access-memory')
 const b4a = require('b4a')
 const hypCrypto = require('hypercore-crypto')
 const tmpDir = require('test-tmp')
@@ -18,10 +17,11 @@ test('client can use a blind-peer to add an autobase message', async t => {
 
   const { bootstrap } = await getTestnet(t)
 
-  const blindPeer = await setupBlindPeer(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
   await blindPeer.swarm.flush()
 
   const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
+
   baseSwarm.joinPeer(blindPeer.publicKey)
   await new Promise(resolve => { // ensure mailbox fully registered
     blindPeer.on('add-mailbox-response', (req, res) => {
@@ -64,6 +64,65 @@ test('client can use a blind-peer to add an autobase message', async t => {
   swarm.joinPeer(blindPeer.publicKey)
 })
 
+test('can send autobase message with restarted blind-peer', async t => {
+  t.plan(2)
+
+  const { bootstrap } = await getTestnet(t)
+
+  let blindPeerStorage = null
+  const { blindPeer: blindPeerRun1, storage } = await setupBlindPeer(t, bootstrap)
+  blindPeerStorage = storage
+  await blindPeerRun1.swarm.flush()
+
+  const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeerRun1.publicKey)
+
+  baseSwarm.joinPeer(blindPeerRun1.publicKey)
+  await new Promise(resolve => { // ensure mailbox fully registered
+    blindPeerRun1.on('add-mailbox-response', (req, res) => {
+      // Set when the mailbox is fully open
+      // (which with the autobase connection flow currently happens
+      //  after 2 add-mailbox requests when starting from scratch)
+      if (res.blockEncryptionKey) resolve()
+    })
+  })
+
+  await blindPeerRun1.close()
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage })
+  await blindPeer.swarm.flush()
+
+  base.view.on('append', async () => {
+    const message = await base.view.get(base.view.length - 1)
+    t.alike(
+      message,
+      { hi: 'there' },
+      'Message processed by autobase'
+    )
+  })
+
+  const swarm = new Hyperswarm({ bootstrap })
+  swarm.on('connection', async (conn) => {
+    try {
+      const client = new Client(conn)
+      await client.postToMailbox({
+        id: mailboxId,
+        message: b4a.from(JSON.stringify({ hi: 'there' }))
+      })
+      swarm.leavePeer(blindPeer.publicKey)
+      await client.close()
+      await swarm.destroy()
+    } catch (e) {
+      console.error('unexpected error while posting to mailbox')
+      console.error(e)
+      t.fail('error while posting to mailbox')
+      return
+    }
+
+    t.pass('Successfully posted to mailbox')
+  })
+  swarm.joinPeer(blindPeer.publicKey)
+})
+
 async function getTestnet (t) {
   const testnet = await setupTestnet()
   t.teardown(async () => {
@@ -73,16 +132,16 @@ async function getTestnet (t) {
   return testnet
 }
 
-async function setupBlindPeer (t, bootstrap) {
-  const storage = await tmpDir(t)
+async function setupBlindPeer (t, bootstrap, { storage } = {}) {
+  if (!storage) storage = await tmpDir(t)
   const peer = new BlindPeer(storage)
 
   if (DEBUG) {
-    peer.on('add-mailbox-request', () => {
-      console.log('add mailbox received')
+    peer.on('add-mailbox-request', (req) => {
+      console.log('add-mailbox request received for autobase', req.autobase)
     })
-    peer.on('add-mailbox-response', () => {
-      console.log('add mailbox response')
+    peer.on('add-mailbox-response', (req, resp) => {
+      console.log('add-mailbox response for autobase', resp.autobase)
     })
     peer.on('post-to-mailbox-request', () => {
       console.log('post-to-mailbox req received')
@@ -104,12 +163,13 @@ async function setupBlindPeer (t, bootstrap) {
     })
   }
 
-  return peer
+  return { blindPeer: peer, storage }
 }
 
 async function setupAutobase (t, bootstrap, blindPeerKey) {
+  const storage = await tmpDir(t)
   const base = new Autobase(
-    new Corestore(RAM.reusable()),
+    new Corestore(storage),
     null,
     {
       encryptionKey: Buffer.alloc(30).fill('secret'),
