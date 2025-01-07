@@ -81,7 +81,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
       await this._ensureCoreOpen(entry)
     } catch (err) {
-      console.error(`blind-peer oncoreopen error: ${err.stack}`)
+      console.error(err)
     }
   }
 
