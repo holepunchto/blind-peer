@@ -86,14 +86,13 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async _ensureCoreOpen (entry) {
-    const discKey = HypCrypto.discoveryKey(entry.autobase)
+    const discKey = b4a.toString(HypCrypto.discoveryKey(entry.autobase), 'hex')
     const core = this.store.cores.get(discKey)
     if (!core) return // not in corestore atm (will open when oncoreopen runs)
 
-    const hexKey = b4a.toString(entry.autobase, 'hex')
-    if (this._openCores.has(hexKey)) return
+    if (this._openCores.has(discKey)) return
     const s = new Hypercore({ core, weak: true })
-    this._openCores.set(hexKey, s)
+    this._openCores.set(discKey, s)
     // Must be sync up till the line above, for the accounting
 
     await s.ready()
@@ -113,7 +112,7 @@ module.exports = class BlindPeer extends EventEmitter {
     })
 
     s.on('close', () => {
-      this._openCores.delete(hexKey)
+      this._openCores.delete(discKey)
       w.close().then(() => this._openLightWriters.delete(w), noop)
     })
   }
