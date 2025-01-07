@@ -3,6 +3,8 @@ const AutobaseLightWriter = require('autobase-light-writer')
 const HyperDB = require('hyperdb')
 const Corestore = require('corestore')
 const Hypercore = require('hypercore')
+const b4a = require('b4a')
+const HypCrypto = require('hypercore-crypto')
 const definition = require('./spec/hyperdb')
 const schema = require('./spec/hyperschema')
 const path = require('path')
@@ -23,6 +25,7 @@ module.exports = class BlindPeer extends EventEmitter {
     this.store.watch(this._oncoreopenBound)
 
     this._openLightWriters = new Set()
+    this._openCores = new Map()
 
     this.lock = new DBLock({
       enter: () => {
@@ -71,33 +74,51 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async _oncoreopen (core) {
-    const s = new Hypercore({ core, weak: true })
-
     try {
-      await s.ready()
-      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: s.key })
+      await core.ready()
+      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
       if (!entry || !entry.blockEncryptionKey) return
 
-      const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
-        active: false,
-        blockEncryptionKey: entry.blockEncryptionKey
-      })
-      this._openLightWriters.add(w)
-
-      for (const peer of s.peers) {
-        w.local.replicate(peer.stream)
-      }
-
-      s.on('peer-add', (peer) => {
-        w.local.replicate(peer.stream)
-      })
-
-      s.on('close', () => {
-        w.close().then(() => this._openLightWriters.delete(w), noop)
-      })
+      await this._ensureCoreOpen(entry)
     } catch (err) {
       console.error(err)
     }
+  }
+
+  async _ensureCoreOpen (entry) {
+    const discKey = b4a.toString(HypCrypto.discoveryKey(entry.autobase), 'hex')
+    const core = this.store.cores.get(discKey)
+    if (!core) return // not in corestore atm (will open when oncoreopen runs)
+
+    if (this._openCores.has(discKey)) return
+    const s = new Hypercore({ core, weak: true })
+    this._openCores.set(discKey, s)
+    // Must be sync up till the line above, for the accounting
+
+    await s.ready()
+    if (s.closing) {
+      this._openCores.delete(discKey)
+      return
+    }
+
+    const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
+      active: false,
+      blockEncryptionKey: entry.blockEncryptionKey
+    })
+    this._openLightWriters.add(w)
+
+    for (const peer of s.peers) {
+      w.local.replicate(peer.stream)
+    }
+
+    s.on('peer-add', (peer) => {
+      w.local.replicate(peer.stream)
+    })
+
+    s.on('close', () => {
+      this._openCores.delete(discKey)
+      w.close().then(() => this._openLightWriters.delete(w), noop)
+    })
   }
 
   get publicKey () {
@@ -127,6 +148,7 @@ module.exports = class BlindPeer extends EventEmitter {
       const tx = await this.lock.enter()
       await tx.insert('@blind-peer/mailbox', prev)
       await this.lock.exit()
+      await this._ensureCoreOpen(prev)
       return prev
     }
 
@@ -137,6 +159,7 @@ module.exports = class BlindPeer extends EventEmitter {
     const tx = await this.lock.enter()
     await tx.insert('@blind-peer/mailbox', entry)
     await this.lock.exit()
+    await this._ensureCoreOpen(entry)
 
     await w.close()
 
