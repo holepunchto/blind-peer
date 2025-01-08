@@ -16,6 +16,9 @@ class PassiveWatcher extends ReadyResource {
 
   async _open () {
     this.store.watch(this._oncoreopenBound)
+    await Promise.all(
+      [...this.store.cores.map.values()].map(this._oncoreopenBound)
+    )
   }
 
   async _close () {
@@ -23,7 +26,7 @@ class PassiveWatcher extends ReadyResource {
     await Promise.allSettled([...this._openCores.values()].map(c => c.close()))
   }
 
-  async _oncoreopen (core) {
+  async _oncoreopen (core) { // not allowed to throw
     try {
       if (await this.shouldWatch(core)) {
         await core.ready()
