@@ -5,11 +5,13 @@ const HypCrypto = require('hypercore-crypto')
 const IdEnc = require('hypercore-id-encoding')
 
 class PassiveWatcher extends ReadyResource {
-  constructor (corestore, shouldWatch = () => {}) {
+  constructor (corestore, { watch, open }) {
     super()
 
     this.store = corestore
-    this.shouldWatch = shouldWatch
+    this.watch = watch
+    this.open = open
+
     this._oncoreopenBound = this._oncoreopen.bind(this)
     this._openCores = new Map()
   }
@@ -28,7 +30,7 @@ class PassiveWatcher extends ReadyResource {
 
   async _oncoreopen (core) { // not allowed to throw
     try {
-      if (await this.shouldWatch(core)) {
+      if (await this.watch(core)) {
         await core.ready()
         await this.ensureTracked(core.key)
       }
@@ -59,7 +61,7 @@ class PassiveWatcher extends ReadyResource {
       this._openCores.delete(discKey)
     })
 
-    this.emit('new-hypercore', session)
+    await this.open(session)
   }
 }
 

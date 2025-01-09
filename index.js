@@ -19,11 +19,12 @@ module.exports = class BlindPeer extends EventEmitter {
     this.store = new Corestore(path.join(storage, 'corestore'))
     this.swarm = null
 
-    this.passiveWatcher = new PassiveWatcher(
-      this.store,
-      this._isEstablishedMailbox.bind(this)
-    )
-    this.passiveWatcher.on('new-hypercore', this._onmailboxcore.bind(this))
+    this.passiveWatcher = new PassiveWatcher(this.store, {
+      watch: this._isEstablishedMailbox.bind(this),
+      open: this._onmailboxcore.bind(this)
+    })
+
+    // this.passiveWatcher.on('new-hypercore', this._onmailboxcore.bind(this))
     this.passiveWatcher.on('oncoreopen-error', (e) => {
       console.error(`Unexpected oncoreopen error in blind-peer ${e.stack}`)
     })
@@ -86,7 +87,8 @@ module.exports = class BlindPeer extends EventEmitter {
       const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: weakSession.key })
       if (weakSession.closing) return
 
-      const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
+      const lightWriterStore = this.store.namespace(entry.id)
+      const w = new AutobaseLightWriter(lightWriterStore, entry.autobase, {
         active: false,
         blockEncryptionKey: entry.blockEncryptionKey
       })
@@ -102,6 +104,20 @@ module.exports = class BlindPeer extends EventEmitter {
 
       weakSession.on('close', () => {
         w.close().then(() => this._openLightWriters.delete(w), noop)
+      })
+      // TODO: debug. There is a race condition here, where if
+      // the autobase-light-writer created in addMailbox starts
+      // closing before this ready finishes, the store ends up not
+      // containing the Core corresponding to the writer's local hypercore
+      // even though the Core is open. I think this is a Corestore session bug
+      // We work around it for now by explicitly awaiting w.ready() here, which
+      // means the light writer of addMailbox doesn't start closing simultaneously
+      // await w.ready()
+
+      // TODO: this is debug code, remove before merging
+      w.ready().then(() => {
+        console.log('Light writer in onmailboxcore is ready now:', w.local.key, 'opened?', w.local.opened, 'closed?', w.local.closed, '.core closed?', w.local.core.closed)
+        console.log([...this.store.cores.map.values()].map(c => c.key))
       })
     } catch (e) {
       console.error(`Unexpectedb blind-peer onmailboxcore error: ${e.stack}`)
