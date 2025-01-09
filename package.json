@@ -1,13 +1,13 @@
 {
   "name": "@holepunchto/blind-peer",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "WIP - nothing to see here",
   "main": "index.js",
   "bin": {
     "blind-peer": "bin.js"
   },
   "dependencies": {
-    "autobase-light-writer": "^2.0.0",
+    "autobase-light-writer": "holepunchto/autobase-light-writer#rocksdb",
     "b4a": "^1.6.7",
     "corestore": "holepunchto/corestore#v7",
     "db-lock": "^1.2.0",
