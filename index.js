@@ -76,7 +76,7 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async _isEstablishedMailbox (core) {
-    await core.ready()
+    if (!core.opened) await core.ready()
     const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
     return entry && entry.blockEncryptionKey
   }
