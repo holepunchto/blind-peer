@@ -9,7 +9,7 @@ const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
 const DBLock = require('db-lock')
-const PassiveWatcher = require('./passive-watcher')
+const PassiveWatcher = require('passive-core-watcher')
 
 module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
