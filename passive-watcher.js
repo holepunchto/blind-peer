@@ -37,10 +37,10 @@ class PassiveWatcher extends ReadyResource {
     }
   }
 
-  async ensureTracked (publicKey) {
-    publicKey = IdEnc.decode(publicKey)
+  async ensureTracked (key) {
+    key = IdEnc.decode(key)
 
-    const discKey = b4a.toString(HypCrypto.discoveryKey(publicKey), 'hex')
+    const discKey = b4a.toString(HypCrypto.discoveryKey(key), 'hex')
     const core = this.store.cores.get(discKey)
     if (!core) return // not in corestore atm (will rerun when oncoreopen runs)
     if (this._openCores.has(discKey)) return // Already processed
