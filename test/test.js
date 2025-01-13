@@ -12,7 +12,7 @@ const Client = require('../client')
 const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 
-test.solo('client can use a blind-peer to add an autobase message', async t => {
+test('client can use a blind-peer to add an autobase message', async t => {
   t.plan(2)
 
   const { bootstrap } = await getTestnet(t)

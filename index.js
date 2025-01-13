@@ -104,20 +104,7 @@ module.exports = class BlindPeer extends EventEmitter {
       weakSession.on('close', () => {
         w.close().then(() => this._openLightWriters.delete(w), noop)
       })
-      // TODO: debug. There is a race condition here, where if
-      // the autobase-light-writer created in addMailbox starts
-      // closing before this ready finishes, the store ends up not
-      // containing the Core corresponding to the writer's local hypercore
-      // even though the Core is open. I think this is a Corestore session bug
-      // We work around it for now by explicitly awaiting w.ready() here, which
-      // means the light writer of addMailbox doesn't start closing simultaneously
-      // await w.ready()
-
-      // TODO: this is debug code, remove before merging
-      w.ready().then(() => {
-        console.log('Light writer in onmailboxcore is ready now:', w.local.key, 'opened?', w.local.opened, 'closed?', w.local.closed, '.core closed?', w.local.core.closed)
-        console.log([...this.store.cores.map.values()].map(c => c.key))
-      })
+      await w.ready()
     } catch (e) {
       console.error(`Unexpectedb blind-peer onmailboxcore error: ${e.stack}`)
     }
