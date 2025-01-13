@@ -24,7 +24,6 @@ module.exports = class BlindPeer extends EventEmitter {
       open: this._onmailboxcore.bind(this)
     })
 
-    // this.passiveWatcher.on('new-hypercore', this._onmailboxcore.bind(this))
     this.passiveWatcher.on('oncoreopen-error', (e) => {
       console.error(`Unexpected oncoreopen error in blind-peer ${e.stack}`)
     })
