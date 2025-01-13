@@ -9,7 +9,7 @@ const tmpDir = require('test-tmp')
 const BlindPeer = require('..')
 const Client = require('../client')
 
-const DEBUG = true
+const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 
 test('client can use a blind-peer to add an autobase message', async t => {

@@ -18,6 +18,7 @@
     "hyperschema": "^1.0.3",
     "hyperswarm": "^4.8.4",
     "paparam": "^1.6.1",
+    "passive-core-watcher": "^0.0.1",
     "protomux-rpc": "^1.6.0"
   },
   "devDependencies": {

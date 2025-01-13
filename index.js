@@ -2,9 +2,6 @@ const { EventEmitter } = require('events')
 const AutobaseLightWriter = require('autobase-light-writer')
 const HyperDB = require('hyperdb')
 const Corestore = require('corestore')
-const Hypercore = require('hypercore')
-const b4a = require('b4a')
-const HypCrypto = require('hypercore-crypto')
 const definition = require('./spec/hyperdb')
 const schema = require('./spec/hyperschema')
 const path = require('path')
@@ -12,6 +9,7 @@ const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
 const DBLock = require('db-lock')
+const PassiveWatcher = require('passive-core-watcher')
 
 module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
@@ -21,11 +19,15 @@ module.exports = class BlindPeer extends EventEmitter {
     this.store = new Corestore(path.join(storage, 'corestore'))
     this.swarm = null
 
-    this._oncoreopenBound = this._oncoreopen.bind(this)
-    this.store.watch(this._oncoreopenBound)
+    this.passiveWatcher = new PassiveWatcher(this.store, {
+      watch: this._isEstablishedMailbox.bind(this),
+      open: this._onmailboxcore.bind(this)
+    })
 
+    this.passiveWatcher.on('oncoreopen-error', (e) => {
+      console.error(`Unexpected oncoreopen error in blind-peer ${e.stack}`)
+    })
     this._openLightWriters = new Set()
-    this._openCores = new Map()
 
     this.lock = new DBLock({
       enter: () => {
@@ -73,52 +75,39 @@ module.exports = class BlindPeer extends EventEmitter {
     this.emit('post-to-mailbox-response', req)
   }
 
-  async _oncoreopen (core) {
-    try {
-      await core.ready()
-      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
-      if (!entry || !entry.blockEncryptionKey) return
-
-      await this._ensureCoreOpen(entry)
-    } catch (err) {
-      console.error(err)
-    }
+  async _isEstablishedMailbox (core) {
+    if (!core.opened) await core.ready()
+    const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
+    return entry && entry.blockEncryptionKey
   }
 
-  async _ensureCoreOpen (entry) {
-    const discKey = b4a.toString(HypCrypto.discoveryKey(entry.autobase), 'hex')
-    const core = this.store.cores.get(discKey)
-    if (!core) return // not in corestore atm (will open when oncoreopen runs)
+  async _onmailboxcore (weakSession) {
+    try {
+      const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: weakSession.key })
+      if (weakSession.closing) return
 
-    if (this._openCores.has(discKey)) return
-    const s = new Hypercore({ core, weak: true })
-    this._openCores.set(discKey, s)
-    // Must be sync up till the line above, for the accounting
+      const lightWriterStore = this.store.namespace(entry.id)
+      const w = new AutobaseLightWriter(lightWriterStore, entry.autobase, {
+        active: false,
+        blockEncryptionKey: entry.blockEncryptionKey
+      })
+      this._openLightWriters.add(w)
 
-    await s.ready()
-    if (s.closing) {
-      this._openCores.delete(discKey)
-      return
+      for (const peer of weakSession.peers) {
+        w.local.replicate(peer.stream)
+      }
+
+      weakSession.on('peer-add', (peer) => {
+        w.local.replicate(peer.stream)
+      })
+
+      weakSession.on('close', () => {
+        w.close().then(() => this._openLightWriters.delete(w), noop)
+      })
+      await w.ready()
+    } catch (e) {
+      console.error(`Unexpectedb blind-peer onmailboxcore error: ${e.stack}`)
     }
-
-    const w = new AutobaseLightWriter(this.store.namespace(entry.id), entry.autobase, {
-      active: false,
-      blockEncryptionKey: entry.blockEncryptionKey
-    })
-    this._openLightWriters.add(w)
-
-    for (const peer of s.peers) {
-      w.local.replicate(peer.stream)
-    }
-
-    s.on('peer-add', (peer) => {
-      w.local.replicate(peer.stream)
-    })
-
-    s.on('close', () => {
-      this._openCores.delete(discKey)
-      w.close().then(() => this._openLightWriters.delete(w), noop)
-    })
   }
 
   get publicKey () {
@@ -126,6 +115,8 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async listen ({ bootstrap } = {}) {
+    await this.passiveWatcher.ready()
+
     this.swarm = new Hyperswarm({
       keyPair: await this.store.createKeyPair('blind-mailbox'),
       bootstrap
@@ -148,7 +139,7 @@ module.exports = class BlindPeer extends EventEmitter {
       const tx = await this.lock.enter()
       await tx.insert('@blind-peer/mailbox', prev)
       await this.lock.exit()
-      await this._ensureCoreOpen(prev)
+      await this.passiveWatcher.ensureTracked(prev.autobase)
       return prev
     }
 
@@ -159,7 +150,7 @@ module.exports = class BlindPeer extends EventEmitter {
     const tx = await this.lock.enter()
     await tx.insert('@blind-peer/mailbox', entry)
     await this.lock.exit()
-    await this._ensureCoreOpen(entry)
+    await this.passiveWatcher.ensureTracked(entry.autobase)
 
     await w.close()
 
@@ -179,7 +170,7 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async close () {
-    this.store.unwatch(this._oncoreopenBound)
+    await this.passiveWatcher.close()
     if (this.swarm !== null) await this.swarm.destroy()
     await this.db.close()
 
