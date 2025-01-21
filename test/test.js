@@ -173,7 +173,6 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
     null,
     {
       encryptionKey: Buffer.alloc(30).fill('secret'),
-      ackInterval: 10,
       open (store) {
         return store.get('view', { valueEncoding: 'json' })
       },
