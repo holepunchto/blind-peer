@@ -3,10 +3,15 @@
 const { command, flag } = require('paparam')
 const goodbye = require('graceful-goodbye')
 const idEnc = require('hypercore-id-encoding')
+const instrument = require('hyper-instrument')
+
 const BlindPeer = require('.')
 
 const cmd = command('blind-peer',
   flag('--storage|-s [path]', 'storage path, defaults to ./blind-peer'),
+  flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper'),
+  flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper'),
+  flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
   async function ({ flags }) {
     console.info('Starting blind peer')
 
@@ -39,6 +44,34 @@ const cmd = command('blind-peer',
     })
 
     await blindPeer.listen()
+
+    let dhtPromClient = null
+    if (flags.scraperPublicKey) {
+      const swarm = blindPeer.swarm
+      console.info('Setting up instrumentation')
+
+      const scraperPublicKey = idEnc.decode(flags.scraperPublicKey)
+      const scraperSecret = idEnc.decode(flags.scraperSecret)
+      const prometheusServiceName = 'blind-peer'
+
+      let prometheusAlias = flags.scraperAlias
+      if (prometheusAlias && prometheusAlias.length > 99) throw new Error('The Prometheus alias must have length less than 100')
+      if (!prometheusAlias) {
+        prometheusAlias = `blind-peer-${idEnc.normalize(swarm.keyPair.publicKey)}`.slice(0, 99)
+      }
+
+      dhtPromClient = instrument({
+        swarm,
+        corestore: blindPeer.store,
+        scraperPublicKey,
+        prometheusAlias,
+        scraperSecret,
+        prometheusServiceName
+      })
+
+      dhtPromClient.registerLogger(console)
+      await dhtPromClient.ready()
+    }
 
     blindPeer.swarm.on('connection', (conn, peerInfo) => {
       const key = idEnc.normalize(peerInfo.publicKey)
