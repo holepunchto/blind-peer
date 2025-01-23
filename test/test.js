@@ -7,7 +7,7 @@ const b4a = require('b4a')
 const hypCrypto = require('hypercore-crypto')
 const tmpDir = require('test-tmp')
 const BlindPeer = require('..')
-const Client = require('../client')
+const Client = require('@holepunchto/blind-peer-client/lib/client')
 
 const DEBUG = false
 let clientCounter = 0 // For clean teardown order

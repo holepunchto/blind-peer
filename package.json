@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "autobase": "^7.0.0",
+    "@holepunchto/blind-peer-client": "holepunchto/blind-peer-client#extract-encodings",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hypercore-crypto": "^3.4.2",
