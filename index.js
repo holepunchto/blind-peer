@@ -2,7 +2,7 @@ const { EventEmitter } = require('events')
 const AutobaseLightWriter = require('autobase-light-writer')
 const HyperDB = require('hyperdb')
 const Corestore = require('corestore')
-const { definition, schema } = require('blind-peer-encodings')
+const { definition, addMailboxEncoding, postEncoding } = require('blind-peer-encodings')
 const path = require('path')
 const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
@@ -46,15 +46,8 @@ module.exports = class BlindPeer extends EventEmitter {
       valueEncoding: c.none
     })
 
-    rpc.respond('add-mailbox', {
-      requestEncoding: schema.resolveStruct('@blind-peer/request-mailbox'),
-      responseEncoding: schema.resolveStruct('@blind-peer/response-mailbox')
-    }, this._onrpcadd.bind(this))
-
-    rpc.respond('post-to-mailbox', {
-      requestEncoding: schema.resolveStruct('@blind-peer/request-post'),
-      responseEncoding: c.none
-    }, this._onrpcpost.bind(this))
+    rpc.respond('add-mailbox', addMailboxEncoding, this._onrpcadd.bind(this))
+    rpc.respond('post-to-mailbox', postEncoding, this._onrpcpost.bind(this))
   }
 
   async _onrpcadd (req) {
