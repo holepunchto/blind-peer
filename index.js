@@ -115,8 +115,6 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async listen ({ bootstrap } = {}) {
-    await this.passiveWatcher.ready()
-
     this.swarm = new Hyperswarm({
       keyPair: await this.store.createKeyPair('blind-mailbox'),
       bootstrap
@@ -170,7 +168,7 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async close () {
-    await this.passiveWatcher.close()
+    this.passiveWatcher.destroy()
     if (this.swarm !== null) await this.swarm.destroy()
     await this.db.close()
 
