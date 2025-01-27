@@ -3,7 +3,7 @@
 const { command, flag } = require('paparam')
 const goodbye = require('graceful-goodbye')
 const idEnc = require('hypercore-id-encoding')
-const instrument = require('hyper-instrument')
+const Instrumentation = require('hyper-instrument')
 
 const BlindPeer = require('.')
 
@@ -38,14 +38,19 @@ const cmd = command('blind-peer',
 
     console.info(`Using storage '${storage}'`)
 
+    let instrumentation = null
+
     goodbye(async () => {
+      if (instrumentation) {
+        console.info('Closing instrumentation')
+        await instrumentation.close()
+      }
       console.info('Shutting down blind peer')
       await blindPeer.close()
     })
 
     await blindPeer.listen()
 
-    let dhtPromClient = null
     if (flags.scraperPublicKey) {
       const swarm = blindPeer.swarm
       console.info('Setting up instrumentation')
@@ -60,7 +65,7 @@ const cmd = command('blind-peer',
         prometheusAlias = `blind-peer-${idEnc.normalize(swarm.keyPair.publicKey)}`.slice(0, 99)
       }
 
-      dhtPromClient = instrument({
+      instrumentation = new Instrumentation({
         swarm,
         corestore: blindPeer.store,
         scraperPublicKey,
@@ -69,8 +74,8 @@ const cmd = command('blind-peer',
         prometheusServiceName
       })
 
-      dhtPromClient.registerLogger(console)
-      await dhtPromClient.ready()
+      instrumentation.registerLogger(console)
+      await instrumentation.ready()
     }
 
     blindPeer.swarm.on('connection', (conn, peerInfo) => {
