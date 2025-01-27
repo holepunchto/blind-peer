@@ -51,6 +51,12 @@ const cmd = command('blind-peer',
 
     await blindPeer.listen()
 
+    blindPeer.swarm.on('connection', (conn, peerInfo) => {
+      const key = idEnc.normalize(peerInfo.publicKey)
+      console.log(`Opened connection to ${key}`)
+      conn.on('close', () => console.log(`Closed connection to ${key}`))
+    })
+
     if (flags.scraperPublicKey) {
       const swarm = blindPeer.swarm
       console.info('Setting up instrumentation')
@@ -77,12 +83,6 @@ const cmd = command('blind-peer',
       instrumentation.registerLogger(console)
       await instrumentation.ready()
     }
-
-    blindPeer.swarm.on('connection', (conn, peerInfo) => {
-      const key = idEnc.normalize(peerInfo.publicKey)
-      console.log(`Opened connection to ${key}`)
-      conn.on('close', () => console.log(`Closed connection to ${key}`))
-    })
 
     console.info(`Listening at ${idEnc.normalize(blindPeer.publicKey)}`)
   }
