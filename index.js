@@ -9,7 +9,7 @@ const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
 const DBLock = require('db-lock')
 const PassiveWatcher = require('passive-core-watcher')
-const BlindPeerError = require('./lib/errors')
+const { BlindPeerError } = require('blind-peer-encodings')
 
 module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
