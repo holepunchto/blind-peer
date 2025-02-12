@@ -1,10 +1,12 @@
-import BlindPeerClient from '@holepunchto/blind-peer-client/lib/client.js'
+import BlindPeerClient from '@holepunchto/blind-peer-client'
 import Autobase from 'autobase'
 import c from 'compact-encoding'
 import Corestore from 'corestore'
 import Hyperswarm from 'hyperswarm'
 import debounce from 'debounceify'
 import IdEnc from 'hypercore-id-encoding'
+import HypCrypto from 'hypercore-crypto'
+import b4a from 'b4a'
 
 const base = new Autobase(new Corestore('/tmp/my-corestore'), {
   encryptionKey: Buffer.alloc(30).fill('secret'),
@@ -29,41 +31,34 @@ base.view.on('append', debounce(async function () {
   for (let i = 0; i < base.view.length; i++) {
     console.log(i, await base.view.get(i))
   }
-
-  console.log(base.core.manifest)
 }))
 
 // TODO: record in autobase
 const publicKey = IdEnc.decode(process.argv[2])
 
 const s = new Hyperswarm(publicKey, { keyPair: await base.store.createKeyPair('tmp') })
+const client = new BlindPeerClient(s)
 
 s.on('connection', async c => {
   base.store.replicate(c)
-
-  if (!c.remotePublicKey.equals(publicKey)) return
-
-  const peer = new BlindPeerClient(c)
-  if (!base.opened) await base.ready()
-
-  const info = await peer.addMailbox({ id: base.key, autobase: base.key })
-
-  if (info.open === false) {
-    const message = Buffer.from(
-      JSON.stringify({ add: true, key: info.writer.toString('hex') })
-    )
-    await base.append(message)
-    await base.update()
-
-    const core = base.store.get({ key: info.writer, active: false })
-    await core.setEncryptionKey(base.encryptionKey)
-    const req = { id: base.key, autobase: base.key, blockEncryptionKey: core.encryption.blockKey }
-    await core.close()
-
-    await peer.addMailbox(req)
-
-    console.log('opened mailbox...')
-  }
+  c.on('error', (e) => { console.debug(e) })
 })
+
+const id = HypCrypto.randomBytes(32)
+const info = await client.addMailbox(publicKey, { id, autobase: base.key })
+if (info.open === false) {
+  const message = b4a.from(
+    JSON.stringify({ add: true, key: info.writer.toString('hex') })
+  )
+  await base.append(message)
+  await base.update()
+
+  const core = base.store.get({ key: info.writer, active: false })
+  await core.setEncryptionKey(base.encryptionKey)
+  const req = { id, autobase: base.key, blockEncryptionKey: core.encryption.blockKey }
+  await core.close()
+
+  await client.addMailbox(publicKey, req)
+}
 
 s.joinPeer(publicKey)
