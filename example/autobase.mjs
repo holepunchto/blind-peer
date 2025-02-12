@@ -1,4 +1,4 @@
-import BlindPeerClient from '../client.js'
+import BlindPeerClient from '@holepunchto/blind-peer-client/lib/client.js'
 import Autobase from 'autobase'
 import c from 'compact-encoding'
 import Corestore from 'corestore'
@@ -29,12 +29,14 @@ base.view.on('append', debounce(async function () {
   for (let i = 0; i < base.view.length; i++) {
     console.log(i, await base.view.get(i))
   }
+
+  console.log(base.core.manifest)
 }))
 
 // TODO: record in autobase
 const publicKey = IdEnc.decode(process.argv[2])
 
-const s = new Hyperswarm({ keyPair: await base.store.createKeyPair('tmp') })
+const s = new Hyperswarm(publicKey, { keyPair: await base.store.createKeyPair('tmp') })
 
 s.on('connection', async c => {
   base.store.replicate(c)
@@ -42,6 +44,7 @@ s.on('connection', async c => {
   if (!c.remotePublicKey.equals(publicKey)) return
 
   const peer = new BlindPeerClient(c)
+  if (!base.opened) await base.ready()
 
   const info = await peer.addMailbox({ id: base.key, autobase: base.key })
 
