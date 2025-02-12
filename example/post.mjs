@@ -1,4 +1,4 @@
-import BlindPeerClient from '../client.js'
+import BlindPeerClient from '@holepunchto/blind-peer-client'
 import Hyperswarm from 'hyperswarm'
 import IdEnc from 'hypercore-id-encoding'
 
@@ -14,8 +14,8 @@ const s = new Hyperswarm()
 s.on('connection', async c => {
   if (!c.remotePublicKey.equals(publicKey)) return
 
-  const peer = new BlindPeerClient(c)
-  const reply = await peer.post({ id: autobase, message })
+  const client = new BlindPeerClient(s)
+  const reply = await client.postToMailbox(publicKey, { id: autobase, message })
 
   console.log(reply)
 
