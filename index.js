@@ -9,6 +9,7 @@ const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
 const DBLock = require('db-lock')
 const PassiveWatcher = require('passive-core-watcher')
+const { BlindPeerError } = require('blind-peer-encodings')
 
 module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
@@ -149,7 +150,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async postToMailbox ({ id, message }) {
     const entry = await this.db.get('@blind-peer/mailbox', { id })
-    if (!entry || !entry.blockEncryptionKey) throw new Error('Autobase not found')
+    if (!entry || !entry.blockEncryptionKey) throw BlindPeerError.MAILBOX_NOT_FOUND()
 
     const w = new AutobaseLightWriter(this.store.namespace(id), entry.autobase, {
       active: false,
