@@ -91,7 +91,7 @@ test('can send autobase message with restarted blind-peer', async t => {
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage })
   await blindPeer.swarm.flush()
 
-  base.view.on('append', async () => {
+  base.view.once('append', async () => {
     const message = await base.view.get(base.view.length - 1)
     t.alike(
       message,
