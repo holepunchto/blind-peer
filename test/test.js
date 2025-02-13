@@ -81,9 +81,10 @@ test('client can use a blind-peer to add an autobase message', async t => {
     }
 
     t.pass('Successfully posted to mailbox')
+    console.warn('BUT IT NEVER REACHES THE AUTOBASE')
   })
 
-  console.log('joining bp ', blindPeer.publicKey)
+  console.log('joining blind peer ', blindPeer.publicKey)
   swarm.joinPeer(blindPeer.publicKey)
 })
 
