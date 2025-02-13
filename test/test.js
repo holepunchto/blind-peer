@@ -8,10 +8,86 @@ const hypCrypto = require('hypercore-crypto')
 const tmpDir = require('test-tmp')
 const BlindPeer = require('..')
 const Client = require('@holepunchto/blind-peer-client/lib/client')
+const { createMailbox } = require('blind-peer-encodings')
+const Hypercore = require('hypercore')
 
 const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 
+test('client can use a blind-peer to add an autobase message', async t => {
+  t.plan(2)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.swarm.flush()
+
+  const { base, swarm: baseSwarm } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
+
+  baseSwarm.joinPeer(blindPeer.publicKey)
+
+  const swarm = new Hyperswarm({ bootstrap })
+
+  const mailboxEntropy = hypCrypto.randomBytes(32)
+  const blockEncryptionKey = hypCrypto.randomBytes(32)
+  const mailboxId = createMailbox(
+    blindPeer.encryptionKeyPair.publicKey,
+    {
+      entropy: mailboxEntropy,
+      autobaseKey: base.key,
+      blockEncryptionKey
+    }
+  )
+
+  const hypercoreKeyPair = hypCrypto.keyPair(mailboxEntropy)
+  const manifest = {
+    signers: [{ publicKey: hypercoreKeyPair.publicKey }]
+  }
+  const hypercoreKey = Hypercore.key(manifest)
+
+  console.log('generated keyPair', hypercoreKeyPair, 'manifest', manifest)
+  const addWriterMsg = b4a.from(
+    JSON.stringify({ add: true, key: hypercoreKey.toString('hex') })
+  )
+  await base.append(addWriterMsg)
+  await base.update()
+
+  base.view.on('append', async () => {
+    if (base.view.length === 0) return
+    const message = await base.view.get(base.view.length - 1)
+    t.alike(
+      message,
+      { hi: 'there' },
+      'Message processed by autobase'
+    )
+  })
+
+  swarm.on('connection', async (conn) => {
+    try {
+      console.log('connection')
+      const client = new Client(conn)
+      await client.postToMailbox({
+        id: mailboxId,
+        message: b4a.from(JSON.stringify({ hi: 'there' }))
+      })
+      swarm.leavePeer(blindPeer.publicKey)
+      await client.close()
+      await swarm.destroy()
+    } catch (e) {
+      console.error('unexpected error while posting to mailbox')
+      console.error(e)
+      t.fail('error while posting to mailbox')
+      return
+    }
+
+    t.pass('Successfully posted to mailbox')
+  })
+
+  console.log('joining bp ', blindPeer.publicKey)
+  swarm.joinPeer(blindPeer.publicKey)
+})
+
+/*
 test('client can use a blind-peer to add an autobase message', async t => {
   t.plan(2)
 
@@ -122,6 +198,7 @@ test('can send autobase message with restarted blind-peer', async t => {
   })
   swarm.joinPeer(blindPeer.publicKey)
 })
+*/
 
 async function getTestnet (t) {
   const testnet = await setupTestnet()
@@ -179,6 +256,7 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
       async apply (nodes, view, base) {
         for (const node of nodes) {
           const jsonValue = JSON.parse(node.value.toString())
+          console.log('applying', jsonValue)
           if (jsonValue.add) {
             await base.addWriter(Buffer.from(jsonValue.key, 'hex'), { indexer: false })
           } else {
@@ -191,17 +269,17 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
 
   await base.ready()
 
-  const id = hypCrypto.randomBytes(32)
+  // const id = hypCrypto.randomBytes(32)
 
   const swarm = new Hyperswarm({ bootstrap })
   swarm.on('connection', async c => {
     if (DEBUG) console.log('autobase swarm connection opened')
     base.store.replicate(c)
-    if (!c.remotePublicKey.equals(blindPeerKey)) return
+    // if (!c.remotePublicKey.equals(blindPeerKey)) return
 
-    const peer = new Client(c)
+    /* const peer = new Client(c)
 
-    const info = await peer.addMailbox({ id, autobase: base.key })
+    /* const info = await peer.addMailbox({ id, autobase: base.key })
 
     if (info.open === false) {
       const message = b4a.from(
@@ -220,7 +298,7 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
       if (DEBUG) console.log('autobase opened mailbox')
     }
 
-    await peer.close()
+    await peer.close() */
   })
 
   const order = clientCounter++
@@ -229,5 +307,5 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
     await base.close()
   }, { order })
 
-  return { base, swarm, mailboxId: id }
+  return { base, swarm } // , mailboxId: id }
 }

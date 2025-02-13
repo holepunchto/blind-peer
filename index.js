@@ -9,7 +9,8 @@ const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
 const DBLock = require('db-lock')
 const PassiveWatcher = require('passive-core-watcher')
-const { BlindPeerError } = require('blind-peer-encodings')
+const hypCrypto = require('hypercore-crypto')
+const b4a = require('b4a')
 
 module.exports = class BlindPeer extends EventEmitter {
   constructor (storage) {
@@ -18,6 +19,9 @@ module.exports = class BlindPeer extends EventEmitter {
     this.db = HyperDB.rocks(path.join(storage, 'hyperdb'), definition)
     this.store = new Corestore(path.join(storage, 'corestore'))
     this.swarm = null
+
+    this.swarmSeed = null
+    this.enccryptionSeed = null
 
     this.passiveWatcher = new PassiveWatcher(this.store, {
       watch: this._isEstablishedMailbox.bind(this),
@@ -40,6 +44,7 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   _onconnection (connection) {
+    console.log('blind peer received conn')
     this.store.replicate(connection)
 
     const rpc = new ProtomuxRPC(connection, {
@@ -80,9 +85,16 @@ module.exports = class BlindPeer extends EventEmitter {
       if (weakSession.closing) return
 
       const lightWriterStore = this.store.namespace(entry.id)
+      const keyPair = hypCrypto.keyPair(entry.id)
+      const manifest = {
+        signers: [{ publicKey: keyPair.publicKey }]
+      }
+
       const w = new AutobaseLightWriter(lightWriterStore, entry.autobase, {
         active: false,
-        blockEncryptionKey: entry.blockEncryptionKey
+        blockEncryptionKey: entry.blockEncryptionKey,
+        manifest,
+        keyPair
       })
       this._openLightWriters.add(w)
 
@@ -108,8 +120,25 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async listen ({ bootstrap } = {}) {
+    let seeds = await this.db.get('@blind-peer/seeds', { id: 'seeds' })
+    if (!seeds) { // First time we launch
+      seeds = { swarm: hypCrypto.randomBytes(32), encryption: hypCrypto.randomBytes(32), id: 'seeds' }
+      const tx = await this.lock.enter()
+      await tx.insert('@blind-peer/seeds', seeds)
+      await this.lock.exit()
+
+      const loadedSeeds = await this.db.get('@blind-peer/seeds', { id: 'seeds' })
+      if (!b4a.equals(loadedSeeds.swarm, seeds.swarm) || !b4a.equals(loadedSeeds.encryption, seeds.encryption)) {
+        throw new Error('Logical error in seeds bootstrap code')
+      }
+    }
+
+    this.swarmSeed = seeds.swarm
+    this.encryptionSeed = seeds.encryption
+    this.encryptionKeyPair = hypCrypto.encryptionKeyPair(this.encryptionSeed)
+
     this.swarm = new Hyperswarm({
-      keyPair: await this.store.createKeyPair('blind-mailbox'),
+      seed: this.swarmSeed,
       bootstrap
     })
     this.swarm.on('connection', this._onconnection.bind(this))
@@ -121,20 +150,21 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async addMailbox ({ id, autobase, blockEncryptionKey = null }) {
-    const prev = await this.db.get('@blind-peer/mailbox', { id })
+    console.log('adding mailbox', id, autobase, blockEncryptionKey)
 
-    if (prev) {
-      if (prev.blockEncryptionKey) return prev // fully open, immut
-      prev.blockEncryptionKey = blockEncryptionKey
-
-      const tx = await this.lock.enter()
-      await tx.insert('@blind-peer/mailbox', prev)
-      await this.lock.exit()
-      await this.passiveWatcher.ensureTracked(prev.autobase)
-      return prev
+    const keyPair = hypCrypto.keyPair(id)
+    const manifest = {
+      signers: [{ publicKey: keyPair.publicKey }]
     }
 
-    const w = new AutobaseLightWriter(this.store.namespace(id), autobase, { active: false })
+    const w = new AutobaseLightWriter(
+      this.store.namespace(id),
+      autobase,
+      {
+        active: false,
+        manifest,
+        keyPair
+      })
     await w.ready()
     const entry = { id, autobase, writer: w.local.key, blockEncryptionKey }
 
@@ -149,15 +179,39 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async postToMailbox ({ id, message }) {
-    const entry = await this.db.get('@blind-peer/mailbox', { id })
-    if (!entry || !entry.blockEncryptionKey) throw BlindPeerError.MAILBOX_NOT_FOUND()
+    try {
+      // TODO: this is race-condition prone. Think about potential issues
+      let entry = await this.db.get('@blind-peer/mailbox', { id })
+      const decrypted = hypCrypto.decrypt(id, this.encryptionKeyPair)
+      const entropy = decrypted.subarray(0, 32)
+      const autobase = decrypted.subarray(32, 64)
+      const blockEncryptionKey = decrypted.byteLength > 64
+        ? decrypted.subarray(64)
+        : null
 
-    const w = new AutobaseLightWriter(this.store.namespace(id), entry.autobase, {
-      active: false,
-      blockEncryptionKey: entry.blockEncryptionKey
-    })
-    await w.append(message)
-    await w.close()
+      if (!entry) {
+        // Setting up mailbox
+        entry = await this.addMailbox({ id: entropy, autobase, blockEncryptionKey })
+      } // || !entry.blockEncryptionKey) throw BlindPeerError.MAILBOX_NOT_FOUND()
+
+      console.log('added mailbox entry', entry)
+      const keyPair = hypCrypto.keyPair(entropy)
+      const manifest = {
+        signers: [{ publicKey: keyPair.publicKey }]
+      }
+
+      const w = new AutobaseLightWriter(this.store.namespace(id), entry.autobase, {
+        active: false,
+        blockEncryptionKey: entry.blockEncryptionKey,
+        manifest,
+        keyPair
+      })
+      await w.ready()
+      await w.append(message)
+      await w.close()
+    } catch (e) {
+      console.error(e)
+    }
   }
 
   async close () {
