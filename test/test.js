@@ -8,8 +8,7 @@ const hypCrypto = require('hypercore-crypto')
 const tmpDir = require('test-tmp')
 const BlindPeer = require('..')
 const Client = require('@holepunchto/blind-peer-client/lib/client')
-const { createMailbox } = require('blind-peer-encodings')
-const Hypercore = require('hypercore')
+const { createMailbox, getKeyFromEntropy } = require('blind-peer-encodings')
 
 const DEBUG = true
 let clientCounter = 0 // For clean teardown order
@@ -245,11 +244,7 @@ async function setupAutobase (t, bootstrap, blindPeerKey, blindPeerEncryptionPub
   })
 
   const mailboxEntropy = hypCrypto.randomBytes(32)
-  const hypercoreKeyPair = hypCrypto.keyPair(mailboxEntropy)
-  const manifest = {
-    signers: [{ publicKey: hypercoreKeyPair.publicKey }]
-  }
-  const hypercoreKey = Hypercore.key(manifest)
+  const hypercoreKey = getKeyFromEntropy(mailboxEntropy)
 
   const addWriterMsg = b4a.from(
     JSON.stringify({ add: true, key: hypercoreKey.toString('hex') })
