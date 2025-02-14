@@ -116,6 +116,7 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async listen ({ bootstrap } = {}) {
+    // TODO: this can probably be simplified (it should be a single entry, isntead of a full db schema)
     let seeds = await this.db.get('@blind-peer/seeds', { id: 'seeds' })
     if (!seeds) { // First time we launch
       seeds = { swarm: hypCrypto.randomBytes(32), encryption: hypCrypto.randomBytes(32), id: 'seeds' }
@@ -171,7 +172,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
   async postToMailbox ({ id, message }) {
     try {
-      // TODO: this is race-condition prone. Think about potential issues
+      // TODO: this might be race-condition prone. Think about potential issues
       let entry = await this.db.get('@blind-peer/mailbox', { id })
       const decrypted = hypCrypto.decrypt(id, this.encryptionKeyPair)
       const entropy = decrypted.subarray(0, 32)
