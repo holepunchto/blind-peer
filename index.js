@@ -82,6 +82,7 @@ module.exports = class BlindPeer extends EventEmitter {
   async _onmailboxcore (weakSession) {
     try {
       const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: weakSession.key })
+      // console.trace('entry id', entry.id.byteLength)
       if (weakSession.closing) return
 
       const lightWriterStore = this.store.namespace(entry.id)
@@ -99,14 +100,17 @@ module.exports = class BlindPeer extends EventEmitter {
       this._openLightWriters.add(w)
 
       for (const peer of weakSession.peers) {
+        console.log('existing peers replicating')
         w.local.replicate(peer.stream)
       }
 
       weakSession.on('peer-add', (peer) => {
+        console.log('peer-add replicating')
         w.local.replicate(peer.stream)
       })
 
       weakSession.on('close', () => {
+        console.warn('WEAK SESSION CLOSE')
         w.close().then(() => this._openLightWriters.delete(w), noop)
       })
       await w.ready()
@@ -150,7 +154,7 @@ module.exports = class BlindPeer extends EventEmitter {
   }
 
   async addMailbox ({ id, autobase, blockEncryptionKey = null }) {
-    console.log('adding mailbox', id, autobase, blockEncryptionKey)
+    console.log('adding mailbox') // , id, autobase, blockEncryptionKey)
 
     const keyPair = hypCrypto.keyPair(id)
     const manifest = {
@@ -194,7 +198,7 @@ module.exports = class BlindPeer extends EventEmitter {
         entry = await this.addMailbox({ id: entropy, autobase, blockEncryptionKey })
       } // || !entry.blockEncryptionKey) throw BlindPeerError.MAILBOX_NOT_FOUND()
 
-      console.log('added mailbox entry', entry)
+      console.log('added mailbox entry')
       const keyPair = hypCrypto.keyPair(entropy)
       const manifest = {
         signers: [{ publicKey: keyPair.publicKey }]
@@ -208,6 +212,7 @@ module.exports = class BlindPeer extends EventEmitter {
       })
       await w.ready()
       await w.append(message)
+      console.log('Mailbox seq 0 for key', w.local.key, 'is', await w.local.get(0), '--encryption key', w.local.encryption)
       await w.close()
     } catch (e) {
       console.error(e)

@@ -11,7 +11,7 @@ const Client = require('@holepunchto/blind-peer-client/lib/client')
 const { createMailbox } = require('blind-peer-encodings')
 const Hypercore = require('hypercore')
 
-const DEBUG = false
+const DEBUG = true
 let clientCounter = 0 // For clean teardown order
 
 test('client can use a blind-peer to add an autobase message', async t => {
@@ -29,7 +29,20 @@ test('client can use a blind-peer to add an autobase message', async t => {
   const swarm = new Hyperswarm({ bootstrap })
 
   const mailboxEntropy = hypCrypto.randomBytes(32)
-  const blockEncryptionKey = hypCrypto.randomBytes(32)
+  const hypercoreKeyPair = hypCrypto.keyPair(mailboxEntropy)
+  const manifest = {
+    signers: [{ publicKey: hypercoreKeyPair.publicKey }]
+  }
+  const hypercoreKey = Hypercore.key(manifest)
+
+  const addWriterMsg = b4a.from(
+    JSON.stringify({ add: true, key: hypercoreKey.toString('hex') })
+  )
+  await base.append(addWriterMsg)
+  await base.update()
+
+  const blockEncryptionKey = base.store.get({ key: hypercoreKey, active: false }).encryption.blockKey
+
   const mailboxId = createMailbox(
     blindPeer.encryptionKeyPair.publicKey,
     {
@@ -39,20 +52,9 @@ test('client can use a blind-peer to add an autobase message', async t => {
     }
   )
 
-  const hypercoreKeyPair = hypCrypto.keyPair(mailboxEntropy)
-  const manifest = {
-    signers: [{ publicKey: hypercoreKeyPair.publicKey }]
-  }
-  const hypercoreKey = Hypercore.key(manifest)
-
-  console.log('generated keyPair', hypercoreKeyPair, 'manifest', manifest)
-  const addWriterMsg = b4a.from(
-    JSON.stringify({ add: true, key: hypercoreKey.toString('hex') })
-  )
-  await base.append(addWriterMsg)
-  await base.update()
-
+  let found = false
   base.view.on('append', async () => {
+    if (found) return
     if (base.view.length === 0) return
     const message = await base.view.get(base.view.length - 1)
     t.alike(
@@ -60,16 +62,19 @@ test('client can use a blind-peer to add an autobase message', async t => {
       { hi: 'there' },
       'Message processed by autobase'
     )
+    found = true
   })
 
   swarm.on('connection', async (conn) => {
     try {
       console.log('connection')
       const client = new Client(conn)
+
       await client.postToMailbox({
         id: mailboxId,
         message: b4a.from(JSON.stringify({ hi: 'there' }))
       })
+
       swarm.leavePeer(blindPeer.publicKey)
       await client.close()
       await swarm.destroy()
@@ -81,10 +86,8 @@ test('client can use a blind-peer to add an autobase message', async t => {
     }
 
     t.pass('Successfully posted to mailbox')
-    console.warn('BUT IT NEVER REACHES THE AUTOBASE')
   })
 
-  console.log('joining blind peer ', blindPeer.publicKey)
   swarm.joinPeer(blindPeer.publicKey)
 })
 
@@ -270,12 +273,11 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
 
   await base.ready()
 
-  // const id = hypCrypto.randomBytes(32)
-
   const swarm = new Hyperswarm({ bootstrap })
   swarm.on('connection', async c => {
     if (DEBUG) console.log('autobase swarm connection opened')
     base.store.replicate(c)
+    if (DEBUG) c.on('close', () => { console.log('autobase connection closed') })
     // if (!c.remotePublicKey.equals(blindPeerKey)) return
 
     /* const peer = new Client(c)
