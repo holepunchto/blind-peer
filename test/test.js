@@ -22,35 +22,11 @@ test('client can use a blind-peer to add an autobase message', async t => {
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
   await blindPeer.swarm.flush()
 
-  const { base, swarm: baseSwarm } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
+  const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey, blindPeer.encryptionKeyPair.publicKey)
 
   baseSwarm.joinPeer(blindPeer.publicKey)
 
   const swarm = new Hyperswarm({ bootstrap })
-
-  const mailboxEntropy = hypCrypto.randomBytes(32)
-  const hypercoreKeyPair = hypCrypto.keyPair(mailboxEntropy)
-  const manifest = {
-    signers: [{ publicKey: hypercoreKeyPair.publicKey }]
-  }
-  const hypercoreKey = Hypercore.key(manifest)
-
-  const addWriterMsg = b4a.from(
-    JSON.stringify({ add: true, key: hypercoreKey.toString('hex') })
-  )
-  await base.append(addWriterMsg)
-  await base.update()
-
-  const blockEncryptionKey = base.store.get({ key: hypercoreKey, active: false }).encryption.blockKey
-
-  const mailboxId = createMailbox(
-    blindPeer.encryptionKeyPair.publicKey,
-    {
-      entropy: mailboxEntropy,
-      autobaseKey: base.key,
-      blockEncryptionKey
-    }
-  )
 
   let found = false
   base.view.on('append', async () => {
@@ -67,7 +43,6 @@ test('client can use a blind-peer to add an autobase message', async t => {
 
   swarm.on('connection', async (conn) => {
     try {
-      console.log('connection')
       const client = new Client(conn)
 
       await client.postToMailbox({
@@ -247,7 +222,7 @@ async function setupBlindPeer (t, bootstrap, { storage } = {}) {
   return { blindPeer: peer, storage }
 }
 
-async function setupAutobase (t, bootstrap, blindPeerKey) {
+async function setupAutobase (t, bootstrap, blindPeerKey, blindPeerEncryptionPublicKey) {
   const storage = await tmpDir(t)
   const base = new Autobase(
     new Corestore(storage),
@@ -304,11 +279,35 @@ async function setupAutobase (t, bootstrap, blindPeerKey) {
     await peer.close() */
   })
 
+  const mailboxEntropy = hypCrypto.randomBytes(32)
+  const hypercoreKeyPair = hypCrypto.keyPair(mailboxEntropy)
+  const manifest = {
+    signers: [{ publicKey: hypercoreKeyPair.publicKey }]
+  }
+  const hypercoreKey = Hypercore.key(manifest)
+
+  const addWriterMsg = b4a.from(
+    JSON.stringify({ add: true, key: hypercoreKey.toString('hex') })
+  )
+  await base.append(addWriterMsg)
+  await base.update()
+
+  const blockEncryptionKey = base.store.get({ key: hypercoreKey, active: false }).encryption.blockKey
+
+  const mailboxId = createMailbox(
+    blindPeerEncryptionPublicKey,
+    {
+      entropy: mailboxEntropy,
+      autobaseKey: base.key,
+      blockEncryptionKey
+    }
+  )
+
   const order = clientCounter++
   t.teardown(async () => {
     await swarm.destroy()
     await base.close()
   }, { order })
 
-  return { base, swarm } // , mailboxId: id }
+  return { base, swarm, mailboxId }
 }
