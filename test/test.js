@@ -66,61 +66,8 @@ test('client can use a blind-peer to add an autobase message', async t => {
   swarm.joinPeer(blindPeer.publicKey)
 })
 
-/*
-test('client can use a blind-peer to add an autobase message', async t => {
-  t.plan(2)
-
-  const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.swarm.flush()
-
-  const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeer.publicKey)
-
-  baseSwarm.joinPeer(blindPeer.publicKey)
-  await new Promise(resolve => { // ensure mailbox fully registered
-    blindPeer.on('add-mailbox-response', (req, res) => {
-      // Set when the mailbox is fully open
-      // (which with the autobase connection flow currently happens
-      //  after 2 add-mailbox requests when starting from scratch)
-      if (res.blockEncryptionKey) resolve()
-    })
-  })
-
-  base.view.once('append', async () => {
-    const message = await base.view.get(base.view.length - 1)
-    t.alike(
-      message,
-      { hi: 'there' },
-      'Message processed by autobase'
-    )
-  })
-
-  const swarm = new Hyperswarm({ bootstrap })
-  swarm.on('connection', async (conn) => {
-    try {
-      const client = new Client(conn)
-      await client.postToMailbox({
-        id: mailboxId,
-        message: b4a.from(JSON.stringify({ hi: 'there' }))
-      })
-      swarm.leavePeer(blindPeer.publicKey)
-      await client.close()
-      await swarm.destroy()
-    } catch (e) {
-      console.error('unexpected error while posting to mailbox')
-      console.error(e)
-      t.fail('error while posting to mailbox')
-      return
-    }
-
-    t.pass('Successfully posted to mailbox')
-  })
-  swarm.joinPeer(blindPeer.publicKey)
-})
-
-test('can send autobase message with restarted blind-peer', async t => {
-  t.plan(2)
+test.solo('can send autobase message with restarted blind-peer', async t => {
+  t.plan(4)
 
   const { bootstrap } = await getTestnet(t)
 
@@ -129,55 +76,97 @@ test('can send autobase message with restarted blind-peer', async t => {
   blindPeerStorage = storage
   await blindPeerRun1.swarm.flush()
 
-  const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeerRun1.publicKey)
+  const { base, swarm: baseSwarm, mailboxId } = await setupAutobase(t, bootstrap, blindPeerRun1.publicKey, blindPeerRun1.encryptionKeyPair.publicKey)
 
-  baseSwarm.joinPeer(blindPeerRun1.publicKey)
-  await new Promise(resolve => { // ensure mailbox fully registered
-    blindPeerRun1.on('add-mailbox-response', (req, res) => {
-      // Set when the mailbox is fully open
-      // (which with the autobase connection flow currently happens
-      //  after 2 add-mailbox requests when starting from scratch)
-      if (res.blockEncryptionKey) resolve()
+  let found = false
+  const msg1Prom = new Promise((resolve) => {
+    base.view.on('append', async () => {
+      if (found) return
+      if (base.view.length === 0) return
+      found = true
+      const message = await base.view.get(base.view.length - 1)
+      t.alike(
+        message,
+        { hi: 'there' },
+        'Message processed by autobase'
+      )
+      resolve()
     })
   })
 
-  await blindPeerRun1.close()
+  const blindPeerPublicKey = blindPeerRun1.publicKey
+  baseSwarm.joinPeer(blindPeerRun1.publicKey)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage })
-  await blindPeer.swarm.flush()
+  {
+    const swarm = new Hyperswarm({ bootstrap })
+    swarm.on('connection', async (conn) => {
+      if (DEBUG) console.log('Swarm received a connection')
+      try {
+        const client = new Client(conn)
+        await client.postToMailbox({
+          id: mailboxId,
+          message: b4a.from(JSON.stringify({ hi: 'there' }))
+        })
+        swarm.leavePeer(blindPeerRun1.publicKey)
+        await client.close()
+        conn.destroy()
+        await swarm.destroy()
+      } catch (e) {
+        console.error('unexpected error while posting to mailbox')
+        console.error(e)
+        t.fail('error while posting to mailbox')
+        return
+      }
 
-  base.view.once('append', async () => {
+      t.pass('Successfully posted to mailbox')
+    })
+
+    const blindPeerPublicKey = blindPeerRun1.publicKey
+    swarm.joinPeer(blindPeerPublicKey)
+
+    await msg1Prom
+    await blindPeerRun1.close()
+  }
+
+  base.view.on('append', async () => {
     const message = await base.view.get(base.view.length - 1)
+    if (!message.hi2) return
     t.alike(
       message,
-      { hi: 'there' },
-      'Message processed by autobase'
+      { hi2: 'there2' },
+      'Message processed by autobase after restart'
     )
   })
 
-  const swarm = new Hyperswarm({ bootstrap })
-  swarm.on('connection', async (conn) => {
-    try {
-      const client = new Client(conn)
-      await client.postToMailbox({
-        id: mailboxId,
-        message: b4a.from(JSON.stringify({ hi: 'there' }))
-      })
-      swarm.leavePeer(blindPeer.publicKey)
-      await client.close()
-      await swarm.destroy()
-    } catch (e) {
-      console.error('unexpected error while posting to mailbox')
-      console.error(e)
-      t.fail('error while posting to mailbox')
-      return
-    }
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage })
+  await blindPeer.swarm.flush()
+  {
+    const swarm = new Hyperswarm({ bootstrap })
+    swarm.on('connection', async (conn) => {
+      if (DEBUG) console.log('Swarm2 received a connection')
+      try {
+        const client = new Client(conn)
+        await client.postToMailbox({
+          id: mailboxId,
+          message: b4a.from(JSON.stringify({ hi2: 'there2' }))
+        })
+        swarm.leavePeer(blindPeerPublicKey)
+        await client.close()
+        conn.destroy()
+        await swarm.destroy()
+      } catch (e) {
+        console.error('unexpected error while posting to mailbox')
+        console.error(e)
+        t.fail('error while posting to mailbox')
+        return
+      }
 
-    t.pass('Successfully posted to mailbox')
-  })
-  swarm.joinPeer(blindPeer.publicKey)
+      t.pass('Peer 2 successfully posted to mailbox')
+    })
+
+    swarm.joinPeer(blindPeerPublicKey)
+  }
 })
-*/
 
 async function getTestnet (t) {
   const testnet = await setupTestnet()
@@ -235,7 +224,7 @@ async function setupAutobase (t, bootstrap, blindPeerKey, blindPeerEncryptionPub
       async apply (nodes, view, base) {
         for (const node of nodes) {
           const jsonValue = JSON.parse(node.value.toString())
-          console.log('applying', jsonValue)
+          if (DEBUG) console.log('applying', jsonValue)
           if (jsonValue.add) {
             await base.addWriter(Buffer.from(jsonValue.key, 'hex'), { indexer: false })
           } else {
@@ -253,30 +242,6 @@ async function setupAutobase (t, bootstrap, blindPeerKey, blindPeerEncryptionPub
     if (DEBUG) console.log('autobase swarm connection opened')
     base.store.replicate(c)
     if (DEBUG) c.on('close', () => { console.log('autobase connection closed') })
-    // if (!c.remotePublicKey.equals(blindPeerKey)) return
-
-    /* const peer = new Client(c)
-
-    /* const info = await peer.addMailbox({ id, autobase: base.key })
-
-    if (info.open === false) {
-      const message = b4a.from(
-        JSON.stringify({ add: true, key: info.writer.toString('hex') })
-      )
-      await base.append(message)
-      await base.update()
-
-      const core = base.store.get({ key: info.writer, active: false })
-      await core.setEncryptionKey(base.encryptionKey)
-      const req = { id, autobase: base.key, blockEncryptionKey: core.encryption.blockKey }
-      await core.close()
-
-      await peer.addMailbox(req)
-
-      if (DEBUG) console.log('autobase opened mailbox')
-    }
-
-    await peer.close() */
   })
 
   const mailboxEntropy = hypCrypto.randomBytes(32)
