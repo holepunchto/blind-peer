@@ -65,7 +65,7 @@ test('client can use a blind-peer to add an autobase message', async t => {
   swarm.joinPeer(blindPeer.publicKey)
 })
 
-test.solo('can send autobase message with restarted blind-peer', async t => {
+test('can send autobase message with restarted blind-peer', async t => {
   t.plan(4)
 
   const { bootstrap } = await getTestnet(t)

@@ -2,7 +2,7 @@ const { EventEmitter } = require('events')
 const AutobaseLightWriter = require('autobase-light-writer')
 const HyperDB = require('hyperdb')
 const Corestore = require('corestore')
-const { definition, addMailboxEncoding, postEncoding } = require('blind-peer-encodings')
+const { definition, postEncoding } = require('blind-peer-encodings')
 const path = require('path')
 const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
@@ -51,19 +51,7 @@ module.exports = class BlindPeer extends EventEmitter {
       valueEncoding: c.none
     })
 
-    rpc.respond('add-mailbox', addMailboxEncoding, this._onrpcadd.bind(this))
     rpc.respond('post-to-mailbox', postEncoding, this._onrpcpost.bind(this))
-  }
-
-  async _onrpcadd (req) {
-    this.emit('add-mailbox-request', req)
-    const res = await this.addMailbox(req)
-    this.emit('add-mailbox-response', req, res)
-
-    return {
-      writer: res.writer,
-      open: !!res.blockEncryptionKey // TODO: get rid of the encryption for these guys with a manifest upgrade, then no attacks cause self-described
-    }
   }
 
   async _onrpcpost (req) {
@@ -75,7 +63,7 @@ module.exports = class BlindPeer extends EventEmitter {
   async _isEstablishedMailbox (core) {
     if (!core.opened) await core.ready()
     const entry = await this.db.get('@blind-peer/mailbox-by-autobase', { autobase: core.key })
-    return entry && entry.blockEncryptionKey
+    return entry
   }
 
   async _onmailboxcore (weakSession) {
@@ -146,7 +134,7 @@ module.exports = class BlindPeer extends EventEmitter {
     return await this.db.get('@blind-peer/mailbox', { id })
   }
 
-  async addMailbox ({ id, autobase, blockEncryptionKey = null }) {
+  async _addMailbox ({ id, autobase, blockEncryptionKey = null }) {
     const { keyPair, manifest } = entropyToKeyPairAndManifest(id)
 
     const w = new AutobaseLightWriter(
@@ -183,7 +171,7 @@ module.exports = class BlindPeer extends EventEmitter {
 
       if (!entry) {
         // Setting up mailbox
-        entry = await this.addMailbox({ id: entropy, autobase, blockEncryptionKey })
+        entry = await this._addMailbox({ id: entropy, autobase, blockEncryptionKey })
       }
 
       const { keyPair, manifest } = entropyToKeyPairAndManifest(entropy)
