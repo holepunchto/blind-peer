@@ -7,27 +7,18 @@
     "blind-peer": "bin.js"
   },
   "dependencies": {
-    "autobase-light-writer": "^2.0.2",
-    "b4a": "^1.6.7",
-    "blind-peer-encodings": "^1.1.0",
-    "corestore": "^7.0.0",
-    "db-lock": "^1.2.0",
-    "graceful-goodbye": "^1.3.2",
-    "hyper-instrument": "^2.0.0",
-    "hypercore": "^11.0.0",
-    "hypercore-id-encoding": "^1.3.0",
-    "hyperdb": "^4.1.2",
-    "hyperswarm": "^4.8.4",
-    "paparam": "^1.6.1",
-    "passive-core-watcher": "^1.0.0",
-    "protomux-rpc": "^1.6.0"
+    "autobase": "^7.0.18",
+    "compact-encoding": "^2.16.0",
+    "corestore": "^7.0.5",
+    "hypercore": "^11.0.12",
+    "hyperschema": "^1.10.3",
+    "ready-resource": "^1.1.2",
+    "rocksdb-native": "^3.1.6",
+    "scope-lock": "^1.2.4"
   },
   "devDependencies": {
-    "autobase": "^7.0.0",
-    "@holepunchto/blind-peer-client": "^1.0.0",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
-    "hypercore-crypto": "^3.4.2",
     "hyperdht": "^6.20.1",
     "standard": "^17.1.2",
     "test-tmp": "^1.3.0"
