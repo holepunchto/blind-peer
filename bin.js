@@ -29,7 +29,7 @@ const cmd = command('blind-peer',
 
     blindPeer.on('add-core', req => {
       try {
-        console.log(`add-core request received for ${idEnc.normalize(req.key)} with referrer ${ref.referrer && idEnc.normalize(req.referrer)}`)
+        console.log(`add-core request received for ${idEnc.normalize(req.key)} with referrer ${req.referrer && idEnc.normalize(req.referrer)}`)
       } catch {
         console.log('Invalid add-core request received')
         console.log(req)
