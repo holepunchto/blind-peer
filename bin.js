@@ -18,20 +18,20 @@ const cmd = command('blind-peer',
     const storage = flags.storage || 'blind-peer'
     const blindPeer = new BlindPeer(storage)
 
-    blindPeer.on('add-mailbox-request', req => {
+    blindPeer.on('post-to-mailbox', req => {
       try {
-        console.log(`Add-mailbox request received for autobase ${idEnc.normalize(req.autobase)} (mailbox id: ${idEnc.normalize(req.id)})`)
+        console.log(`post-to-mailbox request received for mailbox: ${idEnc.normalize(req.mailbox)} with message ${idEnc.normalize(req.message)})`)
       } catch {
-        console.log('Invalid add-mailbox request received')
+        console.log('Invalid post-to-mailbox request received')
         console.log(req)
       }
     })
 
-    blindPeer.on('post-to-mailbox-request', req => {
+    blindPeer.on('add-core', req => {
       try {
-        console.log(`Post request received for mailbox ${idEnc.normalize(req.id)}`)
+        console.log(`add-core request received for ${idEnc.normalize(req.key)} with referrer ${ref.referrer && idEnc.normalize(req.referrer)}`)
       } catch {
-        console.log('Invalid post request received')
+        console.log('Invalid add-core request received')
         console.log(req)
       }
     })
@@ -85,6 +85,7 @@ const cmd = command('blind-peer',
     }
 
     console.info(`Listening at ${idEnc.normalize(blindPeer.publicKey)}`)
+    console.info(`Encryption public key is ${idEnc.normalize(blindPeer.encryptionPublicKey)}`)
   }
 )
 

@@ -233,7 +233,8 @@ class BlindPeer extends ReadyResource {
     this.flushInterval = setInterval(this._flushBackground.bind(this), 10_000)
   }
 
-  listen () {
+  async listen () {
+    if (!this.opened) await this.ready()
     return this.swarm.listen()
   }
 

@@ -10,6 +10,7 @@
     "autobase": "^7.0.18",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.0.5",
+    "hyper-instrument": "^1.2.0",
     "hypercore": "^11.0.12",
     "hyperschema": "^1.10.3",
     "ready-resource": "^1.1.2",
