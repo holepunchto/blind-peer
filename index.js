@@ -408,7 +408,7 @@ class BlindPeer extends ReadyResource {
     clearInterval(this.flushInterval)
     if (this.ownsSwarm) await this.swarm.destroy()
     await this.db.close()
-    await this.store.close()
+    if (this.ownsStore) await this.store.close()
     await this.rocks.close()
   }
 }
