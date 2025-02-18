@@ -12,12 +12,16 @@
     "corestore": "^7.0.5",
     "hyper-instrument": "^1.2.0",
     "hypercore": "^11.0.12",
+    "hyperdb": "^4.9.4",
     "hyperschema": "^1.10.3",
+    "hyperswarm": "^4.8.4",
     "ready-resource": "^1.1.2",
     "rocksdb-native": "^3.1.6",
+    "safety-catch": "^1.0.2",
     "scope-lock": "^1.2.4"
   },
   "devDependencies": {
+    "@holepunchto/blind-peering": "^1.2.0",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",

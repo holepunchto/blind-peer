@@ -8,6 +8,7 @@ const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
+const safetyCatch = require('safety-catch')
 const schema = require('./spec/hyperschema')
 const BlindPeerDB = require('./lib/db.js')
 
@@ -23,7 +24,7 @@ class CoreWakeup {
     this.db = tracker.blindPeer.db
     this.id = null
     this.extension = null
-    this.start().catch(noop)
+    this.start().catch(safetyCatch)
   }
 
   async _getLatestWakeup () {
@@ -76,9 +77,11 @@ class CoreWakeup {
     this.blindPeer.activeWakeup.set(this.id, this)
 
     this.core.on('peer-add', async (peer) => {
-      const w = await this._getLatestWakeup()
-      if (peer.removed) return
-      this.extension.send(w, peer)
+      try {
+        const w = await this._getLatestWakeup()
+        if (peer.removed) return
+        this.extension.send(w, peer)
+      } catch (e) { safetyCatch(e) }
     })
 
     if (!this.core.peers.length) return
@@ -188,7 +191,7 @@ class CoreTracker {
     if (this.destroyed) return
     this.destroyed = true
 
-    if (this.referrer) this.referrer.close().catch(noop)
+    if (this.referrer) this.referrer.close().catch(safetyCatch)
     if (this.wakeup) this.wakeup.destroy()
   }
 }
@@ -224,8 +227,6 @@ class BlindPeer extends ReadyResource {
     await this.db.ready()
 
     if (this.swarm === null) this.swarm = new Hyperswarm({ keyPair: this.db.swarmingKeyPair })
-
-    this.swarm.listen().catch(noop)
     this.swarm.on('connection', this._onconnection.bind(this))
 
     this.store.watch(this._oncoreopen.bind(this))
@@ -293,7 +294,7 @@ class BlindPeer extends ReadyResource {
     const tracker = new CoreTracker(this, session)
 
     this.activeReplication.set(id, tracker)
-    tracker.refresh().catch(noop)
+    tracker.refresh().catch(safetyCatch)
 
     session.on('close', () => {
       tracker.destroy()
@@ -304,7 +305,7 @@ class BlindPeer extends ReadyResource {
   }
 
   _flushBackground () {
-    if (this.db.updated()) this.db.flush().catch(noop)
+    if (this.db.updated()) this.db.flush().catch(safetyCatch)
   }
 
   _onconnection (conn) {
@@ -332,7 +333,7 @@ class BlindPeer extends ReadyResource {
     }
 
     core.replicate(stream)
-    stream.on('close', () => core.close().catch(noop))
+    stream.on('close', () => core.close().catch(safetyCatch))
   }
 
   async _onposttomailbox (stream, record) {
@@ -406,8 +407,8 @@ class BlindPeer extends ReadyResource {
   async _close () {
     clearInterval(this.flushInterval)
     if (this.ownsSwarm) await this.swarm.destroy()
-    await this.store.close()
     await this.db.close()
+    await this.store.close()
     await this.rocks.close()
   }
 }
