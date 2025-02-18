@@ -4,11 +4,11 @@ const Corestore = require('corestore')
 const tmpDir = require('test-tmp')
 const { once } = require('events')
 const b4a = require('b4a')
-const Client = require('@holepunchto/blind-peering/lib/client')
+const Client = require('@holepunchto/blind-peering')
 const Hyperswarm = require('hyperswarm')
 const BlindPeer = require('..')
 
-const DEBUG = false
+const DEBUG = true
 let clientCounter = 0 // For clean teardown order
 
 test('client can use a blind-peer to add a core', async t => {
@@ -20,22 +20,24 @@ test('client can use a blind-peer to add a core', async t => {
 
   let coreKey = null
   const coreAddedProm = once(blindPeer, 'add-core')
+
   coreAddedProm.catch(() => {})
   let client = null
   {
-    const { core, swarm } = await setupCoreHolder(t, bootstrap)
-    swarm.joinPeer(blindPeer.publicKey) // TODO: clean flow for setting up corestore replication (blind-peer client works at dht level, so no swarm connection event)
-    client = new Client(blindPeer.publicKey, { dht: swarm.dht })
-    await client.ready()
-
+    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+    client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
     coreKey = core.key
-    await client.addCore(coreKey)
+    client.addCoreBackground(core)
   }
 
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
   t.is(record.priority, 0, '0 Default priority')
   t.is(record.announce, false, 'default no announce')
+
+  // TODO: expose an event in blind-peer which allows us to detect
+  // when a core has updated
+  await new Promise(resolve => setTimeout(resolve, 1000))
   await client.close()
 
   {
