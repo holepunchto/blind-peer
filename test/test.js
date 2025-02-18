@@ -8,7 +8,7 @@ const Client = require('@holepunchto/blind-peering')
 const Hyperswarm = require('hyperswarm')
 const BlindPeer = require('..')
 
-const DEBUG = true
+const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 
 test('client can use a blind-peer to add a core', async t => {
@@ -48,6 +48,54 @@ test('client can use a blind-peer to add a core', async t => {
     await swarm.flush()
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
+  }
+})
+
+test('can lookup core after blind peer restart', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  let blindPeerStorage = null
+  let coreKey = null
+
+  {
+    const { blindPeer, storage } = await setupBlindPeer(t, bootstrap)
+    blindPeerStorage = storage
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
+
+    const coreAddedProm = once(blindPeer, 'add-core')
+
+    coreAddedProm.catch(() => {})
+    let client = null
+    {
+      const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+      client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+      coreKey = core.key
+      client.addCoreBackground(core)
+    }
+
+    const [record] = await coreAddedProm
+    t.alike(record.key, coreKey, 'added the core')
+
+    // TODO: expose an event in blind-peer which allows us to detect
+    // when a core has updated
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    await client.close()
+    await blindPeer.close()
+  }
+
+  {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage })
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
+
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+    await swarm.flush()
+    const block = await core.get(1)
+    t.is(b4a.toString(block), 'Block 1', 'Can download the core from the restarted blind peer')
   }
 })
 
