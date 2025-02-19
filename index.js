@@ -28,6 +28,7 @@ class CoreTracker {
     this.id = null
     this.referrerDiscoveryKey = null
     this.channel = null
+    this.downloadRange = null
 
     const onupdate = this._onupdate.bind(this)
     const onactive = this._onactive.bind(this)
@@ -69,7 +70,7 @@ class CoreTracker {
     if (this.destroyed || this.record || !record) return
 
     this.record = record
-    this.core.download({ start: 0, end: -1 })
+    this.core.download({ start: this.record.downloadRangeStart, end: -1 })
 
     if (this.updated) this._onupdate()
     if (this.activated) this._onactive()
@@ -130,7 +131,7 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup } = {}) {
+  constructor (rocks, { swarm, store, wakeup, maxBytes = 1_000_000_000 } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
@@ -144,6 +145,7 @@ class BlindPeer extends ReadyResource {
     this.activeReplication = new Map()
     this.activeWakeup = new Map()
     this.flushInterval = null
+    this.maxBytes = maxBytes
   }
 
   get encryptionPublicKey () {
@@ -152,6 +154,10 @@ class BlindPeer extends ReadyResource {
 
   get publicKey () {
     return this.swarm.keyPair.publicKey
+  }
+
+  get digest () {
+    return this.db.digest
   }
 
   async _open () {
@@ -180,6 +186,51 @@ class BlindPeer extends ReadyResource {
   async listen () {
     if (!this.opened) await this.ready()
     return this.swarm.listen()
+  }
+
+  // TODO: single source of truth for the records when not stored in the db
+  async gc () {
+    console.log('digest', this.db.digest)
+    const { bytesAllocated } = this.db.digest
+    console.log(bytesAllocated, this.maxBytes)
+    if (bytesAllocated < this.maxBytes) return
+
+    const bytesToClear = bytesAllocated - this.maxBytes
+    console.log('to clear', bytesToClear)
+    let bytesCleared = 0
+    const downloadRangesToRefresh = []
+    for await (const record of this.db.createGcCandidateReadStream()) {
+      if (this.db.digest.bytesAllocated < this.maxBytes) break
+      if (bytesCleared >= bytesToClear) break
+
+      const { key, bytesAllocated } = record
+      const core = this.store.get({ key, active: false })
+      await core.ready()
+      await core.clear(0)
+      const coreBytesCleared = bytesAllocated // TODO: as returned from clear
+      record.bytesAllocated -= coreBytesCleared
+      record.downloadRangeStart = core.length
+      console.log('set start to', record.downloadRangeStart)
+
+      const id = getHypercoreId(core)
+      // const tracker = this.activeReplication.get(id)
+      // tracker.setDownloadRangeStart(core.length)
+      // downloadRange?.destroy()
+      // downloadRangesToRefresh.push(tracker)
+
+      this.db.updateCore(record, id)
+      await core.close()
+      bytesCleared += bytesAllocated
+    }
+    console.log('Total cleared', bytesCleared)
+
+    await this.db.flush()
+    for (const tracker of downloadRangesToRefresh) {
+      tracker.refreshDownloadRange()
+    }
+
+    this.emit('gc-done', { bytesCleared })
+    console.log('Updated digest', this.db.digest)
   }
 
   static createMailbox (blindPeerEncryptionPublicKey, opts = {}) {
@@ -363,6 +414,10 @@ class BlindPeer extends ReadyResource {
     if (this.ownsStore) await this.store.close()
     await this.rocks.close()
   }
+}
+
+function getHypercoreId (core) {
+  return b4a.toString(core.discoveryKey, 'hex')
 }
 
 module.exports = BlindPeer

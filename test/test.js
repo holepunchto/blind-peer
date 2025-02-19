@@ -99,6 +99,46 @@ test('can lookup core after blind peer restart', async t => {
   }
 })
 
+test.solo('garbage collection when space limit reached', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { maxBytes: 10_000 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  // let coreKey = null
+  const nrCores = 10
+  const nrBlocks = 200
+  {
+    const { swarm, store } = await setupCoreHolder(t, bootstrap)
+    const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+    for (let i = 0; i < nrCores; i++) {
+      const core = store.get({ name: `core-${i}` })
+      const blocks = []
+      for (let j = 0; j < nrBlocks; j++) blocks.push(`core-${i}-block-${j}`)
+      await core.append(blocks)
+      client.addCoreBackground(core)
+    }
+  }
+
+  // TODO: expose an event in blind-peer which allows us to detect
+  // when a core has updated
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  const initBytes = blindPeer.digest.bytesAllocated
+  blindPeer.on('gc-done', ({ bytesCleared }) => {
+    const nowBytes = blindPeer.digest.bytesAllocated
+    t.is(nowBytes < 10_000, true, 'gcd till below limit')
+    t.is(nowBytes > 1000, true, 'did not gc too much')
+    t.is(initBytes - bytesCleared, nowBytes, 'Bytes-cleared accounting correct')
+  })
+
+  await blindPeer.gc()
+
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  console.log('now digest', blindPeer.digest)
+})
+
 async function getTestnet (t) {
   const testnet = await setupTestnet()
   t.teardown(async () => {
@@ -140,11 +180,11 @@ async function setupCoreHolder (t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function setupBlindPeer (t, bootstrap, { storage } = {}) {
+async function setupBlindPeer (t, bootstrap, { storage, maxBytes } = {}) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
-  const peer = new BlindPeer(storage, { swarm })
+  const peer = new BlindPeer(storage, { swarm, maxBytes })
 
   if (DEBUG) {
     peer.on('add-mailbox-request', (req) => {
