@@ -9,102 +9,24 @@ const c = require('compact-encoding')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
+const Wakeup = require('protomux-wakeup')
 const schema = require('./spec/hyperschema')
 const BlindPeerDB = require('./lib/db.js')
 
 const AddCoreRequest = schema.getEncoding('@blind-peer/add-core-request')
 const PostToMailboxRequest = schema.getEncoding('@blind-peer/post-to-mailbox-request')
-const WakeupReply = schema.getEncoding('@blind-peer/wakeup-reply')
 const Mailbox = schema.getEncoding('@blind-peer/mailbox')
-
-class CoreWakeup {
-  constructor (tracker) {
-    this.core = tracker.core
-    this.blindPeer = tracker.blindPeer
-    this.db = tracker.blindPeer.db
-    this.id = null
-    this.extension = null
-    this.start().catch(safetyCatch)
-  }
-
-  async _getLatestWakeup () {
-    const referrer = this.core.key
-
-    const query = {
-      gte: { referrer },
-      lte: { referrer },
-      reverse: true,
-      limit: 24
-    }
-
-    const latest = await this.db.find('@blind-peer/cores-by-referrer', query).toArray()
-    return encodeWakeup(latest)
-  }
-
-  destroy () {
-    if (this.destroyed) return
-    this.destroyed = true
-
-    if (this.id && this.blindPeer.activeWakeup.get(this.id) === this) {
-      this.blindPeer.activeWakeup.delete(this.id)
-    }
-  }
-
-  send (record, channel) {
-    if (!this.extension) return
-
-    const w = encodeWakeup([record])
-    for (const peer of this.core.peers) {
-      const mux = peer.stream.userData
-
-      // already replicating with that peer
-      if (mux._infos.get(channel)) {
-        continue
-      }
-
-      this.extension.send(w, peer)
-    }
-  }
-
-  async start () {
-    // TODO: move this to the new general wakeup extension...
-    this.extension = this.core.registerExtension('autobase', { onmessage: noop })
-
-    await this.core.ready()
-    if (this.destroyed) return
-
-    this.id = this.core.id
-    this.blindPeer.activeWakeup.set(this.id, this)
-
-    this.core.on('peer-add', async (peer) => {
-      try {
-        const w = await this._getLatestWakeup()
-        if (peer.removed) return
-        this.extension.send(w, peer)
-      } catch (e) { safetyCatch(e) }
-    })
-
-    if (!this.core.peers.length) return
-
-    const w = await this._getLatestWakeup()
-    for (const peer of this.core.peers) {
-      this.extension.send(w, peer)
-    }
-  }
-}
 
 class CoreTracker {
   constructor (blindPeer, core) {
     this.blindPeer = blindPeer
     this.core = core
-    this.referrer = null
     this.destroyed = false
     this.record = null
-    this.wakeup = null
     this.activated = false
     this.updated = false
     this.id = null
-    this.referrerId = null
+    this.referrerDiscoveryKey = null
     this.channel = null
 
     const onupdate = this._onupdate.bind(this)
@@ -118,18 +40,14 @@ class CoreTracker {
 
   _onupdate () {
     this.updated = true
+    if (!this.record) return
 
-    if (this.record) {
-      this.record.length = this.core.length
-      this.record.bytesAllocated = this.core.byteLength
-      this.blindPeer.db.updateCore(this.record, this.id)
-      this.blindPeer._flushBackground()
+    this.record.length = this.core.length
+    this.record.bytesAllocated = this.core.byteLength
+    this.blindPeer.db.updateCore(this.record, this.id)
+    this.blindPeer._flushBackground()
 
-      if (this.referrer) {
-        const w = this.blindPeer.activeWakeup.get(this.referrer.id)
-        if (w) w.send(this.record, this.channel)
-      }
-    }
+    if (this.referrer) this.announceToReferrer()
   }
 
   _onactive () {
@@ -140,21 +58,60 @@ class CoreTracker {
     }
   }
 
-  async _onrecord () {
+  async refresh () {
+    await this.core.ready()
+    if (this.destroyed) return
+
+    this.id = this.core.id
+    this.channel = 'hypercore/alpha##' + b4a.toString(this.core.discoveryKey, 'hex')
+
+    const record = await this.blindPeer.db.get('@blind-peer/cores', { key: this.core.key })
+    if (this.destroyed || this.record || !record) return
+
+    this.record = record
     this.core.download({ start: 0, end: -1 })
-    if (!this.record.referrer) return
 
-    // this triggers the referrer tracker to open, if not already
-    this.referrer = this.blindPeer.store.get({ key: this.record.referrer, active: false })
-    await this.referrer.ready()
-
-    const referrerDkey = b4a.toString(this.referrer.discoveryKey, 'hex')
-    const tracker = this.blindPeer.activeReplication.get(referrerDkey)
-    if (tracker) tracker.startWakeup()
+    if (this.updated) this._onupdate()
+    if (this.activated) this._onactive()
   }
 
-  async _getLatestWakeup () {
-    const referrer = this.core.key
+  announceToReferrer () {
+    if (!this.record || !this.record.referrer) return
+    if (!this.referrerDiscoveryKey) this.referrerDiscoveryKey = crypto.discoveryKey(this.record.referrer)
+
+    const session = this.blindPeer.wakeup.getSession(this.referrerDiscoveryKey)
+    if (!session) return
+
+    const wakeup = [{ key: this.core.key, length: this.core.length }]
+
+    for (const peer of this.core.peers) {
+      const mux = peer.stream.userData
+
+      // already replicating with that peer
+      if (mux._infos.get(this.channel)) {
+        continue
+      }
+
+      session.announceByStream(peer.stream, wakeup)
+    }
+  }
+
+  destroy () {
+    if (this.destroyed) return
+    this.destroyed = true
+  }
+}
+
+class WakeupHandler {
+  constructor (db, key, discoveryKey) {
+    this.db = db
+    this.key = key
+    this.discoveryKey = discoveryKey
+    this.active = false
+  }
+
+  async onpeeradd (peer, session) {
+    const referrer = this.key
     const query = {
       gte: { referrer },
       lte: { referrer },
@@ -162,47 +119,25 @@ class CoreTracker {
       limit: 24
     }
 
-    const latest = await this.blindPeer.db.find('@blind-peer/cores-by-referrer', query).toArray()
-    return encodeWakeup(latest)
-  }
-
-  startWakeup () {
-    if (this.wakeup) return
-    this.wakeup = new CoreWakeup(this)
-  }
-
-  async refresh () {
-    await this.core.ready()
-    if (this.destroyed) return
-
-    this.id = this.core.id
-    this.channel = 'hypercore/alpha##' + b4a.toString(this.core.discoveryKey, 'hex')
-    const record = await this.blindPeer.db.get('@blind-peer/cores', { key: this.core.key })
-    if (this.destroyed || this.record || !record) return
-
-    this.record = record
-    await this._onrecord()
-
-    if (this.updated) this._onupdate()
-    if (this.activated) this._onactive()
-  }
-
-  destroy () {
-    if (this.destroyed) return
-    this.destroyed = true
-
-    if (this.referrer) this.referrer.close().catch(safetyCatch)
-    if (this.wakeup) this.wakeup.destroy()
+    try {
+      const latest = await this.db.find('@blind-peer/cores-by-referrer', query).toArray()
+      if (peer.removed) return
+      session.announce(peer, latest)
+    } catch {
+      // do nothing
+    }
   }
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store } = {}) {
+  constructor (rocks, { swarm, store, wakeup } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks)
     this.swarm = swarm || null
+    this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this))
+    this.ownsWakeup = !wakeup
     this.ownsSwarm = !swarm
     this.ownsStore = !store
     this.db = null
@@ -232,6 +167,14 @@ class BlindPeer extends ReadyResource {
     this.store.watch(this._oncoreopen.bind(this))
 
     this.flushInterval = setInterval(this._flushBackground.bind(this), 10_000)
+  }
+
+  async _onwakeup (discoveryKey, stream) {
+    const auth = await this.store.storage.getAuth(discoveryKey)
+    if (!auth) return
+
+    const w = this.wakeup.session(auth.key, new WakeupHandler(this.db, auth.key, discoveryKey))
+    w.addStream(stream)
   }
 
   async listen () {
@@ -310,6 +253,7 @@ class BlindPeer extends ReadyResource {
 
   _onconnection (conn) {
     if (this.ownsStore) this.store.replicate(conn)
+    if (this.ownsWakeup) this.wakeup.addStream(conn)
 
     const rpc = new ProtomuxRPC(conn, {
       id: this.swarm.keyPair.publicKey,
@@ -396,6 +340,13 @@ class BlindPeer extends ReadyResource {
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
     record.announce = false // reserved for trusted peers
 
+    if (record.referrer) {
+      // ensure referrer is allocated...
+      const core = this.store.get({ key: record.referrer, active: false })
+      await core.ready()
+      await core.close()
+    }
+
     this.db.addCore(record)
     await this.db.flush() // flush now as important data
 
@@ -406,6 +357,7 @@ class BlindPeer extends ReadyResource {
 
   async _close () {
     clearInterval(this.flushInterval)
+    if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
     await this.db.close()
     if (this.ownsStore) await this.store.close()
@@ -414,14 +366,3 @@ class BlindPeer extends ReadyResource {
 }
 
 module.exports = BlindPeer
-
-function noop () {}
-
-function encodeWakeup (writers) {
-  const state = { start: 0, end: 0, buffer: null }
-  const m = { version: 1, type: 1, writers }
-  WakeupReply.preencode(state, m)
-  state.buffer = b4a.allocUnsafe(state.end)
-  WakeupReply.encode(state, m)
-  return state.buffer
-}

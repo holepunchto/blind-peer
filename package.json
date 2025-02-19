@@ -15,6 +15,7 @@
     "hyperdb": "^4.9.4",
     "hyperschema": "^1.10.3",
     "hyperswarm": "^4.8.4",
+    "protomux-wakeup": "^2.2.0",
     "ready-resource": "^1.1.2",
     "rocksdb-native": "^3.1.6",
     "safety-catch": "^1.0.2",
