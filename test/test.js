@@ -100,6 +100,7 @@ test('can lookup core after blind peer restart', async t => {
 })
 
 test.solo('garbage collection when space limit reached', async t => {
+  t.plan(4)
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { maxBytes: 10_000 })
@@ -112,6 +113,9 @@ test.solo('garbage collection when space limit reached', async t => {
   {
     const { swarm, store } = await setupCoreHolder(t, bootstrap)
     const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+    t.teardown(async () => {
+      await client.close()
+    }, { order: 0 })
     for (let i = 0; i < nrCores; i++) {
       const core = store.get({ name: `core-${i}` })
       const blocks = []
@@ -131,12 +135,10 @@ test.solo('garbage collection when space limit reached', async t => {
     t.is(nowBytes < 10_000, true, 'gcd till below limit')
     t.is(nowBytes > 1000, true, 'did not gc too much')
     t.is(initBytes - bytesCleared, nowBytes, 'Bytes-cleared accounting correct')
+    t.is(blindPeer.digest.bytesAllocated < 10000, true, 'digest updated')
   })
 
   await blindPeer.gc()
-
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  console.log('now digest', blindPeer.digest)
 })
 
 async function getTestnet (t) {

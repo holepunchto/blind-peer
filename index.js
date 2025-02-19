@@ -190,13 +190,10 @@ class BlindPeer extends ReadyResource {
 
   // TODO: single source of truth for the records when not stored in the db
   async gc () {
-    console.log('digest', this.db.digest)
     const { bytesAllocated } = this.db.digest
-    console.log(bytesAllocated, this.maxBytes)
     if (bytesAllocated < this.maxBytes) return
 
     const bytesToClear = bytesAllocated - this.maxBytes
-    console.log('to clear', bytesToClear)
     let bytesCleared = 0
     const downloadRangesToRefresh = []
     for await (const record of this.db.createGcCandidateReadStream()) {
@@ -206,23 +203,18 @@ class BlindPeer extends ReadyResource {
       const { key, bytesAllocated } = record
       const core = this.store.get({ key, active: false })
       await core.ready()
-      await core.clear(0)
-      const coreBytesCleared = bytesAllocated // TODO: as returned from clear
+      const byteLength = core.byteLength
+      await core.clear(0) // TODO: clear half (need to figure out accounting of cleared bytes for this)
+
+      const coreBytesCleared = byteLength
       record.bytesAllocated -= coreBytesCleared
       record.downloadRangeStart = core.length
-      console.log('set start to', record.downloadRangeStart)
 
       const id = getHypercoreId(core)
-      // const tracker = this.activeReplication.get(id)
-      // tracker.setDownloadRangeStart(core.length)
-      // downloadRange?.destroy()
-      // downloadRangesToRefresh.push(tracker)
-
       this.db.updateCore(record, id)
       await core.close()
       bytesCleared += bytesAllocated
     }
-    console.log('Total cleared', bytesCleared)
 
     await this.db.flush()
     for (const tracker of downloadRangesToRefresh) {
@@ -230,7 +222,6 @@ class BlindPeer extends ReadyResource {
     }
 
     this.emit('gc-done', { bytesCleared })
-    console.log('Updated digest', this.db.digest)
   }
 
   static createMailbox (blindPeerEncryptionPublicKey, opts = {}) {
