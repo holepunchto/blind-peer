@@ -211,6 +211,11 @@ peerSchema.register({
       name: 'referrer',
       type: 'fixed32',
       required: false
+    },
+    {
+      name: 'downloadRangeStart',
+      type: 'uint',
+      required: false
     }
   ]
 })

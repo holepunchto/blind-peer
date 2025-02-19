@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "schema": [
     {
       "name": "auth",
@@ -248,6 +248,12 @@
           "required": false,
           "type": "fixed32",
           "version": 1
+        },
+        {
+          "name": "downloadRangeStart",
+          "required": false,
+          "type": "uint",
+          "version": 2
         }
       ]
     }
