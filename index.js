@@ -209,6 +209,7 @@ class BlindPeer extends ReadyResource {
       const coreBytesCleared = byteLength
       record.bytesAllocated -= coreBytesCleared
       record.downloadRangeStart = core.length
+      record.bytesCleared += coreBytesCleared
 
       const id = getHypercoreId(core)
       this.db.updateCore(record, id)

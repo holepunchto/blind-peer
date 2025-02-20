@@ -216,7 +216,13 @@ peerSchema.register({
       name: 'downloadRangeStart',
       type: 'uint',
       required: false
+    },
+    {
+      name: 'bytesCleared',
+      type: 'uint',
+      required: false
     }
+
   ]
 })
 
