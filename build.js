@@ -213,7 +213,7 @@ peerSchema.register({
       required: false
     },
     {
-      name: 'downloadRangeStart',
+      name: 'blocksCleared',
       type: 'uint',
       required: false
     },

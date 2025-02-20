@@ -64,14 +64,14 @@ class CoreTracker {
     const bytesCleared = this.core.byteLength
     const blocksCleared = this.core.length
     this.record.bytesAllocated = this.core.byteLength - bytesCleared
-    this.record.downloadRangeStart = blocksCleared
+    this.record.blocksCleared = blocksCleared
     this.record.bytesCleared = bytesCleared
 
     this.core.clear(0, blocksCleared).catch(safetyCatch) // TODO: emit warning
     this.blindPeer.db.updateCore(this.record, this.id)
 
     if (this.downloadRange) this.downloadRange.destroy()
-    this.downloadRange = this.core.download({ start: this.record.downloadRangeStart, end: -1 })
+    this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
 
     return bytesCleared
   }
@@ -87,7 +87,7 @@ class CoreTracker {
     if (this.destroyed || this.record || !record) return
 
     this.record = record
-    this.core.download({ start: this.record.downloadRangeStart, end: -1 })
+    this.core.download({ start: this.record.blocksCleared, end: -1 })
 
     if (this.updated) this._onupdate()
     if (this.activated) this._onactive()

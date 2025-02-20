@@ -220,14 +220,14 @@ const encoding7 = {
     state.end++ // max flag is 8 so always one byte
 
     if (m.referrer) c.fixed32.preencode(state, m.referrer)
-    if (version >= 2 && m.downloadRangeStart) c.uint.preencode(state, m.downloadRangeStart)
+    if (version >= 2 && m.blocksCleared) c.uint.preencode(state, m.blocksCleared)
     if (version >= 3 && m.bytesCleared) c.uint.preencode(state, m.bytesCleared)
   },
   encode (state, m) {
     const flags =
       (m.announce ? 1 : 0) |
       (m.referrer ? 2 : 0) |
-      ((version >= 2 && m.downloadRangeStart) ? 4 : 0) |
+      ((version >= 2 && m.blocksCleared) ? 4 : 0) |
       ((version >= 3 && m.bytesCleared) ? 8 : 0)
 
     c.fixed32.encode(state, m.key)
@@ -239,7 +239,7 @@ const encoding7 = {
     c.uint.encode(state, flags)
 
     if (m.referrer) c.fixed32.encode(state, m.referrer)
-    if (version >= 2 && m.downloadRangeStart) c.uint.encode(state, m.downloadRangeStart)
+    if (version >= 2 && m.blocksCleared) c.uint.encode(state, m.blocksCleared)
     if (version >= 3 && m.bytesCleared) c.uint.encode(state, m.bytesCleared)
   },
   decode (state) {
@@ -260,7 +260,7 @@ const encoding7 = {
       priority: r5,
       announce: (flags & 1) !== 0,
       referrer: (flags & 2) !== 0 ? c.fixed32.decode(state) : null,
-      downloadRangeStart: (version >= 2 && (flags & 4) !== 0) ? c.uint.decode(state) : 0,
+      blocksCleared: (version >= 2 && (flags & 4) !== 0) ? c.uint.decode(state) : 0,
       bytesCleared: (version >= 3 && (flags & 8) !== 0) ? c.uint.decode(state) : 0
     }
   }
@@ -277,14 +277,14 @@ const encoding8 = {
     state.end++ // max flag is 8 so always one byte
 
     if (m.referrer) c.fixed32.preencode(state, m.referrer)
-    if (version >= 2 && m.downloadRangeStart) c.uint.preencode(state, m.downloadRangeStart)
+    if (version >= 2 && m.blocksCleared) c.uint.preencode(state, m.blocksCleared)
     if (version >= 3 && m.bytesCleared) c.uint.preencode(state, m.bytesCleared)
   },
   encode (state, m) {
     const flags =
       (m.announce ? 1 : 0) |
       (m.referrer ? 2 : 0) |
-      ((version >= 2 && m.downloadRangeStart) ? 4 : 0) |
+      ((version >= 2 && m.blocksCleared) ? 4 : 0) |
       ((version >= 3 && m.bytesCleared) ? 8 : 0)
 
     c.uint.encode(state, m.length)
@@ -295,7 +295,7 @@ const encoding8 = {
     c.uint.encode(state, flags)
 
     if (m.referrer) c.fixed32.encode(state, m.referrer)
-    if (version >= 2 && m.downloadRangeStart) c.uint.encode(state, m.downloadRangeStart)
+    if (version >= 2 && m.blocksCleared) c.uint.encode(state, m.blocksCleared)
     if (version >= 3 && m.bytesCleared) c.uint.encode(state, m.bytesCleared)
   },
   decode (state) {
@@ -315,7 +315,7 @@ const encoding8 = {
       priority: r5,
       announce: (flags & 1) !== 0,
       referrer: (flags & 2) !== 0 ? c.fixed32.decode(state) : null,
-      downloadRangeStart: (version >= 2 && (flags & 4) !== 0) ? c.uint.decode(state) : 0,
+      blocksCleared: (version >= 2 && (flags & 4) !== 0) ? c.uint.decode(state) : 0,
       bytesCleared: (version >= 3 && (flags & 8) !== 0) ? c.uint.decode(state) : 0
     }
   }

@@ -250,7 +250,7 @@
           "version": 1
         },
         {
-          "name": "downloadRangeStart",
+          "name": "blocksCleared",
           "required": false,
           "type": "uint",
           "version": 2
