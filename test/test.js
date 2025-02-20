@@ -99,7 +99,7 @@ test('can lookup core after blind peer restart', async t => {
   }
 })
 
-test.solo('garbage collection when space limit reached', async t => {
+test('garbage collection when space limit reached', async t => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting

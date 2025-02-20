@@ -170,7 +170,7 @@ class BlindPeer extends ReadyResource {
     this.maxBytes = maxBytes
     this.enableGc = enableGc
 
-    this.gc = debounce(this._gcUnbound.bind(this))
+    this.gc = debounce(this._gcUndebounced.bind(this))
   }
 
   get encryptionPublicKey () {
@@ -215,11 +215,10 @@ class BlindPeer extends ReadyResource {
   }
 
   needsGc () {
-    const { bytesAllocated } = this.digest
-    return bytesAllocated >= this.maxBytes
+    return this.digest.bytesAllocated >= this.maxBytes
   }
 
-  async _gcUnbound () { // Do not call directly (debounce)
+  async _gcUndebounced () { // Do not call directly (debounce)
     if (!this.needsGc()) return
 
     const bytesToClear = this.digest.bytesAllocated - this.maxBytes
