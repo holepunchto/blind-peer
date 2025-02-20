@@ -197,7 +197,7 @@ class BlindPeer extends ReadyResource {
 
     this.store.watch(this._oncoreopen.bind(this))
 
-    await this.gc()
+    if (this.enableGc) await this.gc()
     this.flushInterval = setInterval(this._flushBackground.bind(this), 10_000)
   }
 
