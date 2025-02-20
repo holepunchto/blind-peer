@@ -11,6 +11,8 @@ const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const HypCrypto = require('hypercore-crypto')
+const debounce = require('debounceify')
+
 const schema = require('./spec/hyperschema')
 const BlindPeerDB = require('./lib/db.js')
 
@@ -50,6 +52,9 @@ class CoreTracker {
     this.blindPeer._flushBackground()
 
     if (this.referrer) this.announceToReferrer()
+    if (this.blindPeer.enableGc && this.blindPeer.needsGc()) {
+      this.blindPeer.gc().catch(safetyCatch)
+    }
   }
 
   _onactive () {
@@ -148,7 +153,7 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup, maxBytes = 1_000_000_000 } = {}) {
+  constructor (rocks, { swarm, store, wakeup, maxBytes = 1_000_000_000, enableGc = true } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
@@ -163,6 +168,9 @@ class BlindPeer extends ReadyResource {
     this.activeWakeup = new Map()
     this.flushInterval = null
     this.maxBytes = maxBytes
+    this.enableGc = enableGc
+
+    this.gc = debounce(this._gcUnbound.bind(this))
   }
 
   get encryptionPublicKey () {
@@ -189,6 +197,7 @@ class BlindPeer extends ReadyResource {
 
     this.store.watch(this._oncoreopen.bind(this))
 
+    await this.gc()
     this.flushInterval = setInterval(this._flushBackground.bind(this), 10_000)
   }
 
@@ -205,15 +214,19 @@ class BlindPeer extends ReadyResource {
     return this.swarm.listen()
   }
 
-  async gc () {
-    const { bytesAllocated } = this.db.digest
-    if (bytesAllocated < this.maxBytes) return
+  needsGc () {
+    const { bytesAllocated } = this.digest
+    return bytesAllocated >= this.maxBytes
+  }
 
-    const bytesToClear = bytesAllocated - this.maxBytes
+  async _gcUnbound () { // Do not call directly (debounce)
+    if (!this.needsGc()) return
+
+    const bytesToClear = this.digest.bytesAllocated - this.maxBytes
     let bytesCleared = 0
 
     for await (const record of this.db.createGcCandidateReadStream()) {
-      if (this.db.digest.bytesAllocated < this.maxBytes) break
+      if (this.closing) return
       if (bytesCleared >= bytesToClear) break
       if (record.bytesAllocated === 0) continue
 
@@ -224,6 +237,8 @@ class BlindPeer extends ReadyResource {
       // session exists
       const core = this.store.get({ key, active: false })
       await core.ready()
+      if (this.closing) return
+
       try {
         const tracker = this.activeReplication.get(id)
         const coreBytesCleared = tracker.gc()
@@ -234,6 +249,7 @@ class BlindPeer extends ReadyResource {
     }
 
     await this.db.flush()
+    if (this.closing) return
     this.emit('gc-done', { bytesCleared })
   }
 

@@ -102,7 +102,8 @@ test('can lookup core after blind peer restart', async t => {
 test.solo('garbage collection when space limit reached', async t => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { maxBytes: 10_000 })
+  const enableGc = false // We trigger it manually, so we can test the accounting
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -224,11 +225,11 @@ async function setupCoreHolder (t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function setupBlindPeer (t, bootstrap, { storage, maxBytes } = {}) {
+async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc } = {}) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
-  const peer = new BlindPeer(storage, { swarm, maxBytes })
+  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc })
 
   if (DEBUG) {
     peer.on('add-mailbox-request', (req) => {
