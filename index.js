@@ -10,6 +10,7 @@ const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
+const HypCrypto = require('hypercore-crypto')
 const schema = require('./spec/hyperschema')
 const BlindPeerDB = require('./lib/db.js')
 
@@ -44,7 +45,7 @@ class CoreTracker {
     if (!this.record) return
 
     this.record.length = this.core.length
-    this.record.bytesAllocated = this.core.byteLength
+    this.record.bytesAllocated = this.core.byteLength - this.record.bytesCleared
     this.blindPeer.db.updateCore(this.record, this.id)
     this.blindPeer._flushBackground()
 
@@ -57,6 +58,22 @@ class CoreTracker {
     if (this.record) {
       this.blindPeer.db.updateCore(this.record, this.id)
     }
+  }
+
+  gc () { // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
+    const bytesCleared = this.core.byteLength
+    const blocksCleared = this.core.length
+    this.record.bytesAllocated = this.core.byteLength - bytesCleared
+    this.record.downloadRangeStart = blocksCleared
+    this.record.bytesCleared = bytesCleared
+
+    this.core.clear(0, blocksCleared).catch(safetyCatch) // TODO: emit warning
+    this.blindPeer.db.updateCore(this.record, this.id)
+
+    if (this.downloadRange) this.downloadRange.destroy()
+    this.downloadRange = this.core.download({ start: this.record.downloadRangeStart, end: -1 })
+
+    return bytesCleared
   }
 
   async refresh () {
@@ -188,40 +205,35 @@ class BlindPeer extends ReadyResource {
     return this.swarm.listen()
   }
 
-  // TODO: single source of truth for the records when not stored in the db
   async gc () {
     const { bytesAllocated } = this.db.digest
     if (bytesAllocated < this.maxBytes) return
 
     const bytesToClear = bytesAllocated - this.maxBytes
     let bytesCleared = 0
-    const downloadRangesToRefresh = []
+
     for await (const record of this.db.createGcCandidateReadStream()) {
       if (this.db.digest.bytesAllocated < this.maxBytes) break
       if (bytesCleared >= bytesToClear) break
+      if (record.bytesAllocated === 0) continue
 
-      const { key, bytesAllocated } = record
+      const { key } = record
+      const id = b4a.toString(HypCrypto.discoveryKey(key), 'hex')
+
+      // Explicitly opening the core ensures an active replication
+      // session exists
       const core = this.store.get({ key, active: false })
       await core.ready()
-      const byteLength = core.byteLength
-      await core.clear(0) // TODO: clear half (need to figure out accounting of cleared bytes for this)
-
-      const coreBytesCleared = byteLength
-      record.bytesAllocated -= coreBytesCleared
-      record.downloadRangeStart = core.length
-      record.bytesCleared += coreBytesCleared
-
-      const id = getHypercoreId(core)
-      this.db.updateCore(record, id)
-      await core.close()
-      bytesCleared += bytesAllocated
+      try {
+        const tracker = this.activeReplication.get(id)
+        const coreBytesCleared = tracker.gc()
+        bytesCleared += coreBytesCleared
+      } finally {
+        core.close().catch(safetyCatch)
+      }
     }
 
     await this.db.flush()
-    for (const tracker of downloadRangesToRefresh) {
-      tracker.refreshDownloadRange()
-    }
-
     this.emit('gc-done', { bytesCleared })
   }
 
@@ -406,10 +418,6 @@ class BlindPeer extends ReadyResource {
     if (this.ownsStore) await this.store.close()
     await this.rocks.close()
   }
-}
-
-function getHypercoreId (core) {
-  return b4a.toString(core.discoveryKey, 'hex')
 }
 
 module.exports = BlindPeer

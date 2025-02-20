@@ -12,6 +12,7 @@
     "corestore": "^7.0.5",
     "hyper-instrument": "^1.2.0",
     "hypercore": "^11.0.12",
+    "hypercore-crypto": "^3.5.0",
     "hyperdb": "^4.9.4",
     "hyperschema": "^1.10.3",
     "hyperswarm": "^4.8.4",
