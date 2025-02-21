@@ -51,9 +51,6 @@ class CoreTracker {
     this.blindPeer._flushBackground()
 
     if (this.referrer) this.announceToReferrer()
-    if (this.blindPeer.enableGc && this.blindPeer.needsGc()) {
-      this.blindPeer.gc().catch(safetyCatch)
-    }
   }
 
   _onactive () {
@@ -318,6 +315,7 @@ class BlindPeer extends ReadyResource {
 
   _flushBackground () {
     if (this.db.updated()) this.db.flush().catch(safetyCatch)
+    if (this.enableGc) this.gc().catch(safetyCatch)
   }
 
   _onconnection (conn) {
