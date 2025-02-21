@@ -6,7 +6,7 @@ const HyperDB = require('hyperdb/builder')
 const SCHEMA_DIR = path.join(__dirname, './spec/hyperschema')
 const DB_DIR = path.join(__dirname, './spec/hyperdb')
 
-const schema = Hyperschema.from(SCHEMA_DIR)
+const schema = Hyperschema.from(SCHEMA_DIR, { versioned: false })
 
 const peerSchema = schema.namespace('blind-peer')
 

@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 1,
   "schema": [
     {
       "name": "auth",
@@ -253,13 +253,13 @@
           "name": "blocksCleared",
           "required": false,
           "type": "uint",
-          "version": 2
+          "version": 1
         },
         {
           "name": "bytesCleared",
           "required": false,
           "type": "uint",
-          "version": 3
+          "version": 1
         }
       ]
     }
