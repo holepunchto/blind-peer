@@ -10,7 +10,6 @@ const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
-const HypCrypto = require('hypercore-crypto')
 const debounce = require('debounceify')
 
 const schema = require('./spec/hyperschema')
@@ -230,13 +229,13 @@ class BlindPeer extends ReadyResource {
       if (record.bytesAllocated === 0) continue
 
       const { key } = record
-      const id = b4a.toString(HypCrypto.discoveryKey(key), 'hex')
 
       // Explicitly opening the core ensures an active replication
       // session exists
       const core = this.store.get({ key, active: false })
       await core.ready()
       if (this.closing) return
+      const id = b4a.toString(core.discoveryKey, 'hex')
 
       try {
         const tracker = this.activeReplication.get(id)
