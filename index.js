@@ -68,7 +68,7 @@ class CoreTracker {
     this.record.blocksCleared = blocksCleared
     this.record.bytesCleared = bytesCleared
 
-    this.core.clear(0, blocksCleared).catch(safetyCatch) // TODO: emit warning
+    this.core.clear(0, blocksCleared).catch(safetyCatch)
     this.blindPeer.db.updateCore(this.record, this.id)
 
     if (this.downloadRange) this.downloadRange.destroy()
