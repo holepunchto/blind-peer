@@ -134,7 +134,7 @@ test('garbage collection when space limit reached', async t => {
 
   const [[{ bytesCleared }]] = await Promise.all([
     once(blindPeer, 'gc-done'),
-    blindPeer.gc()
+    blindPeer._gc()
   ])
 
   const nowBytes = blindPeer.digest.bytesAllocated

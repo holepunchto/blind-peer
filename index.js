@@ -10,7 +10,7 @@ const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
-const debounce = require('debounceify')
+const ScopeLock = require('scope-lock')
 
 const schema = require('./spec/hyperschema')
 const BlindPeerDB = require('./lib/db.js')
@@ -48,7 +48,7 @@ class CoreTracker {
     this.record.length = this.core.length
     this.record.bytesAllocated = this.core.byteLength - this.record.bytesCleared
     this.blindPeer.db.updateCore(this.record, this.id)
-    this.blindPeer._flushBackground()
+    this.blindPeer.flush().catch(safetyCatch)
 
     if (this.referrer) this.announceToReferrer()
   }
@@ -68,11 +68,11 @@ class CoreTracker {
     this.record.blocksCleared = blocksCleared
     this.record.bytesCleared = bytesCleared
 
-    this.core.clear(0, blocksCleared).catch(safetyCatch)
-    this.blindPeer.db.updateCore(this.record, this.id)
-
     if (this.downloadRange) this.downloadRange.destroy()
     this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
+
+    this.core.clear(0, blocksCleared).catch(safetyCatch)
+    this.blindPeer.db.updateCore(this.record, this.id)
 
     return bytesCleared
   }
@@ -165,8 +165,7 @@ class BlindPeer extends ReadyResource {
     this.flushInterval = null
     this.maxBytes = maxBytes
     this.enableGc = enableGc
-
-    this.gc = debounce(this._gcUndebounced.bind(this))
+    this.lock = new ScopeLock({ debounce: true })
   }
 
   get encryptionPublicKey () {
@@ -193,8 +192,7 @@ class BlindPeer extends ReadyResource {
 
     this.store.watch(this._oncoreopen.bind(this))
 
-    if (this.enableGc) await this.gc()
-    this.flushInterval = setInterval(this._flushBackground.bind(this), 10_000)
+    this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }
 
   async _onwakeup (discoveryKey, stream) {
@@ -214,7 +212,7 @@ class BlindPeer extends ReadyResource {
     return this.digest.bytesAllocated >= this.maxBytes
   }
 
-  async _gcUndebounced () { // Do not call directly (debounce)
+  async _gc () { // Do not call directly (assumes lock)
     if (!this.needsGc()) return
 
     const bytesToClear = this.digest.bytesAllocated - this.maxBytes
@@ -313,9 +311,16 @@ class BlindPeer extends ReadyResource {
     })
   }
 
-  _flushBackground () {
-    if (this.db.updated()) this.db.flush().catch(safetyCatch)
-    if (this.enableGc && this.needsGc()) this.gc().catch(safetyCatch)
+  async flush () { // not allowed to throw
+    if (!(await this.lock.lock())) return
+    try {
+      if (this.enableGc && this.needsGc()) await this._gc()
+      if (this.db.updated()) await this.db.flush()
+    } catch (e) {
+      safetyCatch(e)
+    } finally {
+      this.lock.unlock()
+    }
   }
 
   _onconnection (conn) {
@@ -372,7 +377,7 @@ class BlindPeer extends ReadyResource {
 
     this.db.addCore(coreRecord)
 
-    await this.db.flush()
+    await this.flush()
 
     this.emit('add-core', coreRecord, false)
 
@@ -415,7 +420,7 @@ class BlindPeer extends ReadyResource {
     }
 
     this.db.addCore(record)
-    await this.db.flush() // flush now as important data
+    await this.flush() // flush now as important data
 
     this.emit('add-core', record, true)
 
@@ -426,6 +431,7 @@ class BlindPeer extends ReadyResource {
     clearInterval(this.flushInterval)
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
+    await this.flush()
     await this.db.close()
     if (this.ownsStore) await this.store.close()
     await this.rocks.close()
