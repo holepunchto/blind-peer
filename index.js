@@ -315,7 +315,7 @@ class BlindPeer extends ReadyResource {
 
   _flushBackground () {
     if (this.db.updated()) this.db.flush().catch(safetyCatch)
-    if (this.enableGc) this.gc().catch(safetyCatch)
+    if (this.enableGc && this.needsGc()) this.gc().catch(safetyCatch)
   }
 
   _onconnection (conn) {
