@@ -99,90 +99,71 @@ test('can lookup core after blind peer restart', async t => {
   }
 })
 
-test('garbage collection when space limit reached', async t => {
-  const { bootstrap } = await getTestnet(t)
+for (let i = 0; i < 100; i++) {
+  test.solo('garbage collection when space limit reached', async t => {
+    const { bootstrap } = await getTestnet(t)
 
-  const enableGc = false // We trigger it manually, so we can test the accounting
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+    const enableGc = false // We trigger it manually, so we can test the accounting
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
 
-  const nrCores = 10
-  const nrBlocks = 200
-  const cores = []
+    const nrCores = 10
+    const nrBlocks = 200
+    const cores = []
 
-  const { swarm, store } = await setupCoreHolder(t, bootstrap)
-  {
-    const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
-    t.teardown(async () => {
-      await client.close()
-    }, { order: 0 })
+    const { swarm, store } = await setupCoreHolder(t, bootstrap)
+    {
+      const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+      t.teardown(async () => {
+        await client.close()
+      }, { order: 0 })
 
-    // First batch--these will definitely be gc'd because they will have lower 'last activity'
-    for (let i = 0; i < 5; i++) {
-      const core = store.get({ name: `core-${i}` })
-      cores.push(core)
-      const blocks = []
-      for (let j = 0; j < nrBlocks; j++) blocks.push(`core-${i}-block-${j}`)
-      await core.append(blocks)
-      client.addCoreBackground(core)
+      for (let i = 0; i < nrCores; i++) {
+        const core = store.get({ name: `core-${i}` })
+        cores.push(core)
+        const blocks = []
+        for (let j = 0; j < nrBlocks; j++) blocks.push(`core-${i}-block-${j}`)
+        await core.append(blocks)
+        client.addCoreBackground(core)
+      }
     }
 
-    // TODO: expose an event in blind-peer which allows us to detect
-    // when a core has updated
+    // TODO: some event to ensure they're fully downloaded
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    const initBytes = blindPeer.digest.bytesAllocated
+
+    const [[{ bytesCleared }]] = await Promise.all([
+      once(blindPeer, 'gc-done'),
+      blindPeer.gc()
+    ])
+
+    const nowBytes = blindPeer.digest.bytesAllocated
+    t.is(nowBytes < 10_000, true, 'gcd till below limit')
+    t.is(nowBytes > 1000, true, 'did not gc too much')
+    t.is(initBytes - bytesCleared, nowBytes, 'Bytes-cleared accounting correct')
+    t.is(nowBytes < 10000, true, 'digest updated')
+    t.is(blindPeer.digest.bytesAllocated, nowBytes, 'sanity check')
+
+    let gcdCoreI = 0
+    let origRecord = await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)
+    while (true) {
+      origRecord = await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)
+      if (origRecord.bytesAllocated === 0) break
+      gcdCoreI++
+    }
+
+    await cores[gcdCoreI].append('Block-200')
     await new Promise(resolve => setTimeout(resolve, 1000))
 
-    // Second batch--some of these will be gc'd, but which exactly depends
-    // on the order in which their blocks are downloaded (so we don't rely on it)
-    for (let i = 5; i < nrCores; i++) {
-      const core = store.get({ name: `core-${i}` })
-      cores.push(core)
-      const blocks = []
-      for (let j = 0; j < nrBlocks; j++) blocks.push(`core-${i}-block-${j}`)
-      await core.append(blocks)
-      client.addCoreBackground(core)
-    }
-  }
+    const updatedRecord = await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)
 
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  const initBytes = blindPeer.digest.bytesAllocated
-
-  const [[{ bytesCleared }]] = await Promise.all([
-    once(blindPeer, 'gc-done'),
-    blindPeer.gc()
-  ])
-
-  const nowBytes = blindPeer.digest.bytesAllocated
-  t.is(nowBytes < 10_000, true, 'gcd till below limit')
-  t.is(nowBytes > 1000, true, 'did not gc too much')
-  t.is(initBytes - bytesCleared, nowBytes, 'Bytes-cleared accounting correct')
-  t.is(nowBytes < 10000, true, 'digest updated')
-
-  t.is(cores[0].length, 200, 'sanity check')
-  t.is(blindPeer.digest.bytesAllocated, nowBytes, 'sanity check')
-
-  let updatedBytesAllocated = 0
-  let updatedBytesCleared = 0
-  for (const c of cores.slice(0, 5)) { // The cores which definitely got gc'd
-    const rec = await blindPeer.db.getCoreRecord(c.key)
-    updatedBytesAllocated += rec.bytesAllocated
-    updatedBytesCleared += rec.bytesCleared
-  }
-
-  t.is(updatedBytesAllocated, 0, 'All cores got gcd')
-  t.is(updatedBytesCleared > 10000, true, 'bytesCleared accounting correct')
-
-  const origRecord = await blindPeer.db.getCoreRecord(cores[0].key)
-  await cores[0].append('Block-200')
-  await new Promise(resolve => setTimeout(resolve, 1000))
-
-  const updatedRecord = await blindPeer.db.getCoreRecord(cores[0].key)
-
-  t.is(origRecord.bytesAllocated, 0, 'sanity check')
-  t.is(updatedRecord.bytesAllocated, 9, 'Downloads newly added blocks after gc, but not old ones')
-  t.is(updatedRecord.bytesCleared, origRecord.bytesCleared, 'Sanity check on bytesCleared accounting')
-  t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
-})
+    t.is(origRecord.bytesAllocated, 0, 'sanity check')
+    t.is(updatedRecord.bytesAllocated, 9, 'Downloads newly added blocks after gc, but not old ones')
+    t.is(updatedRecord.bytesCleared, origRecord.bytesCleared, 'Sanity check on bytesCleared accounting')
+    t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
+  })
+}
 
 async function getTestnet (t) {
   const testnet = await setupTestnet()
