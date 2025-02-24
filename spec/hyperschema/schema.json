@@ -248,6 +248,18 @@
           "required": false,
           "type": "fixed32",
           "version": 1
+        },
+        {
+          "name": "blocksCleared",
+          "required": false,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "bytesCleared",
+          "required": false,
+          "type": "uint",
+          "version": 1
         }
       ]
     }

@@ -217,14 +217,18 @@ const encoding7 = {
     c.uint.preencode(state, m.updated)
     c.uint.preencode(state, m.active)
     c.uint.preencode(state, m.priority)
-    state.end++ // max flag is 2 so always one byte
+    state.end++ // max flag is 8 so always one byte
 
     if (m.referrer) c.fixed32.preencode(state, m.referrer)
+    if (m.blocksCleared) c.uint.preencode(state, m.blocksCleared)
+    if (m.bytesCleared) c.uint.preencode(state, m.bytesCleared)
   },
   encode (state, m) {
     const flags =
       (m.announce ? 1 : 0) |
-      (m.referrer ? 2 : 0)
+      (m.referrer ? 2 : 0) |
+      (m.blocksCleared ? 4 : 0) |
+      (m.bytesCleared ? 8 : 0)
 
     c.fixed32.encode(state, m.key)
     c.uint.encode(state, m.length)
@@ -235,6 +239,8 @@ const encoding7 = {
     c.uint.encode(state, flags)
 
     if (m.referrer) c.fixed32.encode(state, m.referrer)
+    if (m.blocksCleared) c.uint.encode(state, m.blocksCleared)
+    if (m.bytesCleared) c.uint.encode(state, m.bytesCleared)
   },
   decode (state) {
     const r0 = c.fixed32.decode(state)
@@ -253,7 +259,9 @@ const encoding7 = {
       active: r4,
       priority: r5,
       announce: (flags & 1) !== 0,
-      referrer: (flags & 2) !== 0 ? c.fixed32.decode(state) : null
+      referrer: (flags & 2) !== 0 ? c.fixed32.decode(state) : null,
+      blocksCleared: (flags & 4) !== 0 ? c.uint.decode(state) : 0,
+      bytesCleared: (flags & 8) !== 0 ? c.uint.decode(state) : 0
     }
   }
 }
