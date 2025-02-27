@@ -11,7 +11,7 @@
     "compact-encoding": "^2.16.0",
     "corestore": "^7.0.5",
     "graceful-goodbye": "^1.3.3",
-    "hyper-instrument": "^1.2.0",
+    "hyper-instrument": "^2.0.0",
     "hypercore": "^11.0.12",
     "hypercore-crypto": "^3.5.0",
     "hypercore-id-encoding": "^1.3.0",
