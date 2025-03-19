@@ -45,7 +45,11 @@ test('client can use a blind-peer to add a core', async t => {
     const core = store.get({ key: coreKey })
     await core.ready()
     swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
-    await swarm.flush()
+
+    // TODO: revert to flushing when swarm.flush issue solved
+    // await swarm.flush()
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
   }
@@ -93,7 +97,11 @@ test('can lookup core after blind peer restart', async t => {
     const core = store.get({ key: coreKey })
     await core.ready()
     swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
-    await swarm.flush()
+
+    // TODO: revert to flushing when swarm.flush issue solved
+    // await swarm.flush()
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the restarted blind peer')
   }
