@@ -34,6 +34,12 @@
     "standard": "^17.1.2",
     "test-tmp": "^1.3.0"
   },
+  "files": [
+    "bin.js",
+    "index.js",
+    "lib/",
+    "spec'"
+  ],
   "scripts": {
     "test": "standard && brittle test/*.js"
   },
