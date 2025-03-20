@@ -4,13 +4,20 @@ const { command, flag } = require('paparam')
 const goodbye = require('graceful-goodbye')
 const idEnc = require('hypercore-id-encoding')
 const Instrumentation = require('hyper-instrument')
+const RegisterClient = require('autobase-discovery/client/register')
+const safetyCatch = require('safety-catch')
 
 const BlindPeer = require('.')
 
+const SERVICE_NAME = 'blind-peer'
+
 const cmd = command('blind-peer',
-  flag('--storage|-s [path]', 'storage path, defaults to ./blind-peer'),
-  flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper'),
-  flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper'),
+  flag('--storage|-s [path]', 'Storage path, defaults to ./blind-peer'),
+  flag('--autodiscovery-rpc-key [autodiscovery-rpc-key]', 'Public key where the autodiscovery service is listening. When set, the autodiscovery-seed must also be set. Can be hex or z32.'),
+  flag('--autodiscovery-seed [autodiscovery-seed]', '64-byte seed used to authenticate to the autodiscovery service.  Can be hex or z32.'),
+  flag('--autodiscovery-service-name [autodiscovery-service-name]', `Name under which to register the service (default ${SERVICE_NAME})`),
+  flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper.  Can be hex or z32.'),
+  flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
   async function ({ flags }) {
     console.info('Starting blind peer')
@@ -57,13 +64,26 @@ const cmd = command('blind-peer',
       conn.on('close', () => console.log(`Closed connection to ${key}`))
     })
 
+    if (flags.autodiscoveryRpcKey) {
+      const autodiscoveryRpcKey = idEnc.decode(flags.autodiscoveryRpcKey)
+      const seed = idEnc.decode(flags.autodiscoverySeed)
+      const serviceName = flags.autodiscoveryServiceName || SERVICE_NAME
+      const registerClient = new RegisterClient(autodiscoveryRpcKey, blindPeer.swarm.dht, seed)
+
+      // No need to block on this, so we run it in the background
+      console.info(`Registering own RPC key rpc key ${idEnc.normalize(blindPeer.publicKey)} with service '${serviceName}' at autodiscovery service ${idEnc.normalize(autodiscoveryRpcKey)} (using public key ${idEnc.normalize(registerClient.keyPair.publicKey)})`)
+      registerClient.putService(blindPeer.publicKey, serviceName)
+        .then(() => { console.info('Successfully requested to be added to the autodiscovery service') })
+        .catch(e => { console.warn(`Failed to register to the autodiscovery service: ${e.stack}`) })
+        .finally(() => { registerClient.close().catch(safetyCatch) })
+    }
+
     if (flags.scraperPublicKey) {
       const swarm = blindPeer.swarm
       console.info('Setting up instrumentation')
 
       const scraperPublicKey = idEnc.decode(flags.scraperPublicKey)
       const scraperSecret = idEnc.decode(flags.scraperSecret)
-      const prometheusServiceName = 'blind-peer'
 
       let prometheusAlias = flags.scraperAlias
       if (prometheusAlias && prometheusAlias.length > 99) throw new Error('The Prometheus alias must have length less than 100')
@@ -77,7 +97,7 @@ const cmd = command('blind-peer',
         scraperPublicKey,
         prometheusAlias,
         scraperSecret,
-        prometheusServiceName
+        SERVICE_NAME
       })
 
       instrumentation.registerLogger(console)
