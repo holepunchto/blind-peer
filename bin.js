@@ -4,7 +4,7 @@ const { command, flag } = require('paparam')
 const goodbye = require('graceful-goodbye')
 const idEnc = require('hypercore-id-encoding')
 const Instrumentation = require('hyper-instrument')
-const RegisterClient = require('autodiscovery/client/register')
+const RegisterClient = require('autobase-discovery/client/register')
 const safetyCatch = require('safety-catch')
 
 const BlindPeer = require('.')
@@ -95,7 +95,7 @@ const cmd = command('blind-peer',
         scraperPublicKey,
         prometheusAlias,
         scraperSecret,
-        prometheusServiceName
+        SERVICE_NAME
       })
 
       instrumentation.registerLogger(console)

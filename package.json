@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "autobase": "^7.0.18",
-    "autodiscovery": "holepunchto/autodiscovery",
+    "autobase-discovery": "^1.0.0",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.0.5",
     "graceful-goodbye": "^1.3.3",
