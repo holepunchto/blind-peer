@@ -38,7 +38,7 @@
     "bin.js",
     "index.js",
     "lib/",
-    "spec'"
+    "spec/"
   ],
   "scripts": {
     "test": "standard && brittle test/*.js"
