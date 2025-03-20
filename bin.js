@@ -97,7 +97,7 @@ const cmd = command('blind-peer',
         scraperPublicKey,
         prometheusAlias,
         scraperSecret,
-        SERVICE_NAME
+        prometheusServiceName: SERVICE_NAME
       })
 
       instrumentation.registerLogger(console)
