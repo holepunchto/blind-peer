@@ -171,6 +171,47 @@ test('garbage collection when space limit reached', async t => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
+test.solo('Trusted peers can set announce: true to have the blind peer announce it', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.keyPair.publicKey] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const coreAddedProm = once(blindPeer, 'add-core')
+  coreAddedProm.catch(() => {})
+
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  const coreKey = core.key
+  client.addCoreBackground(core, core.key, { announce: true })
+
+  const [record] = await coreAddedProm
+  t.alike(record.key, coreKey, 'added the core')
+  t.is(record.priority, 0, '0 Default priority')
+  t.is(record.announce, true, 'announce set')
+
+  // TODO: expose an event in blind-peer which allows us to detect
+  // when a core has updated
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  await client.close()
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    // TODO: revert to flushing when swarm.flush issue solved
+    // await swarm.flush()
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    const block = await core.get(1)
+    t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
+  }
+})
+
 async function getTestnet (t) {
   const testnet = await setupTestnet()
   t.teardown(async () => {
@@ -212,11 +253,11 @@ async function setupCoreHolder (t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc } = {}) {
+async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
-  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc })
+  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, trustedPubKeys })
 
   if (DEBUG) {
     peer.on('add-mailbox-request', (req) => {
