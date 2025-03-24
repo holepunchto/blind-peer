@@ -188,6 +188,10 @@ class BlindPeer extends ReadyResource {
     this.trustedPubKeys.add(IdEnc.normalize(key))
   }
 
+  _isTrustedPeer (key) {
+    return this.trustedPubKeys.has(IdEnc.normalize(key))
+  }
+
   async _open () {
     await this.store.ready()
     // legacy, we can remove once current ones are upgraded
@@ -195,9 +199,8 @@ class BlindPeer extends ReadyResource {
     this.db = new BlindPeerDB(this.rocks, { swarming: secretKey.subarray(0, 32), encryption: null })
     await this.db.ready()
 
-    console.log('printing...')
-    for await (const a of this.db.createAnnouncingCoresStream()) {
-      console.log(a)
+    for await (const record of this.db.createAnnouncingCoresStream()) {
+      this.swarm.join(crypto.discoveryKey(record.key))
     }
 
     if (this.swarm === null) this.swarm = new Hyperswarm({ keyPair: this.db.swarmingKeyPair })
@@ -337,6 +340,8 @@ class BlindPeer extends ReadyResource {
   }
 
   _onconnection (conn) {
+    if (this.closing) return
+
     if (this.ownsStore) this.store.replicate(conn)
     if (this.ownsWakeup) this.wakeup.addStream(conn)
 
@@ -425,10 +430,9 @@ class BlindPeer extends ReadyResource {
   async _onaddcore (stream, record) {
     if (!this.opened) await this.ready()
 
-    console.log('received record', record)
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
     if (record.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
-      throw new Error('Only trusted peer can request to announce')
+      record.announce = false
     }
 
     if (record.referrer) {
@@ -444,6 +448,9 @@ class BlindPeer extends ReadyResource {
     this.emit('add-core', record, true)
 
     await this._activateCore(stream, record)
+
+    // TODO: return the added record, so it's clear to the caller
+    // when we modified it (for example ignoring announce: true if untrusted)
   }
 
   async _close () {
