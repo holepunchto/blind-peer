@@ -209,7 +209,7 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
     await new Promise(resolve => setTimeout(resolve, 1000))
 
     const block = await core.get(1)
-    t.is(b4a.toString(block), 'Block 1', 'The blind peer is swarming directly on the core (announc processed)')
+    t.is(b4a.toString(block), 'Block 1', 'The blind peer is swarming directly on the core (announce processed)')
   }
 })
 
@@ -292,17 +292,24 @@ test('records with announce: true are announced upon startup', async t => {
     await blindPeer.close()
   }
 
-  await swarm.destroy()
+  await swarm.destroy() // So the core holder stops announcing the core
 
   {
-    const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage, trustedPubKeys })
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
-
     const { swarm, store } = await setupPeer(t, bootstrap)
     const core = store.get({ key: coreKey })
     await core.ready()
     swarm.join(core.discoveryKey)
+    await t.exception(
+      async () => {
+        await core.get(1, { timeout: 500 })
+      },
+      /REQUEST_TIMEOUT/,
+      'Sanity check: core not available without blind peer'
+    )
+
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage, trustedPubKeys })
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
