@@ -27,7 +27,7 @@
     "scope-lock": "^1.2.4"
   },
   "devDependencies": {
-    "@holepunchto/blind-peering": "^1.2.2",
+    "@holepunchto/blind-peering": "^1.3.0",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",
