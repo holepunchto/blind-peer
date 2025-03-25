@@ -19,11 +19,14 @@ const cmd = command('blind-peer',
   flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
+  flag('--trusted-peer|-t [trusted-peer]', 'Public key of a trusted peer (allowed to set announce: true). Can be more than 1.').multiple(),
   async function ({ flags }) {
     console.info('Starting blind peer')
 
     const storage = flags.storage || 'blind-peer'
-    const blindPeer = new BlindPeer(storage)
+    const trustedPubKeys = (flags.trustedPeer || []).map(k => idEnc.decode(k))
+
+    const blindPeer = new BlindPeer(storage, { trustedPubKeys })
 
     blindPeer.on('post-to-mailbox', req => {
       try {
@@ -44,6 +47,9 @@ const cmd = command('blind-peer',
     })
 
     console.info(`Using storage '${storage}'`)
+    if (trustedPubKeys.length > 0) {
+      console.info(`Trusted public keys:\n  -${[...blindPeer.trustedPubKeys].map(idEnc.normalize).join('\n  -')}`)
+    }
 
     let instrumentation = null
 
