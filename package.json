@@ -9,6 +9,7 @@
   "dependencies": {
     "autobase": "^7.0.18",
     "autobase-discovery": "^1.0.0",
+    "blind-peer-encodings": "holepunchto/blind-peer-encodings#blind-peering-merge",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.0.5",
     "graceful-goodbye": "^1.3.3",
