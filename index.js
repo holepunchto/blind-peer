@@ -13,12 +13,9 @@ const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
 
-const schema = require('./spec/hyperschema')
 const BlindPeerDB = require('./lib/db.js')
 
-const AddCoreRequest = schema.getEncoding('@blind-peer/add-core-request')
-const PostToMailboxRequest = schema.getEncoding('@blind-peer/post-to-mailbox-request')
-const Mailbox = schema.getEncoding('@blind-peer/mailbox')
+const { AddCoreEncoding, PostToMailboxEncoding, Mailbox } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor (blindPeer, core) {
@@ -350,8 +347,8 @@ class BlindPeer extends ReadyResource {
       valueEncoding: c.none
     })
 
-    rpc.respond('add-core', { requestEncoding: AddCoreRequest, responseEncoding: c.none }, this._onaddcore.bind(this, conn))
-    rpc.respond('post-to-mailbox', { requestEncoding: PostToMailboxRequest, responseEncoding: c.none }, this._onposttomailbox.bind(this, conn))
+    rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
+    rpc.respond('post-to-mailbox', PostToMailboxEncoding, this._onposttomailbox.bind(this, conn))
   }
 
   async _activateCore (stream, record) {
