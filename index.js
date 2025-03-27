@@ -196,12 +196,12 @@ class BlindPeer extends ReadyResource {
     this.db = new BlindPeerDB(this.rocks, { swarming: secretKey.subarray(0, 32), encryption: null })
     await this.db.ready()
 
+    if (this.swarm === null) this.swarm = new Hyperswarm({ keyPair: this.db.swarmingKeyPair })
+    this.swarm.on('connection', this._onconnection.bind(this))
+
     for await (const record of this.db.createAnnouncingCoresStream()) {
       this.swarm.join(crypto.discoveryKey(record.key))
     }
-
-    if (this.swarm === null) this.swarm = new Hyperswarm({ keyPair: this.db.swarmingKeyPair })
-    this.swarm.on('connection', this._onconnection.bind(this))
 
     this.store.watch(this._oncoreopen.bind(this))
 
@@ -429,6 +429,7 @@ class BlindPeer extends ReadyResource {
 
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
     if (record.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
+      this.emit('downgrade-announce', { record, remotePublicKey: stream.remotePublicKey })
       record.announce = false
     }
 
