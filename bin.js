@@ -37,12 +37,20 @@ const cmd = command('blind-peer',
       }
     })
 
-    blindPeer.on('add-core', req => {
+    blindPeer.on('add-core', record => {
       try {
-        console.log(`add-core request received for ${idEnc.normalize(req.key)} with referrer ${req.referrer && idEnc.normalize(req.referrer)}`)
-      } catch {
-        console.log('Invalid add-core request received')
-        console.log(req)
+        console.log(`add-core request received for record ${recordToStr(record)}`)
+      } catch (e) {
+        console.log(`Invalid add-core request received: ${e.stack}`)
+        console.log(record)
+      }
+    })
+
+    blindPeer.on('downgrade-announce', ({ record, remotePublicKey }) => {
+      try {
+        console.log(`Downgraded announce for peer ${idEnc.normalize(remotePublicKey)} because the peer is not trusted (Original: ${recordToStr(record)})`)
+      } catch (e) {
+        console.error(`Unexpected error while logging downgrade-announce: ${e.stack}`)
       }
     })
 
@@ -114,5 +122,9 @@ const cmd = command('blind-peer',
     console.info(`Encryption public key is ${idEnc.normalize(blindPeer.encryptionPublicKey)}`)
   }
 )
+
+function recordToStr (record) {
+  return `DB Record for key ${idEnc.normalize(record.key)} with priority: ${record.priority}. Announcing? ${record.announce}`
+}
 
 cmd.parse()
