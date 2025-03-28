@@ -358,8 +358,8 @@ test('Trusted peers can update an existing record to start announcing it', async
     t.is(record.announce, true, 'announce set in db')
   }
 
+  await swarm.destroy()
   await client.close()
-  await blindPeer.close()
 })
 
 async function getTestnet (t) {
