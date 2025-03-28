@@ -447,8 +447,8 @@ class BlindPeer extends ReadyResource {
 
     await this._activateCore(stream, record)
 
-    // TODO: return the added record, so it's clear to the caller
-    // when we modified it (for example ignoring announce: true if untrusted)
+    const coreRecord = await this.db.getCoreRecord(record.key)
+    return coreRecord
   }
 
   async _close () {
