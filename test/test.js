@@ -324,6 +324,44 @@ test('records with announce: true are announced upon startup', async t => {
   }
 })
 
+test('Trusted peers can update an existing record to start announcing it', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  const coreKey = core.key
+
+  {
+    const coreAddedProm = once(blindPeer, 'add-core')
+    coreAddedProm.catch(() => {})
+    const reply = await client.addCore(core, coreKey, { announce: false })
+    t.is(reply.announce, false, 'Sanity check')
+
+    const [record] = await coreAddedProm
+    t.alike(record.key, coreKey, 'added the core')
+    t.is(record.priority, 0, '0 Default priority')
+    t.is(record.announce, false, 'announce not set')
+  }
+
+  {
+    const coreAddedProm = once(blindPeer, 'add-core')
+    coreAddedProm.catch(() => {})
+    const reply = await client.addCore(store.get({ key: core.key }), coreKey, { announce: true })
+    t.is(reply.announce, true, 'announce now true')
+
+    const [record] = await coreAddedProm
+    t.is(record.announce, true, 'announce set in db')
+  }
+
+  await swarm.destroy()
+  await client.close()
+})
+
 async function getTestnet (t) {
   const testnet = await setupTestnet()
   t.teardown(async () => {
