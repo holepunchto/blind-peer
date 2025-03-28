@@ -9,7 +9,7 @@
   "dependencies": {
     "autobase": "^7.0.18",
     "autobase-discovery": "^1.0.0",
-    "blind-peer-encodings": "^2.0.0",
+    "blind-peer-encodings": "holepunchto/blind-peer-encodings#core-record",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.0.5",
     "graceful-goodbye": "^1.3.3",
@@ -28,7 +28,7 @@
     "scope-lock": "^1.2.4"
   },
   "devDependencies": {
-    "@holepunchto/blind-peering": "^1.3.1",
+    "@holepunchto/blind-peering": "holepunchto/blind-peering#add-seed",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",
