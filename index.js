@@ -12,6 +12,7 @@ const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
+const debounce = require('debounceify')
 
 const BlindPeerDB = require('./lib/db.js')
 
@@ -377,11 +378,11 @@ class BlindPeer extends ReadyResource {
   async _announceCore (key) {
     const core = this.store.get({ key })
     core.on('append', () => this.emit('core-append', core))
-    core.on('download', () => {
+    core.on('download', debounce(() => {
       if (core.length === core.contiguousLength) {
         this.emit('core-downloaded', core)
       }
-    })
+    }))
 
     await core.ready()
     this.swarm.join(core.discoveryKey)

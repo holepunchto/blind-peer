@@ -54,6 +54,16 @@ const cmd = command('blind-peer',
       }
     })
 
+    blindPeer.on('announce-core', core => {
+      console.info(`Started announcing core ${coreToInfo(core)}`)
+    })
+    blindPeer.on('core-downloaded', core => {
+      console.info(`Announced core fully downloaded: ${coreToInfo(core)}`)
+    })
+    blindPeer.on('core-append', core => {
+      console.info(`Detected announced-core length update: ${coreToInfo(core)}`)
+    })
+
     console.info(`Using storage '${storage}'`)
     if (trustedPubKeys.length > 0) {
       console.info(`Trusted public keys:\n  -${[...blindPeer.trustedPubKeys].map(idEnc.normalize).join('\n  -')}`)
@@ -125,6 +135,10 @@ const cmd = command('blind-peer',
 
 function recordToStr (record) {
   return `DB Record for key ${idEnc.normalize(record.key)} with priority: ${record.priority}. Announcing? ${record.announce}`
+}
+
+function coreToInfo (core) {
+  return `${idEnc.normalize(core.key)} (${core.contiguousLength} / ${core.length})`
 }
 
 cmd.parse()
