@@ -392,6 +392,40 @@ async function setupPeer (t, bootstrap) {
   return { swarm, store }
 }
 
+test('Cores added by someone who does not have them are downloaded from other peers', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const { swarm: peerSwarm, store: peerStore } = await setupPeer(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [peerSwarm.dht.defaultKeyPair.publicKey] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client = new Client(peerSwarm, peerStore, { mediaMirrors: [blindPeer.publicKey] })
+  const coreKey = core.key
+
+  {
+    const coreAddedProm = once(blindPeer, 'add-core')
+    coreAddedProm.catch(() => {})
+    const reply = await client.addCore(store.get({ key: core.key }), coreKey, { announce: true })
+    t.is(reply.announce, true, 'announce true')
+
+    const [record] = await coreAddedProm
+    t.is(record.announce, true, 'announce set in db')
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  const bpCore = blindPeer.store.get({ key: core.key })
+  await bpCore.ready()
+
+  t.is(bpCore.length, 2, 'Got core metadata')
+  t.is(bpCore.contiguousLength, 2, 'Downloaded core')
+
+  await swarm.destroy()
+  await client.close()
+})
+
 async function setupCoreHolder (t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
 

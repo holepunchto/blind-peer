@@ -167,6 +167,7 @@ class BlindPeer extends ReadyResource {
     this.maxBytes = maxBytes
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
+    this.announcedCores = new Set()
   }
 
   get encryptionPublicKey () {
@@ -199,9 +200,11 @@ class BlindPeer extends ReadyResource {
     if (this.swarm === null) this.swarm = new Hyperswarm({ keyPair: this.db.swarmingKeyPair })
     this.swarm.on('connection', this._onconnection.bind(this))
 
+    const announceProms = []
     for await (const record of this.db.createAnnouncingCoresStream()) {
-      this.swarm.join(crypto.discoveryKey(record.key))
+      announceProms.push(this._announceCore(record.key))
     }
+    await Promise.all(announceProms)
 
     this.store.watch(this._oncoreopen.bind(this))
 
@@ -358,16 +361,37 @@ class BlindPeer extends ReadyResource {
     const tracker = this.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
     if (tracker && !tracker.record) await tracker.refresh()
 
+    if (record.announce) {
+      await this._announceCore(core.key)
+    }
+
     if (stream.destroying) {
       await core.close()
       return
     }
 
     core.replicate(stream)
-    if (record.announce) {
-      this.swarm.join(core.discoveryKey)
-    }
     stream.on('close', () => core.close().catch(safetyCatch))
+  }
+
+  async _announceCore (key) {
+    const core = this.store.get({ key })
+    core.on('append', () => this.emit('core-append', core))
+    core.on('download', () => {
+      if (core.length === core.contiguousLength) {
+        this.emit('core-downloaded', core)
+      }
+    })
+
+    await core.ready()
+    this.swarm.join(core.discoveryKey)
+
+    // WARNING: we do not yet handle the case where
+    // data of an announced core is cleared
+    core.download({ start: 0, end: -1 })
+    this.announcedCores.add(core)
+
+    this.emit('announce-core', core)
   }
 
   async _onposttomailbox (stream, record) {
