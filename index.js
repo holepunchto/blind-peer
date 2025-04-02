@@ -58,6 +58,8 @@ class CoreTracker {
     if (this.record) {
       this.blindPeer.db.updateCore(this.record, this.id)
     }
+
+    this.blindPeer.emit('core-activity', this.core, this.record)
   }
 
   gc () { // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
@@ -77,6 +79,7 @@ class CoreTracker {
   }
 
   async refresh () {
+    console.log('REFRESHING')
     await this.core.ready()
     if (this.destroyed) return
 
@@ -87,6 +90,7 @@ class CoreTracker {
     if (this.destroyed || this.record || !record) return
 
     this.record = record
+    console.log('DOWNLOADING')
     this.core.download({ start: this.record.blocksCleared, end: -1 })
 
     if (this.updated) this._onupdate()
@@ -470,6 +474,8 @@ class BlindPeer extends ReadyResource {
 
     this.emit('add-core', record, true)
 
+    // console.log('activating record')
+    // console.log(record)
     await this._activateCore(stream, record)
 
     const coreRecord = await this.db.getCoreRecord(record.key)
