@@ -170,7 +170,7 @@ class BlindPeer extends ReadyResource {
     this.maxBytes = maxBytes
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
-    this.announcedCores = new Set()
+    this.announcedCores = new Map()
   }
 
   get encryptionPublicKey () {
@@ -236,11 +236,13 @@ class BlindPeer extends ReadyResource {
 
     const bytesToClear = this.digest.bytesAllocated - this.maxBytes
     let bytesCleared = 0
+    this.emit('gc-start', { bytesToClear })
 
     for await (const record of this.db.createGcCandidateReadStream()) {
       if (this.closing) return
       if (bytesCleared >= bytesToClear) break
       if (record.bytesAllocated === 0) continue
+      if (record.announce) continue // We never clear these ATM, since we do no book keeping on the cleared length of announced  cores
 
       const { key } = record
 
@@ -378,7 +380,12 @@ class BlindPeer extends ReadyResource {
   }
 
   async _announceCore (key) {
+    const coreId = IdEnc.normalize(key)
+    if (this.announcedCores.has(coreId)) return
+
     const core = this.store.get({ key })
+    this.announcedCores.set(coreId, core)
+
     core.on('append', () => this.emit('core-append', core))
     core.on('download', debounce(() => {
       if (core.length === core.contiguousLength) {
@@ -392,7 +399,6 @@ class BlindPeer extends ReadyResource {
     // WARNING: we do not yet handle the case where
     // data of an announced core is cleared
     core.download({ start: 0, end: -1 })
-    this.announcedCores.add(core)
 
     this.emit('announce-core', core)
   }

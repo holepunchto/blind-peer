@@ -6,6 +6,7 @@ const idEnc = require('hypercore-id-encoding')
 const Instrumentation = require('hyper-instrument')
 const RegisterClient = require('autobase-discovery/client/register')
 const safetyCatch = require('safety-catch')
+const byteSize = require('tiny-byte-size')
 
 const BlindPeer = require('.')
 
@@ -63,6 +64,13 @@ const cmd = command('blind-peer',
     blindPeer.on('core-append', core => {
       console.info(`Detected announced-core length update: ${coreToInfo(core)}`)
     })
+
+    blindPeer.on('gc-start', ({ bytesToClear }) => {
+      console.log(`Starting GC, trying to clear ${byteSize(bytesToClear)} (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
+    })
+    blindPeer.on('gc-done', ({ bytesCleared}) => {
+      console.log(`Completed GC, cleared ${byteSize(bytesCleared)} bytes (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
+    })
     // blindPeer.on('core-activity', (core, record) => {
     //  console.debug(`Core activity for ${coreToInfo(core)}`)
     // })
@@ -84,11 +92,14 @@ const cmd = command('blind-peer',
 
     await blindPeer.listen()
 
-    blindPeer.swarm.on('connection', (conn, peerInfo) => {
-      const key = idEnc.normalize(peerInfo.publicKey)
-      console.log(`Opened connection to ${key}`)
-      conn.on('close', () => console.log(`Closed connection to ${key}`))
-    })
+    console.info(`Bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)}`)
+
+    // TODO: debug logs
+    //  blindPeer.swarm.on('connection', (conn, peerInfo) => {
+    //   const key = idEnc.normalize(peerInfo.publicKey)
+    //   console.log(`Opened connection to ${key}`)
+    //   conn.on('close', () => console.log(`Closed connection to ${key}`))
+    // })
 
     if (flags.autodiscoveryRpcKey) {
       const autodiscoveryRpcKey = idEnc.decode(flags.autodiscoveryRpcKey)

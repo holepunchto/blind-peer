@@ -25,7 +25,8 @@
     "ready-resource": "^1.1.2",
     "rocksdb-native": "^3.1.6",
     "safety-catch": "^1.0.2",
-    "scope-lock": "^1.2.4"
+    "scope-lock": "^1.2.4",
+    "tiny-byte-size": "^1.1.0"
   },
   "devDependencies": {
     "@holepunchto/blind-peering": "^1.4.0",
