@@ -1,6 +1,6 @@
 {
   "name": "@holepunchto/blind-peer",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "WIP - nothing to see here",
   "main": "index.js",
   "bin": {
