@@ -472,8 +472,6 @@ class BlindPeer extends ReadyResource {
 
     this.emit('add-core', record, true)
 
-    // console.log('activating record')
-    // console.log(record)
     await this._activateCore(stream, record)
 
     const coreRecord = await this.db.getCoreRecord(record.key)
