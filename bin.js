@@ -31,25 +31,25 @@ const cmd = command('blind-peer',
 
     blindPeer.on('post-to-mailbox', req => {
       try {
-        console.log(`post-to-mailbox request received for mailbox: ${idEnc.normalize(req.mailbox)} with message ${idEnc.normalize(req.message)})`)
+        console.info(`post-to-mailbox request received for mailbox: ${idEnc.normalize(req.mailbox)} with message ${idEnc.normalize(req.message)})`)
       } catch {
-        console.log('Invalid post-to-mailbox request received')
-        console.log(req)
+        console.info('Invalid post-to-mailbox request received')
+        console.info(req)
       }
     })
 
     blindPeer.on('add-core', record => {
       try {
-        console.log(`add-core request received for record ${recordToStr(record)}`)
+        console.info(`add-core request received for record ${recordToStr(record)}`)
       } catch (e) {
-        console.log(`Invalid add-core request received: ${e.stack}`)
-        console.log(record)
+        console.info(`Invalid add-core request received: ${e.stack}`)
+        console.info(record)
       }
     })
 
     blindPeer.on('downgrade-announce', ({ record, remotePublicKey }) => {
       try {
-        console.log(`Downgraded announce for peer ${idEnc.normalize(remotePublicKey)} because the peer is not trusted (Original: ${recordToStr(record)})`)
+        console.info(`Downgraded announce for peer ${idEnc.normalize(remotePublicKey)} because the peer is not trusted (Original: ${recordToStr(record)})`)
       } catch (e) {
         console.error(`Unexpected error while logging downgrade-announce: ${e.stack}`)
       }
@@ -66,10 +66,10 @@ const cmd = command('blind-peer',
     })
 
     blindPeer.on('gc-start', ({ bytesToClear }) => {
-      console.log(`Starting GC, trying to clear ${byteSize(bytesToClear)} (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
+      console.info(`Starting GC, trying to clear ${byteSize(bytesToClear)} (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
     })
     blindPeer.on('gc-done', ({ bytesCleared }) => {
-      console.log(`Completed GC, cleared ${byteSize(bytesCleared)} bytes (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
+      console.info(`Completed GC, cleared ${byteSize(bytesCleared)} bytes (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
     })
     // blindPeer.on('core-activity', (core, record) => {
     //  console.debug(`Core activity for ${coreToInfo(core)}`)
@@ -88,6 +88,7 @@ const cmd = command('blind-peer',
       }
       console.info('Shutting down blind peer')
       await blindPeer.close()
+      console.info('Shut down blind peer')
     })
 
     await blindPeer.listen()
@@ -97,8 +98,8 @@ const cmd = command('blind-peer',
     // TODO: debug logs
     //  blindPeer.swarm.on('connection', (conn, peerInfo) => {
     //   const key = idEnc.normalize(peerInfo.publicKey)
-    //   console.log(`Opened connection to ${key}`)
-    //   conn.on('close', () => console.log(`Closed connection to ${key}`))
+    //   console.debug(`Opened connection to ${key}`)
+    //   conn.on('close', () => console.debug(`Closed connection to ${key}`))
     // })
 
     if (flags.autodiscoveryRpcKey) {
