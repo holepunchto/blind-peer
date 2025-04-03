@@ -392,6 +392,83 @@ async function setupPeer (t, bootstrap) {
   return { swarm, store }
 }
 
+// Illustrates a bug
+test.skip('Cores added by someone who does not have them are downloaded from other peers', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  swarm.on('connection', conn =>
+    console.log('CORE HOLDER swarm key', conn.publicKey.toString('hex'))
+  )
+  const { swarm: peerSwarm, store: peerStore } = await setupPeer(t, bootstrap)
+  const core2 = store.get({ name: 'core2' })
+  await core2.append(['core2block0', 'core2block1'])
+  console.log('disckey core11', core.discoveryKey.toString('hex'))
+  console.log('disckey core2', core2.discoveryKey.toString('hex'))
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [peerSwarm.dht.defaultKeyPair.publicKey] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client = new Client(peerSwarm, peerStore, { mediaMirrors: [blindPeer.publicKey] })
+  const coreKey = core.key
+
+  // 1) Add a core with announce: True
+  // This works fine (it connects to the peer who owns the core and downloads it)
+  {
+    const coreAddedProm = once(blindPeer, 'add-core')
+    coreAddedProm.catch(() => {})
+    const reply = await client.addCore(store.get({ key: core.key }), coreKey, { announce: true })
+    t.is(reply.announce, true, 'announce true')
+
+    const [record] = await coreAddedProm
+    t.is(record.announce, true, 'announce set in db')
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    const bpCore = blindPeer.store.get({ key: core.key })
+    await bpCore.ready()
+
+    t.is(bpCore.length, 2, 'Got core metadata')
+    t.is(bpCore.contiguousLength, 2, 'Downloaded core')
+  }
+
+  // Step 2: Add a second core with announce false, which is owned by the same peer
+  console.log('\n\n\nADDING 2nd core now\n\n\n')
+
+  {
+    const coreAddedProm = once(blindPeer, 'add-core')
+    coreAddedProm.catch(() => {})
+    const reply = await client.addCore(store.get({ key: core2.key }), core2.key, { announce: false })
+    t.is(reply.announce, false, 'announce false (sanity check)')
+  }
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  console.log('\n\n\nCHECKING now\n\n\n')
+
+  const bpCore2 = blindPeer.store.get({ key: core2.key })
+  await bpCore2.ready()
+
+  console.log('nr peers', bpCore2.peers.length)
+  console.log('blind peer streams', blindPeer.store.streamTracker)
+  console.log('core length and contig length', bpCore2.length, bpCore2.contiguousLength)
+  t.is(bpCore2.length, 2, 'blind peer saw the updated length')
+
+  // Observed behaviour: no peer gets created, until the core is re-opened again
+  // So there must be a race condition somewhere.
+  // There is a connection between the peers (I think, to confirm)
+  // so it is the peer creation itself which fails
+
+  // If we wait a bit longer, the download will be processed
+  // (because we opened a new session)
+  // await new Promise(resolve => setTimeout(resolve, 1000))
+  // console.log(bpCore2.peers.length)
+  // console.log(blindPeer.store.streamTracker)
+  // console.log(bpCore2.length, bpCore2.contiguousLength)
+
+  await swarm.destroy()
+  await client.close()
+})
+
 async function setupCoreHolder (t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
 

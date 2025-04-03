@@ -12,6 +12,7 @@ const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
+const debounce = require('debounceify')
 
 const BlindPeerDB = require('./lib/db.js')
 
@@ -57,6 +58,8 @@ class CoreTracker {
     if (this.record) {
       this.blindPeer.db.updateCore(this.record, this.id)
     }
+
+    this.blindPeer.emit('core-activity', this.core, this.record)
   }
 
   gc () { // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
@@ -147,7 +150,7 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup, maxBytes = 1_000_000_000, enableGc = true, trustedPubKeys } = {}) {
+  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
@@ -167,6 +170,7 @@ class BlindPeer extends ReadyResource {
     this.maxBytes = maxBytes
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
+    this.announcedCores = new Map()
   }
 
   get encryptionPublicKey () {
@@ -199,9 +203,11 @@ class BlindPeer extends ReadyResource {
     if (this.swarm === null) this.swarm = new Hyperswarm({ keyPair: this.db.swarmingKeyPair })
     this.swarm.on('connection', this._onconnection.bind(this))
 
+    const announceProms = []
     for await (const record of this.db.createAnnouncingCoresStream()) {
-      this.swarm.join(crypto.discoveryKey(record.key))
+      announceProms.push(this._announceCore(record.key))
     }
+    await Promise.all(announceProms)
 
     this.store.watch(this._oncoreopen.bind(this))
 
@@ -230,11 +236,13 @@ class BlindPeer extends ReadyResource {
 
     const bytesToClear = this.digest.bytesAllocated - this.maxBytes
     let bytesCleared = 0
+    this.emit('gc-start', { bytesToClear })
 
     for await (const record of this.db.createGcCandidateReadStream()) {
       if (this.closing) return
       if (bytesCleared >= bytesToClear) break
       if (record.bytesAllocated === 0) continue
+      if (record.announce) continue // We never clear these ATM, since we do no book keeping on the cleared length of announced  cores
 
       const { key } = record
 
@@ -358,16 +366,41 @@ class BlindPeer extends ReadyResource {
     const tracker = this.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
     if (tracker && !tracker.record) await tracker.refresh()
 
+    if (record.announce) {
+      await this._announceCore(core.key)
+    }
+
     if (stream.destroying) {
       await core.close()
       return
     }
 
     core.replicate(stream)
-    if (record.announce) {
-      this.swarm.join(core.discoveryKey)
-    }
     stream.on('close', () => core.close().catch(safetyCatch))
+  }
+
+  async _announceCore (key) {
+    const coreId = IdEnc.normalize(key)
+    if (this.announcedCores.has(coreId)) return
+
+    const core = this.store.get({ key })
+    this.announcedCores.set(coreId, core)
+
+    core.on('append', () => this.emit('core-append', core))
+    core.on('download', debounce(() => {
+      if (core.length === core.contiguousLength) {
+        this.emit('core-downloaded', core)
+      }
+    }))
+
+    await core.ready()
+    this.swarm.join(core.discoveryKey)
+
+    // WARNING: we do not yet handle the case where
+    // data of an announced core is cleared
+    core.download({ start: 0, end: -1 })
+
+    this.emit('announce-core', core)
   }
 
   async _onposttomailbox (stream, record) {
