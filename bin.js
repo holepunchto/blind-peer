@@ -11,10 +11,12 @@ const byteSize = require('tiny-byte-size')
 const BlindPeer = require('.')
 
 const SERVICE_NAME = 'blind-peer'
+const DEFAULT_STORAGE_LIMIT_MB = 100_000
 
 const cmd = command('blind-peer',
   flag('--storage|-s [path]', 'Storage path, defaults to ./blind-peer'),
   flag('--autodiscovery-rpc-key [autodiscovery-rpc-key]', 'Public key where the autodiscovery service is listening. When set, the autodiscovery-seed must also be set. Can be hex or z32.'),
+  flag(`--max-storage|-m [int]', 'Max storage usage, in Mb (defaults to ${DEFAULT_STORAGE_LIMIT_MB})`),
   flag('--autodiscovery-seed [autodiscovery-seed]', '64-byte seed used to authenticate to the autodiscovery service.  Can be hex or z32.'),
   flag('--autodiscovery-service-name [autodiscovery-service-name]', `Name under which to register the service (default ${SERVICE_NAME})`),
   flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper.  Can be hex or z32.'),
@@ -25,9 +27,10 @@ const cmd = command('blind-peer',
     console.info('Starting blind peer')
 
     const storage = flags.storage || 'blind-peer'
+    const maxBytes = 1_000_000 * parseInt(flags.maxStorage || DEFAULT_STORAGE_LIMIT_MB)
     const trustedPubKeys = (flags.trustedPeer || []).map(k => idEnc.decode(k))
 
-    const blindPeer = new BlindPeer(storage, { trustedPubKeys })
+    const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes })
 
     blindPeer.on('post-to-mailbox', req => {
       try {
