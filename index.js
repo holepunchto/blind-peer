@@ -79,7 +79,6 @@ class CoreTracker {
   }
 
   async refresh () {
-    console.log('REFRESHING')
     await this.core.ready()
     if (this.destroyed) return
 
@@ -90,7 +89,6 @@ class CoreTracker {
     if (this.destroyed || this.record || !record) return
 
     this.record = record
-    console.log('DOWNLOADING')
     this.core.download({ start: this.record.blocksCleared, end: -1 })
 
     if (this.updated) this._onupdate()

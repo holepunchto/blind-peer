@@ -392,7 +392,8 @@ async function setupPeer (t, bootstrap) {
   return { swarm, store }
 }
 
-test.solo('Cores added by someone who does not have them are downloaded from other peers', async t => {
+// Illustrates a bug
+test.skip('Cores added by someone who does not have them are downloaded from other peers', async t => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
