@@ -63,6 +63,9 @@ const cmd = command('blind-peer',
     blindPeer.on('core-append', core => {
       console.info(`Detected announced-core length update: ${coreToInfo(core)}`)
     })
+    blindPeer.on('core-activity', (core, record) => {
+      console.debug(`Core activity for ${coreToInfo(core)}`)
+    })
 
     console.info(`Using storage '${storage}'`)
     if (trustedPubKeys.length > 0) {
@@ -70,7 +73,6 @@ const cmd = command('blind-peer',
     }
 
     let instrumentation = null
-
     goodbye(async () => {
       if (instrumentation) {
         console.info('Closing instrumentation')
@@ -138,7 +140,7 @@ function recordToStr (record) {
 }
 
 function coreToInfo (core) {
-  return `${idEnc.normalize(core.key)} (${core.contiguousLength} / ${core.length})`
+  return `${idEnc.normalize(core.key)} (${core.contiguousLength} / ${core.length}, ${core.peers.length} peers)`
 }
 
 cmd.parse()
