@@ -68,7 +68,7 @@ const cmd = command('blind-peer',
     blindPeer.on('gc-start', ({ bytesToClear }) => {
       console.log(`Starting GC, trying to clear ${byteSize(bytesToClear)} (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
     })
-    blindPeer.on('gc-done', ({ bytesCleared}) => {
+    blindPeer.on('gc-done', ({ bytesCleared }) => {
       console.log(`Completed GC, cleared ${byteSize(bytesCleared)} bytes (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
     })
     // blindPeer.on('core-activity', (core, record) => {
