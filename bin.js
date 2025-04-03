@@ -63,9 +63,9 @@ const cmd = command('blind-peer',
     blindPeer.on('core-append', core => {
       console.info(`Detected announced-core length update: ${coreToInfo(core)}`)
     })
-    blindPeer.on('core-activity', (core, record) => {
-      console.debug(`Core activity for ${coreToInfo(core)}`)
-    })
+    // blindPeer.on('core-activity', (core, record) => {
+    //  console.debug(`Core activity for ${coreToInfo(core)}`)
+    // })
 
     console.info(`Using storage '${storage}'`)
     if (trustedPubKeys.length > 0) {
