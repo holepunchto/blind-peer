@@ -150,7 +150,7 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup, maxBytes = 1_000_000_000, enableGc = true, trustedPubKeys } = {}) {
+  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
