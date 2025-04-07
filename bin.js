@@ -7,6 +7,7 @@ const Instrumentation = require('hyper-instrument')
 const RegisterClient = require('autobase-discovery/client/register')
 const safetyCatch = require('safety-catch')
 const byteSize = require('tiny-byte-size')
+const pino = require('pino')
 
 const BlindPeer = require('.')
 
@@ -23,8 +24,13 @@ const cmd = command('blind-peer',
   flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
   flag('--trusted-peer|-t [trusted-peer]', 'Public key of a trusted peer (allowed to set announce: true). Can be more than 1.').multiple(),
+  flag('--debug|-d', 'Enable debug mode (more logs)').multiple(),
   async function ({ flags }) {
-    console.info('Starting blind peer')
+    const debug = flags.debug
+    const logger = pino({
+      level: debug ? 'debug' : 'info'
+    })
+    logger.info('Starting blind peer')
 
     const storage = flags.storage || 'blind-peer'
     const maxBytes = 1_000_000 * parseInt(flags.maxStorage || DEFAULT_STORAGE_LIMIT_MB)
@@ -34,76 +40,79 @@ const cmd = command('blind-peer',
 
     blindPeer.on('post-to-mailbox', req => {
       try {
-        console.info(`post-to-mailbox request received for mailbox: ${idEnc.normalize(req.mailbox)} with message ${idEnc.normalize(req.message)})`)
+        logger.info(`post-to-mailbox request received for mailbox: ${idEnc.normalize(req.mailbox)} with message ${idEnc.normalize(req.message)})`)
       } catch {
-        console.info('Invalid post-to-mailbox request received')
-        console.info(req)
+        logger.info('Invalid post-to-mailbox request received')
+        logger.info(req)
       }
     })
 
     blindPeer.on('add-core', record => {
       try {
-        console.info(`add-core request received for record ${recordToStr(record)}`)
+        logger.info(`add-core request received for record ${recordToStr(record)}`)
       } catch (e) {
-        console.info(`Invalid add-core request received: ${e.stack}`)
-        console.info(record)
+        logger.info(`Invalid add-core request received: ${e.stack}`)
+        logger.info(record)
       }
     })
 
     blindPeer.on('downgrade-announce', ({ record, remotePublicKey }) => {
       try {
-        console.info(`Downgraded announce for peer ${idEnc.normalize(remotePublicKey)} because the peer is not trusted (Original: ${recordToStr(record)})`)
+        logger.info(`Downgraded announce for peer ${idEnc.normalize(remotePublicKey)} because the peer is not trusted (Original: ${recordToStr(record)})`)
       } catch (e) {
-        console.error(`Unexpected error while logging downgrade-announce: ${e.stack}`)
+        logger.error(`Unexpected error while logging downgrade-announce: ${e.stack}`)
       }
     })
 
     blindPeer.on('announce-core', core => {
-      console.info(`Started announcing core ${coreToInfo(core)}`)
+      logger.info(`Started announcing core ${coreToInfo(core)}`)
     })
     blindPeer.on('core-downloaded', core => {
-      console.info(`Announced core fully downloaded: ${coreToInfo(core)}`)
+      logger.info(`Announced core fully downloaded: ${coreToInfo(core)}`)
     })
     blindPeer.on('core-append', core => {
-      console.info(`Detected announced-core length update: ${coreToInfo(core)}`)
+      logger.info(`Detected announced-core length update: ${coreToInfo(core)}`)
     })
 
     blindPeer.on('gc-start', ({ bytesToClear }) => {
-      console.info(`Starting GC, trying to clear ${byteSize(bytesToClear)} (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
+      logger.info(`Starting GC, trying to clear ${byteSize(bytesToClear)} (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
     })
     blindPeer.on('gc-done', ({ bytesCleared }) => {
-      console.info(`Completed GC, cleared ${byteSize(bytesCleared)} bytes (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
+      logger.info(`Completed GC, cleared ${byteSize(bytesCleared)} bytes (bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)})`)
     })
-    // blindPeer.on('core-activity', (core, record) => {
-    //  console.debug(`Core activity for ${coreToInfo(core)}`)
-    // })
+    if (debug) {
+      blindPeer.on('core-activity', (core) => {
+        logger.debug(`Core activity for ${coreToInfo(core)}`)
+      })
+    }
 
-    console.info(`Using storage '${storage}'`)
+    logger.info(`Using storage '${storage}'`)
     if (trustedPubKeys.length > 0) {
-      console.info(`Trusted public keys:\n  -${[...blindPeer.trustedPubKeys].map(idEnc.normalize).join('\n  -')}`)
+      logger.info(`Trusted public keys:\n  -${[...blindPeer.trustedPubKeys].map(idEnc.normalize).join('\n  -')}`)
     }
 
     let instrumentation = null
     goodbye(async () => {
       if (instrumentation) {
-        console.info('Closing instrumentation')
+        logger.info('Closing instrumentation')
         await instrumentation.close()
       }
-      console.info('Shutting down blind peer')
+      logger.info('Shutting down blind peer')
       await blindPeer.close()
-      console.info('Shut down blind peer')
+      logger.info('Shut down blind peer')
     })
 
     await blindPeer.listen()
 
-    console.info(`Bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)}`)
+    logger.info(`Bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)}`)
 
-    // TODO: debug logs
-    //  blindPeer.swarm.on('connection', (conn, peerInfo) => {
-    //   const key = idEnc.normalize(peerInfo.publicKey)
-    //   console.debug(`Opened connection to ${key}`)
-    //   conn.on('close', () => console.debug(`Closed connection to ${key}`))
-    // })
+    if (debug) {
+      blindPeer.swarm.on('connection', (conn, peerInfo) => {
+        const key = idEnc.normalize(peerInfo.publicKey)
+        logger.debug(`Opened connection to ${key}`)
+        conn.on('close', () => logger.debug(`Closed connection to ${key}`))
+      })
+    }
 
     if (flags.autodiscoveryRpcKey) {
       const autodiscoveryRpcKey = idEnc.decode(flags.autodiscoveryRpcKey)
@@ -112,16 +121,16 @@ const cmd = command('blind-peer',
       const registerClient = new RegisterClient(autodiscoveryRpcKey, blindPeer.swarm.dht, seed)
 
       // No need to block on this, so we run it in the background
-      console.info(`Registering own RPC key rpc key ${idEnc.normalize(blindPeer.publicKey)} with service '${serviceName}' at autodiscovery service ${idEnc.normalize(autodiscoveryRpcKey)} (using public key ${idEnc.normalize(registerClient.keyPair.publicKey)})`)
+      logger.info(`Registering own RPC key rpc key ${idEnc.normalize(blindPeer.publicKey)} with service '${serviceName}' at autodiscovery service ${idEnc.normalize(autodiscoveryRpcKey)} (using public key ${idEnc.normalize(registerClient.keyPair.publicKey)})`)
       registerClient.putService(blindPeer.publicKey, serviceName)
-        .then(() => { console.info('Successfully requested to be added to the autodiscovery service') })
-        .catch(e => { console.warn(`Failed to register to the autodiscovery service: ${e.stack}`) })
+        .then(() => { logger.info('Successfully requested to be added to the autodiscovery service') })
+        .catch(e => { logger.warn(`Failed to register to the autodiscovery service: ${e.stack}`) })
         .finally(() => { registerClient.close().catch(safetyCatch) })
     }
 
     if (flags.scraperPublicKey) {
       const swarm = blindPeer.swarm
-      console.info('Setting up instrumentation')
+      logger.info('Setting up instrumentation')
 
       const scraperPublicKey = idEnc.decode(flags.scraperPublicKey)
       const scraperSecret = idEnc.decode(flags.scraperSecret)
@@ -141,12 +150,12 @@ const cmd = command('blind-peer',
         prometheusServiceName: SERVICE_NAME
       })
 
-      instrumentation.registerLogger(console)
+      instrumentation.registerLogger(logger)
       await instrumentation.ready()
     }
 
-    console.info(`Listening at ${idEnc.normalize(blindPeer.publicKey)}`)
-    console.info(`Encryption public key is ${idEnc.normalize(blindPeer.encryptionPublicKey)}`)
+    logger.info(`Listening at ${idEnc.normalize(blindPeer.publicKey)}`)
+    logger.info(`Encryption public key is ${idEnc.normalize(blindPeer.encryptionPublicKey)}`)
   }
 )
 
