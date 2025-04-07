@@ -21,6 +21,7 @@
     "hyperschema": "^1.10.3",
     "hyperswarm": "^4.8.4",
     "paparam": "^1.8.0",
+    "pino": "^9.6.0",
     "protomux-wakeup": "^2.2.0",
     "ready-resource": "^1.1.2",
     "rocksdb-native": "^3.1.6",
