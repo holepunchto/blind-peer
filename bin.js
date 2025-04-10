@@ -16,15 +16,16 @@ const DEFAULT_STORAGE_LIMIT_MB = 100_000
 
 const cmd = command('blind-peer',
   flag('--storage|-s [path]', 'Storage path, defaults to ./blind-peer'),
-  flag('--autodiscovery-rpc-key [autodiscovery-rpc-key]', 'Public key where the autodiscovery service is listening. When set, the autodiscovery-seed must also be set. Can be hex or z32.'),
+  flag('--port|-p [int]', 'DHT Port to try to bind to. Only relevant when that port is not firewalled. (defaults to a random port)'),
+  flag('--trusted-peer|-t [trusted-peer]', 'Public key of a trusted peer (allowed to set announce: true). Can be more than 1.').multiple(),
+  flag('--debug|-d', 'Enable debug mode (more logs)').multiple(),
   flag(`--max-storage|-m [int]', 'Max storage usage, in Mb (defaults to ${DEFAULT_STORAGE_LIMIT_MB})`),
+  flag('--autodiscovery-rpc-key [autodiscovery-rpc-key]', 'Public key where the autodiscovery service is listening. When set, the autodiscovery-seed must also be set. Can be hex or z32.'),
   flag('--autodiscovery-seed [autodiscovery-seed]', '64-byte seed used to authenticate to the autodiscovery service.  Can be hex or z32.'),
   flag('--autodiscovery-service-name [autodiscovery-service-name]', `Name under which to register the service (default ${SERVICE_NAME})`),
   flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
-  flag('--trusted-peer|-t [trusted-peer]', 'Public key of a trusted peer (allowed to set announce: true). Can be more than 1.').multiple(),
-  flag('--debug|-d', 'Enable debug mode (more logs)').multiple(),
   async function ({ flags }) {
     const debug = flags.debug
     const logger = pino({
@@ -33,10 +34,12 @@ const cmd = command('blind-peer',
     logger.info('Starting blind peer')
 
     const storage = flags.storage || 'blind-peer'
+    const port = flags.port ? parseInt(flags.port) : undefined
+
     const maxBytes = 1_000_000 * parseInt(flags.maxStorage || DEFAULT_STORAGE_LIMIT_MB)
     const trustedPubKeys = (flags.trustedPeer || []).map(k => idEnc.decode(k))
 
-    const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes })
+    const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes, port })
 
     blindPeer.on('post-to-mailbox', req => {
       try {
