@@ -34,7 +34,7 @@ const cmd = command('blind-peer',
     logger.info('Starting blind peer')
 
     const storage = flags.storage || 'blind-peer'
-    const port = flags.port ? parseInt(flags.port) : undefined
+    const port = flags.port ? parseInt(flags.port) : null
 
     const maxBytes = 1_000_000 * parseInt(flags.maxStorage || DEFAULT_STORAGE_LIMIT_MB)
     const trustedPubKeys = (flags.trustedPeer || []).map(k => idEnc.decode(k))
