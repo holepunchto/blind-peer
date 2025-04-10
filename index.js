@@ -150,12 +150,13 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys } = {}) {
+  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks)
     this.swarm = swarm || null
+    this._port = port || null
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
@@ -200,7 +201,11 @@ class BlindPeer extends ReadyResource {
     this.db = new BlindPeerDB(this.rocks, { swarming: secretKey.subarray(0, 32), encryption: null })
     await this.db.ready()
 
-    if (this.swarm === null) this.swarm = new Hyperswarm({ keyPair: this.db.swarmingKeyPair })
+    if (this.swarm === null) {
+      const swarmOpts = { keyPair: this.db.swarmingKeyPair }
+      if (this._port) swarmOpts.port = this._port
+      this.swarm = new Hyperswarm(swarmOpts)
+    }
     this.swarm.on('connection', this._onconnection.bind(this))
 
     const announceProms = []
