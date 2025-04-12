@@ -107,6 +107,7 @@ const cmd = command('blind-peer',
 
     await blindPeer.listen()
 
+    logger.info(`Blind peer listening, local address is ${blindPeer.swarm.dht.localAddress().host}:${blindPeer.swarm.dht.localAddress().port}`)
     logger.info(`Bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)}`)
 
     if (debug) {
