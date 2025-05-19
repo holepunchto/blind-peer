@@ -396,6 +396,38 @@ test('client suspend/resume logic', async t => {
   await client.close()
 })
 
+test('client gc logic', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey], gcIntervalMs: 10 })
+  const coreKey = core.key
+
+  {
+    const coreAddedProm = once(blindPeer, 'add-core')
+    coreAddedProm.catch(() => {})
+    await client.addCore(core, coreKey, { announce: false })
+
+    const [record] = await coreAddedProm
+    t.alike(record.key, coreKey, 'added the core')
+  }
+
+  t.is(client.blindPeersByKey.size, 1, 'not yet gcd (snaity check')
+
+  await core.close()
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  t.is(client.blindPeersByKey.size, 0, 'gcd after sufficient gc ticks')
+
+  await swarm.destroy()
+  await client.close()
+})
+
 async function getTestnet (t) {
   const testnet = await setupTestnet()
   t.teardown(async () => {
