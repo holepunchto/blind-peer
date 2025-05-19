@@ -356,6 +356,46 @@ test('Trusted peers can update an existing record to start announcing it', async
   await client.close()
 })
 
+test('client suspend/resume logic', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  const coreKey = core.key
+
+  {
+    const coreAddedProm = once(blindPeer, 'add-core')
+    coreAddedProm.catch(() => {})
+    await client.addCore(core, coreKey, { announce: false })
+
+    const [record] = await coreAddedProm
+    t.alike(record.key, coreKey, 'added the core')
+  }
+
+  const getSuspendeds = () => [...client.blindPeersByKey.values()].map(v => v.peer.suspended)
+
+  t.alike(getSuspendeds(), [false], 'clients not yet suspended')
+  t.is(client.suspended, false, 'not suspended')
+
+  await client.suspend()
+
+  t.alike(getSuspendeds(), [true], 'clients suspended')
+  t.is(client.suspended, true, 'suspended')
+
+  await client.resume()
+
+  t.alike(getSuspendeds(), [false], 'clients resumed')
+  t.is(client.suspended, false, 'resumed')
+
+  await swarm.destroy()
+  await client.close()
+})
+
 async function getTestnet (t) {
   const testnet = await setupTestnet()
   t.teardown(async () => {
