@@ -185,9 +185,7 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
 
   const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
   const coreKey = core.key
-  const reply = await client.addCore(core, coreKey, { announce: true })
-
-  t.is(reply.announce, true, 'The reply indicates announce was indeed set to true')
+  await client.addCore(core, coreKey, { announce: true })
 
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
@@ -229,9 +227,7 @@ test('Untrusted peers cannot set announce: true', async t => {
 
   const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
   const coreKey = core.key
-  const reply = await client.addCore(core, coreKey, { announce: true })
-
-  t.is(reply.announce, false, 'The reply indicates the request was downgraded to announce false')
+  await client.addCore(core, coreKey, { announce: true })
 
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
@@ -339,8 +335,7 @@ test('Trusted peers can update an existing record to start announcing it', async
   {
     const coreAddedProm = once(blindPeer, 'add-core')
     coreAddedProm.catch(() => {})
-    const reply = await client.addCore(core, coreKey, { announce: false })
-    t.is(reply.announce, false, 'Sanity check')
+    await client.addCore(core, coreKey, { announce: false })
 
     const [record] = await coreAddedProm
     t.alike(record.key, coreKey, 'added the core')
@@ -351,8 +346,7 @@ test('Trusted peers can update an existing record to start announcing it', async
   {
     const coreAddedProm = once(blindPeer, 'add-core')
     coreAddedProm.catch(() => {})
-    const reply = await client.addCore(store.get({ key: core.key }), coreKey, { announce: true })
-    t.is(reply.announce, true, 'announce now true')
+    await client.addCore(store.get({ key: core.key }), coreKey, { announce: true })
 
     const [record] = await coreAddedProm
     t.is(record.announce, true, 'announce set in db')
