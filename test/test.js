@@ -405,7 +405,7 @@ test('client gc logic', async t => {
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey], gcIntervalMs: 10 })
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey], gcWait: 10 })
   const coreKey = core.key
 
   {
