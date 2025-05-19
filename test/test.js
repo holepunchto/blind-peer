@@ -417,7 +417,7 @@ test('client gc logic', async t => {
     t.alike(record.key, coreKey, 'added the core')
   }
 
-  t.is(client.blindPeersByKey.size, 1, 'not yet gcd (snaity check')
+  t.is(client.blindPeersByKey.size, 1, 'not yet gcd (sanity check')
 
   await core.close()
   await new Promise(resolve => setTimeout(resolve, 1000))
