@@ -185,7 +185,10 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
 
   const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
   const coreKey = core.key
-  await client.addCore(core, coreKey, { announce: true })
+  const res = await client.addCore(core, coreKey, { announce: true })
+
+  t.is(res.length, 1, 'addCore returns a result list')
+  t.is(res[0].announce, true, 'blind peer confirms it is announcing')
 
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
@@ -227,7 +230,9 @@ test('Untrusted peers cannot set announce: true', async t => {
 
   const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
   const coreKey = core.key
-  await client.addCore(core, coreKey, { announce: true })
+  const res = await client.addCore(core, coreKey, { announce: true })
+
+  t.is(res[0].announce, false, 'blind peer communicates the request got downgraded')
 
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
@@ -354,6 +359,41 @@ test('Trusted peers can update an existing record to start announcing it', async
 
   await swarm.destroy()
   await client.close()
+})
+
+test('Client can request multiple blind peers in one request', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const blindPeers = []
+  for (let i = 0; i < 3; i++) {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+    await blindPeer.listen()
+    blindPeers.push(blindPeer)
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 500)) // TODO: swarm flushes
+
+  const coreAddedProm = Promise.all(blindPeers.map((bp) => once(bp, 'add-core')))
+  coreAddedProm.catch(() => {})
+
+  const client = new Client(swarm, store, { mediaMirrors: blindPeers.map(bp => bp.publicKey) })
+  const coreKey = core.key
+  const res = await client.addCore(core, coreKey, { announce: true, mirrors: 3 })
+
+  t.is(res.length, 3, 'addCore returns a result list')
+  t.is(res[0].announce, true, 'blind peer confirms it is announcing')
+  t.is(res[1].announce, true, 'blind peer confirms it is announcing')
+  t.is(res[2].announce, true, 'blind peer confirms it is announcing')
+
+  const [[record1], [record2], [record3]] = await coreAddedProm
+  t.is(record1.announce, true, 'announce set')
+  t.is(record2.announce, true, 'announce set')
+  t.is(record3.announce, true, 'announce set')
+
+  await client.close()
+  await swarm.destroy() // So the core holder stops announcing the core
 })
 
 test('client suspend/resume logic', async t => {
