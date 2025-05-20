@@ -393,7 +393,7 @@ test('Client can request multiple blind peers in one request', async t => {
   t.is(record3.announce, true, 'announce set')
 
   await client.close()
-  await swarm.destroy() // So the core holder stops announcing the core
+  await swarm.destroy()
 })
 
 test('client suspend/resume logic', async t => {
