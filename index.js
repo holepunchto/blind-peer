@@ -198,7 +198,7 @@ class BlindPeer extends ReadyResource {
     await this.store.ready()
     // legacy, we can remove once current ones are upgraded
     const { secretKey } = await this.store.createKeyPair('blind-mirror-swarm')
-    this.db = new BlindPeerDB(this.rocks, { swarming: secretKey.subarray(0, 32), encryption: null })
+    this.db = new BlindPeerDB(this.rocks.session(), { swarming: secretKey.subarray(0, 32), encryption: null })
     await this.db.ready()
 
     if (this.swarm === null) {
