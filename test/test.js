@@ -55,6 +55,23 @@ test('client can use a blind-peer to add a core', async t => {
   }
 })
 
+test('relayThrough opt passed through', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const relayThrough = () => false
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey], relayThrough })
+  await client.addCore(core)
+
+  t.alike([...client.blindPeersByKey.values()][0].peer.relayThrough, relayThrough, 'passed through to clients')
+
+  await client.close()
+})
+
 test('can lookup core after blind peer restart', async t => {
   const { bootstrap } = await getTestnet(t)
 
