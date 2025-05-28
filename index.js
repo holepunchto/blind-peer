@@ -154,7 +154,7 @@ class BlindPeer extends ReadyResource {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
-    this.store = store || new Corestore(this.rocks)
+    this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
     this._port = port || null
     this.trustedPubKeys = new Set()
@@ -253,7 +253,7 @@ class BlindPeer extends ReadyResource {
 
       // Explicitly opening the core ensures an active replication
       // session exists
-      const core = this.store.get({ key, active: false })
+      const core = this.store.get({ key })
       await core.ready()
       if (this.closing) return
       const id = b4a.toString(core.discoveryKey, 'hex')
@@ -365,7 +365,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _activateCore (stream, record) {
-    const core = this.store.get({ key: record.key, active: false })
+    const core = this.store.get({ key: record.key })
     await core.ready()
 
     const tracker = this.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
@@ -437,7 +437,7 @@ class BlindPeer extends ReadyResource {
 
     this.emit('add-core', coreRecord, false)
 
-    const core = this.store.get({ key, manifest, keyPair, active: false })
+    const core = this.store.get({ key, manifest, keyPair })
     await core.ready()
 
     if (blockEncryptionKey) await core.setEncryptionKey(blockEncryptionKey, { block: true })
@@ -473,7 +473,7 @@ class BlindPeer extends ReadyResource {
 
     if (record.referrer) {
       // ensure referrer is allocated...
-      const core = this.store.get({ key: record.referrer, active: false })
+      const core = this.store.get({ key: record.referrer })
       await core.ready()
       await core.close()
     }

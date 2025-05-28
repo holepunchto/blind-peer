@@ -11,7 +11,7 @@
     "autobase-discovery": "^1.0.0",
     "blind-peer-encodings": "^3.0.0",
     "compact-encoding": "^2.16.0",
-    "corestore": "^7.0.5",
+    "corestore": "^7.4.4",
     "graceful-goodbye": "^1.3.3",
     "hyper-instrument": "^2.0.0",
     "hypercore": "^11.0.12",
