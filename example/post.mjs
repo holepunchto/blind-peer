@@ -1,4 +1,4 @@
-import BlindPeerClient from '@holepunchto/blind-peer-client'
+import BlindPeerClient from 'blind-peer-client'
 import Hyperswarm from 'hyperswarm'
 import IdEnc from 'hypercore-id-encoding'
 

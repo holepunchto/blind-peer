@@ -4,7 +4,7 @@ const Corestore = require('corestore')
 const tmpDir = require('test-tmp')
 const { once } = require('events')
 const b4a = require('b4a')
-const Client = require('@holepunchto/blind-peering')
+const Client = require('blind-peering')
 const Hyperswarm = require('hyperswarm')
 const BlindPeer = require('..')
 

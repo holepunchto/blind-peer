@@ -30,7 +30,7 @@
     "tiny-byte-size": "^1.1.0"
   },
   "devDependencies": {
-    "@holepunchto/blind-peering": "^1.6.5",
+    "blind-peering": "holepunchto/blind-peering#public",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",
