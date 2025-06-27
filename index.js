@@ -518,7 +518,7 @@ class BlindPeer extends ReadyResource {
 
     new promClient.Gauge({ // eslint-disable-line no-new
       name: 'blind_peer_cores_added',
-      help: 'The total amount of add-core RPC requests that were processed',
+      help: 'The total amount of add-core RPC requests that have been processed',
       collect () {
         this.set(self.stats.coresAdded)
       }
