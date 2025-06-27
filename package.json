@@ -34,6 +34,7 @@
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",
+    "prom-client": "^15.1.3",
     "standard": "^17.1.2",
     "test-tmp": "^1.3.0"
   },

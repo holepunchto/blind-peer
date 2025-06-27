@@ -6,6 +6,7 @@ const { once } = require('events')
 const b4a = require('b4a')
 const Client = require('@holepunchto/blind-peering')
 const Hyperswarm = require('hyperswarm')
+const promClient = require('prom-client')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -483,6 +484,71 @@ test('client gc logic', async t => {
 
   await swarm.destroy()
   await client.close()
+})
+
+test('Prometheus metrics', async t => {
+  // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
+  const { bootstrap } = await getTestnet(t)
+
+  const enableGc = false // We trigger it manually, so we can test the accounting
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
+  blindPeer.registerMetrics(promClient)
+  t.teardown(() => {
+    promClient.register.clear()
+  })
+
+  {
+    const metrics = await promClient.register.metrics()
+    t.ok(metrics.includes('blind_peer_bytes_allocated 0'), 'blind_peer_bytes_allocated included')
+    t.ok(metrics.includes('blind_peer_bytes_gcd 0'), 'blind_peer_bytes_gcd included')
+    t.ok(metrics.includes('blind_peer_cores_added 0'), 'blind_peer_cores_added included')
+  }
+
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const nrCores = 10
+  const nrBlocks = 200
+  const cores = []
+
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  {
+    const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+    t.teardown(async () => {
+      await client.close()
+    }, { order: 0 })
+
+    for (let i = 0; i < nrCores; i++) {
+      const core = store.get({ name: `core-${i}` })
+      cores.push(core)
+      const blocks = []
+      for (let j = 0; j < nrBlocks; j++) blocks.push(`core-${i}-block-${j}`)
+      await core.append(blocks)
+      client.addCoreBackground(core)
+    }
+  }
+
+  // TODO: some event to ensure they're fully downloaded
+  await new Promise(resolve => setTimeout(resolve, 2000))
+
+  const [[{ bytesCleared }]] = await Promise.all([
+    once(blindPeer, 'gc-done'),
+    blindPeer._gc()
+  ])
+
+  const nowBytes = blindPeer.digest.bytesAllocated
+  t.is(nowBytes < 10_000, true, 'gcd till below limit')
+
+  {
+    const getMetricValue = (text, name) => {
+      console.log(text.split(name)[3])
+      return parseInt(text.split(name)[3]) // hack
+    }
+    const metrics = await promClient.register.metrics()
+    t.is(getMetricValue(metrics, 'blind_peer_bytes_gcd'), bytesCleared, 'blind_peer_bytes_gcd')
+    t.is(getMetricValue(metrics, 'blind_peer_cores_added'), nrCores, 'blind_peer_cores_added')
+    t.is(getMetricValue(metrics, 'blind_peer_bytes_allocated'), nowBytes, 'blind_peer_bytes_allocated')
+  }
 })
 
 async function getTestnet (t) {

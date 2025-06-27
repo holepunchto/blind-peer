@@ -154,6 +154,7 @@ const cmd = command('blind-peer',
         prometheusServiceName: SERVICE_NAME
       })
 
+      blindPeer.registerMetrics(instrumentation.promClient)
       instrumentation.registerLogger(logger)
       await instrumentation.ready()
     }

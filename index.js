@@ -172,6 +172,11 @@ class BlindPeer extends ReadyResource {
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
+
+    this.stats = {
+      bytesGcd: 0,
+      coresAdded: 0
+    }
   }
 
   get encryptionPublicKey () {
@@ -269,6 +274,7 @@ class BlindPeer extends ReadyResource {
 
     await this.db.flush()
     if (this.closing) return
+    this.stats.bytesGcd += bytesCleared
     this.emit('gc-done', { bytesCleared })
   }
 
@@ -481,6 +487,7 @@ class BlindPeer extends ReadyResource {
     this.db.addCore(record)
     await this.flush() // flush now as important data
 
+    this.stats.coresAdded++
     this.emit('add-core', record, true)
 
     await this._activateCore(stream, record)
@@ -497,6 +504,33 @@ class BlindPeer extends ReadyResource {
     await this.db.close()
     if (this.ownsStore) await this.store.close()
     await this.rocks.close()
+  }
+
+  registerMetrics (promClient) {
+    const self = this
+    new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_bytes_allocated',
+      help: 'The amount of bytes allocated by the hyperdb (as reported in its digest)',
+      collect () {
+        this.set(self.digest.bytesAllocated)
+      }
+    })
+
+    new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_cores_added',
+      help: 'The total amount of add-core RPC requests that have been processed',
+      collect () {
+        this.set(self.stats.coresAdded)
+      }
+    })
+
+    new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_bytes_gcd',
+      help: 'The total amount of bytes garbage collected since the process started',
+      collect () {
+        this.set(self.stats.bytesGcd)
+      }
+    })
   }
 }
 
