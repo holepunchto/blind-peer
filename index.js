@@ -130,7 +130,7 @@ class WakeupHandler {
     this.active = false
   }
 
-  async onpeeradd (peer, session) {
+  async onpeeractive (peer, session) {
     const referrer = this.key
     const query = {
       gte: { referrer },
@@ -228,8 +228,13 @@ class BlindPeer extends ReadyResource {
     const auth = await this.store.storage.getAuth(discoveryKey)
     if (!auth) return
 
-    const w = this.wakeup.session(auth.key, new WakeupHandler(this.db, auth.key, discoveryKey))
+    const handler = new WakeupHandler(this.db, auth.key, discoveryKey)
+    const w = this.wakeup.session(auth.key, handler)
     w.addStream(stream)
+
+    for (const peer of w.peers) {
+      if (peer.active) handler.onpeeractive(peer, w)
+    }
   }
 
   async listen () {
