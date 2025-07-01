@@ -137,7 +137,7 @@ class WakeupHandler {
       gte: { referrer },
       lte: { referrer },
       reverse: true,
-      limit: 24
+      limit: 32
     }
 
     try {
