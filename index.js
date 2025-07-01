@@ -497,6 +497,8 @@ class BlindPeer extends ReadyResource {
 
     if (record.referrer) {
       // ensure referrer is allocated...
+      // TODO: move to a dedicated wakeup collection, insted of using a core since we moved away from that
+      // still works atm, cause dkey
       const muxer = stream.userData
       const core = this.store.get({ key: record.referrer })
       await core.ready()
