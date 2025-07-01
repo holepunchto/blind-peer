@@ -9,6 +9,7 @@
   "dependencies": {
     "autobase": "^7.0.18",
     "autobase-discovery": "^1.0.0",
+    "b4a": "^1.6.7",
     "blind-peer-encodings": "^3.0.0",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.4.4",
@@ -22,6 +23,7 @@
     "hyperswarm": "^4.8.4",
     "paparam": "^1.8.0",
     "pino": "^9.6.0",
+    "protomux-rpc": "^1.7.1",
     "protomux-wakeup": "^2.2.0",
     "ready-resource": "^1.1.2",
     "rocksdb-native": "^3.1.6",
