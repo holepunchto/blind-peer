@@ -423,7 +423,7 @@ class BlindPeer extends ReadyResource {
     })
 
     await core.ready()
-    this.swarm.join(core.discoveryKey)
+    this.swarm.join(core.discoveryKey, { server: true, client: false })
 
     // WARNING: we do not yet handle the case where
     // data of an announced core is cleared

@@ -321,7 +321,7 @@ test('records with announce: true are announced upon startup', async t => {
     const { swarm, store } = await setupPeer(t, bootstrap)
     const core = store.get({ key: coreKey })
     await core.ready()
-    swarm.join(core.discoveryKey)
+    const topic = swarm.join(core.discoveryKey)
     await t.exception(
       async () => {
         await core.get(1, { timeout: 500 })
@@ -336,7 +336,7 @@ test('records with announce: true are announced upon startup', async t => {
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await topic.refresh()
 
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Restarted blind peer announces the core')
