@@ -29,6 +29,7 @@ class CoreTracker {
     this.referrerDiscoveryKey = null
     this.channel = null
     this.downloadRange = null
+    this.announceToReferrerBound = this.announceToReferrer.bind(this)
 
     const onupdate = this._onupdate.bind(this)
     const onactive = this._onactive.bind(this)
@@ -46,9 +47,7 @@ class CoreTracker {
     this.record.length = this.core.length
     this.record.bytesAllocated = this.core.byteLength - this.record.bytesCleared
     this.blindPeer.db.updateCore(this.record, this.id)
-    this.blindPeer.flush().catch(safetyCatch)
-
-    if (this.record.referrer) this.announceToReferrer()
+    this.blindPeer.flush().then(this.announceToReferrerBound, safetyCatch)
   }
 
   _onactive () {
@@ -495,6 +494,9 @@ class BlindPeer extends ReadyResource {
       record.announce = false
     }
 
+    this.db.addCore(record)
+    await this.flush() // flush now as important data
+
     if (record.referrer) {
       // ensure referrer is allocated...
       // TODO: move to a dedicated wakeup collection, insted of using a core since we moved away from that
@@ -507,9 +509,6 @@ class BlindPeer extends ReadyResource {
 
       await this._onwakeup(discoveryKey, muxer)
     }
-
-    this.db.addCore(record)
-    await this.flush() // flush now as important data
 
     this.stats.coresAdded++
     this.emit('add-core', record, true)
