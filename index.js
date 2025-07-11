@@ -371,7 +371,10 @@ class BlindPeer extends ReadyResource {
   }
 
   _onconnection (conn) {
-    if (this.closing) return
+    if (this.closing) {
+      conn.destroy()
+      return
+    }
 
     if (this.ownsStore) this.store.replicate(conn)
     if (this.ownsWakeup) this.wakeup.addStream(conn)
