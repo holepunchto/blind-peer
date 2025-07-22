@@ -1,7 +1,7 @@
 {
-  "name": "@holepunchto/blind-peer",
+  "name": "blind-peer",
   "version": "2.7.4",
-  "description": "WIP - nothing to see here",
+  "description": "Blind peers help keep hypercores available",
   "main": "index.js",
   "bin": {
     "blind-peer": "bin.js"
