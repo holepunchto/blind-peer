@@ -1,6 +1,5 @@
 const Corestore = require('corestore')
 const Hypercore = require('hypercore')
-const { OplogMessage } = require('autobase/lib/messages.js')
 const RocksDB = require('rocksdb-native')
 const ReadyResource = require('ready-resource')
 const Hyperswarm = require('hyperswarm')
@@ -15,7 +14,7 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
-const { AddCoreEncoding, PostToMailboxEncoding, Mailbox } = require('blind-peer-encodings')
+const { AddCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor (blindPeer, core) {
@@ -293,38 +292,6 @@ class BlindPeer extends ReadyResource {
     this.emit('gc-done', { bytesCleared })
   }
 
-  static createMailbox (blindPeerEncryptionPublicKey, opts = {}) {
-    const {
-      encryptionKey,
-      seed = crypto.randomBytes(32),
-      referrer = null
-    } = opts
-
-    const keyPair = crypto.keyPair(seed)
-    const manifest = {
-      signers: [{
-        publicKey: keyPair.publicKey
-      }]
-    }
-
-    const key = Hypercore.key(manifest)
-    const blockEncryptionKey = encryptionKey
-      ? Hypercore.blockEncryptionKey(key, encryptionKey)
-      : null
-
-    const mailbox = {
-      version: 0,
-      seed,
-      referrer,
-      blockEncryptionKey
-    }
-
-    const buffer = c.encode(Mailbox, mailbox)
-    const cipher = crypto.encrypt(buffer, blindPeerEncryptionPublicKey)
-
-    return cipher
-  }
-
   _onreferrerupdates (updates) {
     const pending = new Set()
 
@@ -385,7 +352,6 @@ class BlindPeer extends ReadyResource {
     })
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
-    rpc.respond('post-to-mailbox', PostToMailboxEncoding, this._onposttomailbox.bind(this, conn))
   }
 
   async _activateCore (stream, record) {
@@ -432,60 +398,6 @@ class BlindPeer extends ReadyResource {
     core.download({ start: 0, end: -1 })
 
     this.emit('announce-core', core)
-  }
-
-  async _onposttomailbox (stream, record) {
-    if (!record.mailbox || !record.message) return
-    if (!this.opened) await this.ready()
-
-    const buffer = crypto.decrypt(record.mailbox, this.db.encryptionKeyPair)
-    if (!buffer) return
-
-    const { version, seed, referrer, blockEncryptionKey } = c.decode(Mailbox, buffer)
-    if (version !== 0) return
-
-    const keyPair = crypto.keyPair(seed)
-    const manifest = { signers: [{ publicKey: keyPair.publicKey }] }
-    const key = Hypercore.key(manifest)
-
-    const coreRecord = {
-      key,
-      referrer,
-      deprecatedAutobase: null,
-      deprecatedAutobaseBlockKey: null,
-      priority: record.mailbox.referrer ? 1 : 0,
-      announce: false
-    }
-
-    this.db.addCore(coreRecord)
-
-    await this.flush()
-
-    this.emit('add-core', coreRecord, false)
-
-    const core = this.store.get({ key, manifest, keyPair })
-    await core.ready()
-
-    if (blockEncryptionKey) await core.setEncryptionKey(blockEncryptionKey, { block: true })
-
-    const message = !referrer
-      ? record.message
-      : c.encode(OplogMessage, {
-        version: 1,
-        maxSupportedVersion: 1,
-        digest: null,
-        checkpoint: null,
-        node: {
-          heads: [],
-          batch: 1,
-          value: record.message
-        }
-      })
-
-    this.emit('post-to-mailbox', record)
-
-    await core.append(message)
-    await core.close()
   }
 
   async _onaddcore (stream, record) {

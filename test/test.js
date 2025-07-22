@@ -675,21 +675,6 @@ async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trus
   const swarm = new Hyperswarm({ bootstrap })
   const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, trustedPubKeys })
 
-  if (DEBUG) {
-    peer.on('add-mailbox-request', (req) => {
-      console.log('add-mailbox request received for autobase', req.autobase)
-    })
-    peer.on('add-mailbox-response', (req, resp) => {
-      console.log('add-mailbox response for autobase', resp.autobase)
-    })
-    peer.on('post-to-mailbox-request', () => {
-      console.log('post-to-mailbox req received')
-    })
-    peer.on('post-to-mailbox-response', () => {
-      console.log('post to mailbox response')
-    })
-  }
-
   const order = clientCounter++
   t.teardown(async () => {
     await peer.close()
