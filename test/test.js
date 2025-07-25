@@ -398,7 +398,7 @@ test('Client can request multiple blind peers in one request', async t => {
 
   const client = new Client(swarm, store, { mediaMirrors: blindPeers.map(bp => bp.publicKey) })
   const coreKey = core.key
-  const res = await client.addCore(core, coreKey, { announce: true, mirrors: 3 })
+  const res = await client.addCore(core, coreKey, { announce: true, pick: 3 })
 
   t.is(res.length, 3, 'addCore returns a result list')
   t.is(res[0].announce, true, 'blind peer confirms it is announcing')
