@@ -8,6 +8,8 @@ const RegisterClient = require('autobase-discovery/client/register')
 const safetyCatch = require('safety-catch')
 const byteSize = require('tiny-byte-size')
 const pino = require('pino')
+const path = require('path')
+const Hyperswarm = require('hyperswarm')
 
 const BlindPeer = require('.')
 
@@ -27,6 +29,7 @@ const cmd = command('blind-peer',
   flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
   flag('--repl', 'Expose a repl-swarm (use for debugging only)'),
+  flag('--bootstrap [bootstrap]', '(for tests) Bootstrap DHT node to use, in format <host>:<port> (e.g. 127.0.0.1:10000)'),
   async function ({ flags }) {
     const debug = flags.debug
     const logger = pino({
@@ -34,14 +37,22 @@ const cmd = command('blind-peer',
     })
     logger.info('Starting blind peer')
 
-    const storage = flags.storage || 'blind-peer'
+    const storage = path.resolve(flags.storage || 'blind-peer')
     const port = flags.port ? parseInt(flags.port) : null
+
+    let bootstrap = null
+    if (flags.bootstrap) {
+      const [host, port] = flags.bootstrap.split(':')
+      bootstrap = [{ port: parseInt(port), host }]
+      logger.warn(`Using non-standard bootstrap: ${bootstrap[0].host}:${bootstrap[0].port}`)
+    }
 
     const exposeRepl = flags.repl === true
     const maxBytes = 1_000_000 * parseInt(flags.maxStorage || DEFAULT_STORAGE_LIMIT_MB)
     const trustedPubKeys = (flags.trustedPeer || []).map(k => idEnc.decode(k))
 
-    const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes, port })
+    const swarm = new Hyperswarm({ bootstrap })
+    const blindPeer = new BlindPeer(storage, { swarm, trustedPubKeys, maxBytes, port })
 
     blindPeer.on('post-to-mailbox', req => {
       try {
