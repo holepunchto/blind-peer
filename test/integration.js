@@ -10,6 +10,9 @@ const rrp = require('resolve-reject-promise')
 const path = require('path')
 const b4a = require('b4a')
 const { once } = require('events')
+const Hyperswarm = require('hyperswarm')
+const Corestore = require('corestore')
+const BlindPeerClient = require('blind-peering')
 
 const DEBUG = true
 
@@ -34,7 +37,11 @@ test('integration test', async t => {
   const allowedKeyPair = HypCrypto.keyPair(autodiscoverySeed)
   const allowedPubKey = IdEnc.normalize(allowedKeyPair.publicKey)
   const { rpcKey } = await setupAutobaseDiscovery(t, allowedPubKey, txtBootstrap, logger.child({ service: 'autodiscovery' }))
-  await setupBlindPeer(t, autodiscoverySeed, rpcKey, txtBootstrap, logger.child({ service: 'blind peer' }))
+  const { blindPeerKey } = await setupBlindPeer(t, autodiscoverySeed, rpcKey, txtBootstrap, logger.child({ service: 'blind peer' }))
+
+  const { coreKey, coreLength } = await setupCoreHolder(t, bootstrap, blindPeerKey)
+
+  // await downloadCoreFromBlindPeer(t, bootstrap, coreKey, coreLength, blindPeerKey)
 
   tMain.pass('completed test')
 })
@@ -75,7 +82,8 @@ async function setupBlindPeer (t, autodiscoverySeed, autodiscoveryRpcKey, bootst
   })
 
   const blindPeerKey = await promise
-  await new Promise(resolve => setTimeout(resolve, 500)) // to flush announce
+  await flush()
+
   return { blindPeerKey }
 }
 
@@ -118,8 +126,73 @@ async function setupAutobaseDiscovery (t, allowedPubKey, bootstrap, logger) {
   })
 
   const rpcKey = await promise
-  await new Promise(resolve => setTimeout(resolve, 500)) // to flush announce
+  await flush()
   return { rpcKey }
+}
+
+async function setupCoreHolder (t, bootstrap, blindPeerKey, { nrBlocks = 1000, name = 'core' } = {}) {
+  const subT = t.test('core holder')
+  subT.plan(1)
+  blindPeerKey = IdEnc.decode(blindPeerKey)
+
+  const { store, swarm } = await setupPeer(t, bootstrap)
+
+  const core = store.get({ name })
+  await core.ready()
+
+  const batch = []
+  for (let i = 0; i < nrBlocks; i++) {
+    batch.push(`Block ${i}`)
+  }
+  await core.append(batch)
+
+  let nrUploaded = 0
+  core.on('upload', () => { // Works because it's a single peer
+    if (++nrUploaded === nrBlocks) subT.pass('Uploaded hypercore to blind peer')
+  })
+
+  const coreLength = core.length
+  const client = new BlindPeerClient(swarm, store, { mirrors: [blindPeerKey] })
+  await client.addCore(core)
+
+  await subT
+  await client.close()
+  await swarm.destroy()
+  await store.close()
+
+  return { coreKey: core.key, coreLength }
+}
+
+async function downloadCoreFromBlindPeer (t, bootstrap, coreKey, coreLength, blindPeerKey) {
+  coreKey = IdEnc.decode(coreKey)
+  blindPeerKey = IdEnc.decode(coreKey)
+  const { swarm, store } = await setupPeer(t, bootstrap)
+
+  const core = store.get({ key: coreKey })
+  console.log('joining peer', blindPeerKey)
+  swarm.joinPeer(blindPeerKey)
+
+  console.log('downloading', coreLength)
+  await core.download({ start: 0, end: coreLength }).done()
+
+  t.is(core.length > 0, true, 'sanity check')
+  t.is(core.length, coreLength, 'Can download core from blind peer')
+
+  await swarm.destroy()
+  await store.close()
+  console.log('downloaded')
+}
+
+async function setupPeer (t, bootstrap) {
+  const swarm = new Hyperswarm({ bootstrap })
+  const store = new Corestore(await t.tmp())
+
+  swarm.on('connection', (conn) => {
+    console.log('opened connection')
+    // store.replicate(conn)
+  })
+
+  return { swarm, store }
 }
 
 function parseLine (line) {
@@ -128,4 +201,8 @@ function parseLine (line) {
     msg = JSON.parse(line)?.msg
   } catch {} // for lines not logged through pino
   return msg
+}
+
+async function flush () {
+  await new Promise(resolve => setTimeout(resolve, 500))
 }
