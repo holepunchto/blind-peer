@@ -502,6 +502,10 @@ test('Prometheus metrics', async t => {
     t.ok(metrics.includes('blind_peer_bytes_allocated 0'), 'blind_peer_bytes_allocated included')
     t.ok(metrics.includes('blind_peer_bytes_gcd 0'), 'blind_peer_bytes_gcd included')
     t.ok(metrics.includes('blind_peer_cores_added 0'), 'blind_peer_cores_added included')
+    t.ok(metrics.includes('blind_peer_cores 0'), 'blind_peer_cores included')
+    t.ok(metrics.includes('blind_peer_core_activations 0'), 'blind_peer_core_activations included')
+    t.ok(metrics.includes('blind_peer_wakeups 0'), 'blind_peer_wakeups')
+    t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
   }
 
   await blindPeer.listen()
@@ -541,13 +545,14 @@ test('Prometheus metrics', async t => {
 
   {
     const getMetricValue = (text, name) => {
-      console.log(text.split(name)[3])
       return parseInt(text.split(name)[3]) // hack
     }
     const metrics = await promClient.register.metrics()
     t.is(getMetricValue(metrics, 'blind_peer_bytes_gcd'), bytesCleared, 'blind_peer_bytes_gcd')
     t.is(getMetricValue(metrics, 'blind_peer_cores_added'), nrCores, 'blind_peer_cores_added')
     t.is(getMetricValue(metrics, 'blind_peer_bytes_allocated'), nowBytes, 'blind_peer_bytes_allocated')
+    t.is(getMetricValue(metrics, 'blind_peer_cores'), nrCores, 'blind_peer_cores')
+    t.is(getMetricValue(metrics, 'blind_peer_db_flushes') > 0, true, 'blind_peer_db_flushes')
   }
 })
 

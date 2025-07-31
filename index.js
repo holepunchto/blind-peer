@@ -174,7 +174,9 @@ class BlindPeer extends ReadyResource {
 
     this.stats = {
       bytesGcd: 0,
-      coresAdded: 0
+      coresAdded: 0,
+      activations: 0,
+      wakeups: 0
     }
   }
 
@@ -224,6 +226,8 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onwakeup (discoveryKey, muxer) {
+    this.stats.wakeups++
+
     const auth = await this.store.storage.getAuth(discoveryKey)
     if (!auth) return
 
@@ -331,6 +335,7 @@ class BlindPeer extends ReadyResource {
       if (this.enableGc && this.needsGc()) await this._gc()
       if (this.db.updated()) await this.db.flush()
     } catch (e) {
+      this.emit('flush-error', e)
       safetyCatch(e)
     } finally {
       this.lock.unlock()
@@ -355,6 +360,8 @@ class BlindPeer extends ReadyResource {
   }
 
   async _activateCore (stream, record) {
+    this.stats.activations++
+
     const core = this.store.get({ key: record.key })
     await core.ready()
 
@@ -455,6 +462,14 @@ class BlindPeer extends ReadyResource {
     })
 
     new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_cores',
+      help: 'The amount of cores (as reported in its digest)',
+      collect () {
+        this.set(self.digest.cores)
+      }
+    })
+
+    new promClient.Gauge({ // eslint-disable-line no-new
       name: 'blind_peer_cores_added',
       help: 'The total amount of add-core RPC requests that have been processed',
       collect () {
@@ -467,6 +482,30 @@ class BlindPeer extends ReadyResource {
       help: 'The total amount of bytes garbage collected since the process started',
       collect () {
         this.set(self.stats.bytesGcd)
+      }
+    })
+
+    new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_core_activations',
+      help: 'The total amount of hypercore activations since the process started',
+      collect () {
+        this.set(self.stats.activations)
+      }
+    })
+
+    new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_wakeups',
+      help: 'The total amount of hypercore wakeups since the process started',
+      collect () {
+        this.set(self.stats.wakeups)
+      }
+    })
+
+    new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_db_flushes',
+      help: 'The total amount of database flushes since the process started',
+      collect () {
+        this.set(self.db.stats.flushes)
       }
     })
   }
