@@ -43,13 +43,8 @@ const cmd = command('blind-peer',
 
     const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes, port })
 
-    blindPeer.on('post-to-mailbox', req => {
-      try {
-        logger.info(`post-to-mailbox request received for mailbox: ${idEnc.normalize(req.mailbox)} with message ${idEnc.normalize(req.message)})`)
-      } catch {
-        logger.info('Invalid post-to-mailbox request received')
-        logger.info(req)
-      }
+    blindPeer.on('flush-error', e => {
+      logger.warn(`Error while flushing the db: ${e.stack}`)
     })
 
     blindPeer.on('add-core', record => {
