@@ -41,6 +41,9 @@
     "standard": "^17.1.2",
     "test-tmp": "^1.3.0"
   },
+  "overrides": {
+    "udx-native": "npm:udx-native@next"
+  },
   "files": [
     "bin.js",
     "index.js",
