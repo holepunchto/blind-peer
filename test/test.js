@@ -207,6 +207,7 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
 
   t.is(res.length, 1, 'addCore returns a result list')
   t.is(res[0].announce, true, 'blind peer confirms it is announcing')
+  t.is(blindPeer.nrAnnouncedCores, 1, 'nrAnnouncedCores correct')
 
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
@@ -506,6 +507,7 @@ test('Prometheus metrics', async t => {
     t.ok(metrics.includes('blind_peer_core_activations 0'), 'blind_peer_core_activations included')
     t.ok(metrics.includes('blind_peer_wakeups 0'), 'blind_peer_wakeups')
     t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
+    t.ok(metrics.includes('blind_peer_announced_cores 0'), 'blind_peer_announced_cores')
   }
 
   await blindPeer.listen()
