@@ -192,6 +192,10 @@ class BlindPeer extends ReadyResource {
     return this.db.digest
   }
 
+  get nrAnnouncedCores () {
+    return this.announcedCores.size
+  }
+
   addTrustedPubKey (key) {
     this.trustedPubKeys.add(IdEnc.normalize(key))
   }
@@ -506,6 +510,14 @@ class BlindPeer extends ReadyResource {
       help: 'The total amount of database flushes since the process started',
       collect () {
         this.set(self.db.stats.flushes)
+      }
+    })
+
+    new promClient.Gauge({ // eslint-disable-line no-new
+      name: 'blind_peer_announced_cores',
+      help: 'The amount of announced cores',
+      collect () {
+        this.set(self.nrAnnouncedCores)
       }
     })
   }
