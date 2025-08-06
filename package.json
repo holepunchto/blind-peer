@@ -1,6 +1,6 @@
 {
   "name": "blind-peer",
-  "version": "2.7.6",
+  "version": "2.7.7",
   "description": "Blind peers help keep hypercores available",
   "main": "index.js",
   "bin": {
