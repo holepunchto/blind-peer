@@ -155,7 +155,7 @@ class BlindPeer extends ReadyResource {
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
-    this._port = port || null
+    this._port = port || 0
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
@@ -213,7 +213,7 @@ class BlindPeer extends ReadyResource {
 
     if (this.swarm === null) {
       const swarmOpts = { keyPair: this.db.swarmingKeyPair }
-      if (this._port) swarmOpts.port = this._port
+      if (this._port) swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
       this.swarm = new Hyperswarm(swarmOpts)
     }
     this.swarm.on('connection', this._onconnection.bind(this))
