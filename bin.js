@@ -8,6 +8,7 @@ const RegisterClient = require('autobase-discovery/client/register')
 const safetyCatch = require('safety-catch')
 const byteSize = require('tiny-byte-size')
 const pino = require('pino')
+const b4a = require('b4a')
 
 const BlindPeer = require('.')
 
@@ -113,11 +114,10 @@ const cmd = command('blind-peer',
       )
     }
 
-    await blindPeer.listen()
-
-    logger.info(`Blind peer listening, local address is ${blindPeer.swarm.dht.localAddress().host}:${blindPeer.swarm.dht.localAddress().port}`)
-    logger.info(`Bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)}`)
-
+    await blindPeer.ready() // needed to be able to access the swarm object
+    blindPeer.swarm.on('ban', (peerInfo, err) => {
+      logger.warn(`Banned peer: ${b4a.toString(peerInfo.publicKey, 'hex')}.\n${err.stack}`)
+    })
     if (debug) {
       blindPeer.swarm.on('connection', (conn, peerInfo) => {
         const key = idEnc.normalize(peerInfo.publicKey)
@@ -125,6 +125,11 @@ const cmd = command('blind-peer',
         conn.on('close', () => logger.debug(`Closed connection to ${key}`))
       })
     }
+
+    await blindPeer.listen()
+
+    logger.info(`Blind peer listening, local address is ${blindPeer.swarm.dht.localAddress().host}:${blindPeer.swarm.dht.localAddress().port}`)
+    logger.info(`Bytes allocated: ${byteSize(blindPeer.digest.bytesAllocated)} of ${byteSize(blindPeer.maxBytes)}`)
 
     if (flags.autodiscoveryRpcKey) {
       const autodiscoveryRpcKey = idEnc.decode(flags.autodiscoveryRpcKey)
