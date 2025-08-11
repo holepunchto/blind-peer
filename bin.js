@@ -27,7 +27,7 @@ const cmd = command('blind-peer',
   flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
-  flag('--repl', 'Expose a repl-swarm (use for debugging only)'),
+  flag('--repl [repl]', 'Expose a repl-swarm at the passed-in seed (32 bytes in hex or z32 notation). Use for debugging only.'),
   async function ({ flags }) {
     const debug = flags.debug
     const logger = pino({
@@ -39,7 +39,6 @@ const cmd = command('blind-peer',
     const storage = flags.storage || 'blind-peer'
     const port = flags.port ? parseInt(flags.port) : null
 
-    const exposeRepl = flags.repl === true
     const maxBytes = 1_000_000 * parseInt(flags.maxStorage || DEFAULT_STORAGE_LIMIT_MB)
     const trustedPubKeys = (flags.trustedPeer || []).map(k => idEnc.decode(k))
 
@@ -104,15 +103,11 @@ const cmd = command('blind-peer',
       logger.info('Shut down blind peer')
     })
 
-    if (exposeRepl) {
+    if (flags.repl) {
+      const seed = idEnc.decode(flags.repl)
       logger.warn('Setting up REPL swarm, enabling remote access to this process')
       const replSwarm = require('repl-swarm')
-      const seed = replSwarm({ blindPeer, instrumentation })
-      setInterval(
-        () => {
-          logger.info(`REPL swarm available at ${seed}`)
-        }, 1000 * 60 * 60
-      )
+      replSwarm({ seed, logSeed: false, blindPeer, instrumentation })
     }
 
     await blindPeer.ready() // needed to be able to access the swarm object
