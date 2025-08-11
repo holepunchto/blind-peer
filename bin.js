@@ -31,7 +31,8 @@ const cmd = command('blind-peer',
   async function ({ flags }) {
     const debug = flags.debug
     const logger = pino({
-      level: debug ? 'debug' : 'info'
+      level: debug ? 'debug' : 'info',
+      name: 'blind-peer'
     })
     logger.info('Starting blind peer')
 
