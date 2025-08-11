@@ -27,7 +27,7 @@ const cmd = command('blind-peer',
   flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
-  flag('--repl [repl]', 'Expose a repl-swarm at the passed-in seed (64 bytes in hex or z32 notation). Use for debugging only.'),
+  flag('--repl [repl]', 'Expose a repl-swarm at the passed-in seed (32 bytes in hex or z32 notation). Use for debugging only.'),
   async function ({ flags }) {
     const debug = flags.debug
     const logger = pino({
