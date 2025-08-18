@@ -190,7 +190,7 @@ function streamToStr (stream) {
   const pubKey = idEnc.normalize(stream.remotePublicKey)
   const { port, host } = getAddress(stream)
   const address = port && host ? `${host}:${port}` : 'No address'
-  return `${pubKey} (${address}`
+  return `${pubKey} (${address})`
 }
 
 function coreToInfo (core) {
