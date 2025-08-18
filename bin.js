@@ -9,6 +9,7 @@ const safetyCatch = require('safety-catch')
 const byteSize = require('tiny-byte-size')
 const pino = require('pino')
 const b4a = require('b4a')
+const hypCrypto = require('hypercore-crypto')
 
 const BlindPeer = require('.')
 
@@ -48,9 +49,9 @@ const cmd = command('blind-peer',
       logger.warn(`Error while flushing the db: ${e.stack}`)
     })
 
-    blindPeer.on('add-core', record => {
+    blindPeer.on('add-core', (record, _, stream) => {
       try {
-        logger.info(`add-core request received for record ${recordToStr(record)}`)
+        logger.info(`add-core request received from peer ${streamToStr(stream)} for record ${recordToStr(record)}`)
       } catch (e) {
         logger.info(`Invalid add-core request received: ${e.stack}`)
         logger.info(record)
@@ -174,11 +175,18 @@ const cmd = command('blind-peer',
 )
 
 function recordToStr (record) {
-  return `DB Record for key ${idEnc.normalize(record.key)} with priority: ${record.priority}. Announcing? ${record.announce}`
+  const discKey = hypCrypto.discoveryKey(record.key)
+  return `DB Record for discovery key ${idEnc.normalize(discKey)} with priority: ${record.priority}. Announcing? ${record.announce}`
+}
+
+function streamToStr (stream) {
+  const pubKey = idEnc.normalize(stream.remotePublicKey)
+  return `${pubKey}`
 }
 
 function coreToInfo (core) {
-  return `${idEnc.normalize(core.key)} (${core.contiguousLength} / ${core.length}, ${core.peers.length} peers)`
+  const discKey = hypCrypto.discoveryKey(core.key)
+  return `Discovery key ${idEnc.normalize(discKey)} (${core.contiguousLength} / ${core.length}, ${core.peers.length} peers)`
 }
 
 cmd.parse()
