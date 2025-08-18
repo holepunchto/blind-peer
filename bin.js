@@ -179,18 +179,9 @@ function recordToStr (record) {
   return `DB Record for discovery key ${idEnc.normalize(discKey)} with priority: ${record.priority}. Announcing? ${record.announce}`
 }
 
-function getAddress (stream) {
-  return {
-    host: stream.rawStream?.remoteHost || null,
-    port: stream.rawStream?.remotePort || null
-  }
-}
-
 function streamToStr (stream) {
   const pubKey = idEnc.normalize(stream.remotePublicKey)
-  const { port, host } = getAddress(stream)
-  const address = port && host ? `${host}:${port}` : 'No address'
-  return `${pubKey} (${address})`
+  return `${pubKey}`
 }
 
 function coreToInfo (core) {
