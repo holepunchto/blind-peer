@@ -206,10 +206,14 @@ class BlindPeer extends ReadyResource {
 
   async _open () {
     await this.store.ready()
+
     // legacy, we can remove once current ones are upgraded
     const { secretKey } = await this.store.createKeyPair('blind-mirror-swarm')
     this.db = new BlindPeerDB(this.rocks.session(), { swarming: secretKey.subarray(0, 32), encryption: null })
     await this.db.ready()
+
+    // We don't need to track our own db, so we set this handler after the db core opened
+    this.store.watch(this._oncoreopen.bind(this))
 
     if (this.swarm === null) {
       const swarmOpts = { keyPair: this.db.swarmingKeyPair }
@@ -223,8 +227,6 @@ class BlindPeer extends ReadyResource {
       announceProms.push(this._announceCore(record.key))
     }
     await Promise.all(announceProms)
-
-    this.store.watch(this._oncoreopen.bind(this))
 
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }

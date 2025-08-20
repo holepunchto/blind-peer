@@ -201,6 +201,8 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
   const coreAddedProm = once(blindPeer, 'add-core')
   coreAddedProm.catch(() => {})
 
+  t.is(blindPeer.activeReplication.size, 0, 'sanity check (no cores yet)')
+
   const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
   const coreKey = core.key
   const res = await client.addCore(core, coreKey, { announce: true })
@@ -213,6 +215,8 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
   t.alike(record.key, coreKey, 'added the core')
   t.is(record.priority, 0, '0 Default priority')
   t.is(record.announce, true, 'announce set')
+
+  t.is(blindPeer.activeReplication.size, 1, 'added to active replication set')
 
   // TODO: expose an event in blind-peer which allows us to detect
   // when a core has updated
@@ -291,7 +295,7 @@ test('records with announce: true are announced upon startup', async t => {
 
   let blindPeerStorage = null
   let coreKey = null
-
+  let replicatedDiscKeys = null
   {
     const { blindPeer, storage } = await setupBlindPeer(t, bootstrap, { trustedPubKeys })
     blindPeerStorage = storage
@@ -311,6 +315,9 @@ test('records with announce: true are announced upon startup', async t => {
 
     // TODO: debug why, without this, we get an unhandled rejection
     await new Promise(resolve => setTimeout(resolve, 1000))
+
+    replicatedDiscKeys = [...blindPeer.activeReplication.keys()]
+    t.alike(replicatedDiscKeys, [b4a.toString(core.discoveryKey, 'hex')])
 
     await client.close()
     await blindPeer.close()
@@ -334,6 +341,8 @@ test('records with announce: true are announced upon startup', async t => {
     const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage, trustedPubKeys })
     await blindPeer.listen()
     await blindPeer.swarm.flush()
+
+    t.alike([...blindPeer.activeReplication.keys()], replicatedDiscKeys, 'announced core is tracked upon startup')
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
