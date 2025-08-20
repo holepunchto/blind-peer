@@ -487,6 +487,65 @@ test('client gc logic', async t => {
   await client.close()
 })
 
+test('invalid requests are emitted', async t => {
+  t.plan(3)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  blindPeer.on('invalid-request', (core, err, req, from) => {
+    t.is(err.code, 'INVALID_OPERATION', 'invalid-request event received')
+  })
+
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  let coreKey = null
+  const coreAddedProm = once(blindPeer, 'add-core')
+
+  coreAddedProm.catch(() => {})
+  let client = null
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  coreKey = core.key
+  client.addCoreBackground(core)
+
+  const [record] = await coreAddedProm
+  t.alike(record.key, coreKey, 'added the core')
+
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  await client.close()
+  await swarm.destroy() // So the core holder stops announcing the core
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    await new Promise(resolve => setTimeout(resolve, 250))
+    t.is(core.replicator.peers.length, 1, 'sanity check (we connected)')
+
+    const invalidReq = {
+      peer: core.replicator.peers[0],
+      rt: 0,
+      id: 1,
+      fork: 0,
+      block: { index: 0, nodes: 2 },
+      hash: null,
+      seek: { bytes: 1, padding: 1 }, // invalid to both seek and block when upgrading
+      upgrade: { start: 0, length: 2 },
+      manifest: false,
+      priority: 1,
+      timestamp: 1754412092523,
+      elapsed: 0
+    }
+    core.replicator._inflight.add(invalidReq)
+    core.replicator.peers[0].wireRequest.send(invalidReq)
+  }
+})
+
 test('Prometheus metrics', async t => {
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
