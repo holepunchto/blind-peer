@@ -331,6 +331,9 @@ class BlindPeer extends ReadyResource {
         this.activeReplication.delete(id)
       }
     })
+    session.on('invalid-request', (err, req, from) => {
+      this.emit('invalid-request', session, err, req, from)
+    })
   }
 
   async flush () { // not allowed to throw
