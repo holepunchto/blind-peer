@@ -2,7 +2,7 @@
 
 Blind peers help keep hypercores available.
 
-For the client side responsible for pushing data to Blind Peers see [blind-peering](https://github.com/holepunchto/blind-peering).
+For the client side responsible for requesting cores be kept by Blind Peers, see [blind-peering](https://github.com/holepunchto/blind-peering).
 
 ## Installation
 
