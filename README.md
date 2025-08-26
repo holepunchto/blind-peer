@@ -38,7 +38,7 @@ blind-peer
 
 When started, ndjson (pino) will be emitted for events. An example startup will look like:
 
-```
+```jsonl
 {"level":30,"time":1751662694931,"pid":96069,"hostname":"L293","msg":"Starting blind peer"}
 {"level":30,"time":1751662694932,"pid":96069,"hostname":"L293","msg":"Using storage 'blind-peer'"}
 {"level":30,"time":1751662696936,"pid":96069,"hostname":"L293","msg":"Blind peer listening, local address is 10.0.0.214:49741"}
@@ -53,7 +53,7 @@ To use a blind peer, use [blind-peering](https://github.com/holepunchto/blind-pe
 
 Here is an example, using the key from above
 
-```
+```js
 import BlindPeering from 'blind-peering'
 import Hyperswarm from 'hyperswarm'
 import Corestore from 'corestore'
