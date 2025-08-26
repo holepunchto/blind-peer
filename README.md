@@ -2,6 +2,8 @@
 
 Blind peers help keep hypercores available.
 
+For the client side responsible for pushing data to Blind Peers see [blind-peering](https://github.com/holepunchto/blind-peering).
+
 ## Installation
 
 Install globally to use the `blind-peer` command:
@@ -52,7 +54,7 @@ To use a blind peer, use [blind-peering](https://github.com/holepunchto/blind-pe
 Here is an example, using the key from above
 
 ```
-import BlindPeering from '@holepunchto/blind-peering'
+import BlindPeering from 'blind-peering'
 import Hyperswarm from 'hyperswarm'
 import Corestore from 'corestore'
 import Wakeup from 'protomux-wakeup'
@@ -63,7 +65,11 @@ const wakeup = new Wakeup()
 
 const DEFAULT_BLIND_PEER_KEYS = ['es4n7ty45odd1udfqyi9xz58mrbheuhdnxgdufsn9gz6e5uhsqco']
 const blind = new BlindPeering(swarm, store, { wakeup, mirrors: DEFAULT_BLIND_PEER_KEYS })
+
+// Add your autobase
 blind.addAutobaseBackground(autobase1)
+
+// Add another core
 blind.addCore(core1, autobase1.wakeupCapability.key)
 
 ```
