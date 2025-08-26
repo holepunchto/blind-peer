@@ -239,13 +239,12 @@ class BlindPeer extends ReadyResource {
 
     const stream = muxer.stream
     const handler = new WakeupHandler(this.db, auth.key, discoveryKey)
-    const w = this.wakeup.session(auth.key, handler)
 
-    if (w.getPeer(stream)) {
-      w.destroy()
+    if (this.wakeup.hasStream(stream, auth.key, handler)) {
       return
     }
 
+    const w = this.wakeup.session(auth.key, handler)
     w.addStream(stream)
 
     for (const peer of w.peers) {
