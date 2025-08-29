@@ -2,6 +2,8 @@
 
 Blind peers help keep hypercores available.
 
+For the client side responsible for requesting cores be kept by Blind Peers, see [blind-peering](https://github.com/holepunchto/blind-peering).
+
 ## Installation
 
 Install globally to use the `blind-peer` command:
@@ -36,7 +38,7 @@ blind-peer
 
 When started, ndjson (pino) will be emitted for events. An example startup will look like:
 
-```
+```jsonl
 {"level":30,"time":1751662694931,"pid":96069,"hostname":"L293","msg":"Starting blind peer"}
 {"level":30,"time":1751662694932,"pid":96069,"hostname":"L293","msg":"Using storage 'blind-peer'"}
 {"level":30,"time":1751662696936,"pid":96069,"hostname":"L293","msg":"Blind peer listening, local address is 10.0.0.214:49741"}
@@ -51,8 +53,8 @@ To use a blind peer, use [blind-peering](https://github.com/holepunchto/blind-pe
 
 Here is an example, using the key from above
 
-```
-import BlindPeering from '@holepunchto/blind-peering'
+```js
+import BlindPeering from 'blind-peering'
 import Hyperswarm from 'hyperswarm'
 import Corestore from 'corestore'
 import Wakeup from 'protomux-wakeup'
@@ -63,7 +65,11 @@ const wakeup = new Wakeup()
 
 const DEFAULT_BLIND_PEER_KEYS = ['es4n7ty45odd1udfqyi9xz58mrbheuhdnxgdufsn9gz6e5uhsqco']
 const blind = new BlindPeering(swarm, store, { wakeup, mirrors: DEFAULT_BLIND_PEER_KEYS })
+
+// Add your autobase
 blind.addAutobaseBackground(autobase1)
+
+// Add another core
 blind.addCore(core1, autobase1.wakeupCapability.key)
 
 ```
