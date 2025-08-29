@@ -424,7 +424,7 @@ class BlindPeer extends ReadyResource {
       record.announce = false
     }
 
-    // We only add it to the db the first time (no updates allowed)
+    // We only add it to the db the first time (prio, announce etc can't be changed)
     // Note: not race condition safe, but it's no problem if we do add the same core twice
     const existing = await this.db.getCoreRecord(record.key)
     if (!existing) {
