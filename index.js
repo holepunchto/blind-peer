@@ -424,8 +424,13 @@ class BlindPeer extends ReadyResource {
       record.announce = false
     }
 
-    this.db.addCore(record)
-    await this.flush() // flush now as important data
+    // We only add it to the db the first time (no updates allowed)
+    // Note: not race condition safe, but it's no problem if we do add the same core twice
+    const existing = await this.db.getCoreRecord(record.key)
+    if (!existing) {
+      this.db.addCore(record)
+      await this.flush() // flush now as important data
+    }
 
     if (record.referrer) {
       // ensure referrer is allocated...
