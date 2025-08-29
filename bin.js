@@ -92,7 +92,7 @@ const cmd = command('blind-peer',
       const address = `${from.stream?.rawStream?.remoteHost}:${from.stream?.rawStream?.remotePort}`
       const remotePubKey = idEnc.normalize(from.stream.remotePublicKey)
       const key = idEnc.normalize(core.key)
-      console.warn(`Received invalid request for core ${key} from peer ${remotePubKey} at ${address} (${err.stack})`)
+      logger.warn(`Received invalid request for core ${key} from peer ${remotePubKey} at ${address} (${err.stack})`)
     })
 
     logger.info(`Using storage '${storage}'`)
