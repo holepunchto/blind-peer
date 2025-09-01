@@ -127,6 +127,13 @@ const cmd = command('blind-peer',
         const key = idEnc.normalize(peerInfo.publicKey)
         logger.debug(`Opened connection to ${key}`)
         conn.on('close', () => logger.debug(`Closed connection to ${key}`))
+        conn.on('error', (err) => {
+          if (err.code === 'ECONNRESET') {
+            logger.debug(`Connection error with ${key}: ${err.stack}`)
+            return
+          }
+          logger.info(`Connection error with ${key}: ${err.stack}`)
+        })
       })
     }
 
