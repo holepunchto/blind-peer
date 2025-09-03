@@ -7,7 +7,6 @@
     "blind-peer": "bin.js"
   },
   "dependencies": {
-    "autobase": "^7.0.18",
     "autobase-discovery": "^1.0.0",
     "b4a": "^1.6.7",
     "blind-peer-encodings": "^3.0.0",
@@ -33,7 +32,8 @@
     "tiny-byte-size": "^1.1.0"
   },
   "devDependencies": {
-    "blind-peering": "^1.10.1",
+    "autobase": "^7.18.1",
+    "blind-peering": "holepunchto/blind-peering#mirror-all-known-cores-if-needed",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",

@@ -7,6 +7,7 @@ const b4a = require('b4a')
 const Client = require('blind-peering')
 const Hyperswarm = require('hyperswarm')
 const promClient = require('prom-client')
+const Autobase = require('autobase')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -55,6 +56,55 @@ test('client can use a blind-peer to add a core', async t => {
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
   }
 })
+
+test.solo('client can use a blind-peer to add an autobase', async t => {
+  t.plan(2)
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  let nrAdded = 0
+  const addedKeys = new Set()
+  blindPeer.on('add-core', record => {
+    nrAdded++
+    addedKeys.add(b4a.toString(record.key, 'hex'))
+    if (addedKeys.size >= 9) {
+      t.pass('added all autobase cores')
+      console.log('total add core requests received', nrAdded)
+    }
+  })
+
+  const { swarm: indexerSwarm, base: indexer, store: indexerStore } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const bases = []
+  for (let i = 0; i < 5; i++) {
+    const { swarm, base } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
+    await swarm.flush()
+    await Promise.all([
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+      once(base, 'writable')
+    ])
+
+    await base.append({ some: 'thing' })
+    bases.push(base)
+  }
+
+  await indexer.append({ some: 'thing' })
+  for (const b of bases) { await b.append({ some: 'thing' }) }
+
+  t.is(indexer.activeWriters.map.size, 6, 'sanity check')
+  const client = new Client(indexerSwarm, indexerStore, { mirrors: [blindPeer.publicKey] })
+
+  await client.addAutobase(indexer)
+})
+
+// TODO: create an autobase, and send an addAutobase request
+// verify it adds all active writers
+// make one of those send a new addAutobase request
+// verify it doesn't add anything
 
 test('repeated add-core requests do not result in db updates', async t => {
   const { bootstrap } = await getTestnet(t)
@@ -776,6 +826,32 @@ async function setupCoreHolder (t, bootstrap) {
   swarm.join(core.discoveryKey)
 
   return { swarm, store, core }
+}
+
+async function setupAutobaseHolder (t, bootstrap, autobaseBootstrap = null) {
+  const { swarm, store } = await setupPeer(t, bootstrap)
+
+  const open = (store) => {
+    return store.get('view', { valueEncoding: 'json' })
+  }
+
+  const apply = async (batch, view, base) => {
+    for (const { value } of batch) {
+      if (value.add) {
+        const key = b4a.from(value.add, 'hex')
+        await base.addWriter(key, { indexer: true })
+        continue
+      }
+
+      if (view) await view.append(value)
+    }
+  }
+
+  const base = new Autobase(store.namespace('base'), autobaseBootstrap, { open, apply, valueEncoding: 'json', ackInterval: 0, ackThreshold: 0 })
+  await base.ready()
+  swarm.join(base.discoveryKey)
+
+  return { swarm, store, base }
 }
 
 async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
