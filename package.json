@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "autobase": "^7.18.1",
-    "blind-peering": "holepunchto/blind-peering#mirror-all-known-cores-if-needed",
+    "blind-peering": "^1.10.1",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",

@@ -57,31 +57,24 @@ test('client can use a blind-peer to add a core', async t => {
   }
 })
 
-test.solo('client can use a blind-peer to add an autobase', async t => {
-  t.plan(2)
+test('client can use a blind-peer to add an autobase', async t => {
+  const tFirstAdd = t.test()
+  tFirstAdd.plan(2)
+  const tSecondAdd = t.test()
+  tSecondAdd.plan(2)
+
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  let nrAdded = 0
-  const addedKeys = new Set()
-  blindPeer.on('add-core', record => {
-    nrAdded++
-    addedKeys.add(b4a.toString(record.key, 'hex'))
-    if (addedKeys.size >= 9) {
-      t.pass('added all autobase cores')
-      console.log('total add core requests received', nrAdded)
-    }
-  })
-
   const { swarm: indexerSwarm, base: indexer, store: indexerStore } = await setupAutobaseHolder(t, bootstrap)
   await indexerSwarm.flush()
 
   const bases = []
-  for (let i = 0; i < 5; i++) {
-    const { swarm, base } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
+  for (let i = 0; i < 2; i++) {
+    const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
     await swarm.flush()
     await Promise.all([
       indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
@@ -89,22 +82,82 @@ test.solo('client can use a blind-peer to add an autobase', async t => {
     ])
 
     await base.append({ some: 'thing' })
-    bases.push(base)
+    bases.push({ base, swarm, store })
   }
 
   await indexer.append({ some: 'thing' })
-  for (const b of bases) { await b.append({ some: 'thing' }) }
+  for (const { base } of bases) { await base.append({ some: 'thing' }) }
 
-  t.is(indexer.activeWriters.map.size, 6, 'sanity check')
-  const client = new Client(indexerSwarm, indexerStore, { mirrors: [blindPeer.publicKey] })
+  t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
 
-  await client.addAutobase(indexer)
+  // A first writer adds the autobase
+  {
+    const expectedAddedKeys = new Set([
+      b4a.toString(indexer.local.key, 'hex'),
+      b4a.toString(indexer.system.core.key, 'hex'),
+      b4a.toString(indexer._applyState.encryptionView.core.key, 'hex'),
+      b4a.toString(indexer.view.core.key, 'hex')
+    ])
+
+    let nrAdded = 0
+    const addedKeys = new Set()
+    const onaddcore = (record) => {
+      nrAdded++
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+      if (addedKeys.size > expectedAddedKeys.size) {
+        t.fail('more keys added than expected')
+      }
+      if (addedKeys.size === expectedAddedKeys.size) {
+        if (DEBUG) console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
+        tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
+      }
+    }
+    blindPeer.on('add-core', onaddcore)
+
+    const client = new Client(indexerSwarm, indexerStore, { mirrors: [blindPeer.publicKey] })
+    await client.addAutobase(indexer)
+    await tFirstAdd
+
+    // Give some time for extra requests to cause test failure
+    await new Promise(resolve => setTimeout(resolve, 100))
+    blindPeer.off('add-core', onaddcore)
+  }
+
+  // Another writer adds the autobase as well
+  {
+    const expectedAddedKeys = new Set([
+      b4a.toString(bases[0].base.local.key, 'hex'),
+      b4a.toString(bases[0].base.system.core.key, 'hex'),
+      b4a.toString(bases[0].base._applyState.encryptionView.core.key, 'hex'),
+      b4a.toString(bases[0].base.view.core.key, 'hex')
+    ])
+
+    let nrAdded = 0
+    const addedKeys = new Set()
+    const onaddcore = (record) => {
+      nrAdded++
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+      if (addedKeys.size > expectedAddedKeys.size) {
+        t.fail('more keys added than expected')
+      }
+      if (addedKeys.size === expectedAddedKeys.size) {
+        if (DEBUG) console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        tSecondAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
+        tSecondAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
+      }
+    }
+    blindPeer.on('add-core', onaddcore)
+
+    const client = new Client(bases[0].swarm, bases[0].store, { mirrors: [blindPeer.publicKey] })
+    await client.addAutobase(bases[0].base)
+    await tSecondAdd
+
+    // Give some time for extra requests to cause test failure
+    await new Promise(resolve => setTimeout(resolve, 100))
+    blindPeer.off('add-core', onaddcore)
+  }
 })
-
-// TODO: create an autobase, and send an addAutobase request
-// verify it adds all active writers
-// make one of those send a new addAutobase request
-// verify it doesn't add anything
 
 test('repeated add-core requests do not result in db updates', async t => {
   const { bootstrap } = await getTestnet(t)
