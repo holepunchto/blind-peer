@@ -156,7 +156,9 @@ test('client can use a blind-peer to add an autobase', async t => {
 })
 
 test('passive client can use a blind-peer to add a passive core', async t => {
-  t.plan(3)
+  t.plan(6)
+  const tAddCore = t.test()
+  tAddCore.plan(1)
 
   const { bootstrap } = await getTestnet(t)
 
@@ -164,33 +166,56 @@ test('passive client can use a blind-peer to add a passive core', async t => {
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const { swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
-  t.is(store.active, false, 'sanity check')
-  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
-  t.teardown(async () => {
-    await client.close()
-  })
+  let coreKey = null
+  {
+    const { swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
+    t.is(store.active, false, 'sanity check')
+    const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+    t.teardown(async () => {
+      await client.close()
+    })
 
-  const passiveCore = store.get({ name: 'passive', active: false })
-  await passiveCore.append('block0')
-  await passiveCore.append('block1')
-  const coreKey = passiveCore.key
+    const passiveCore = store.get({ name: 'passive', active: false })
+    await passiveCore.append('block0')
+    await passiveCore.append('block1')
+    coreKey = passiveCore.key
 
-  const oncoreactivity = (core) => {
-    if (!b4a.equals(core.key, coreKey)) return
-    if (core.contiguousLength === passiveCore.length) {
-      t.pass('Fully downloaded the core')
-      blindPeer.off('core-activity', oncoreactivity)
+    const oncoreactivity = (core) => {
+      if (!b4a.equals(core.key, coreKey)) return
+      if (core.contiguousLength === passiveCore.length) {
+        tAddCore.pass('Fully downloaded the core')
+        blindPeer.off('core-activity', oncoreactivity)
+      }
     }
-  }
-  blindPeer.on('core-activity', oncoreactivity)
+    blindPeer.on('core-activity', oncoreactivity)
 
-  const [record] = await client.addCore(passiveCore)
-  t.alike(record.key, coreKey, 'added the core')
+    const [record] = await client.addCore(passiveCore)
+    t.alike(record.key, coreKey, 'added the core')
+
+    await tAddCore
+
+    await swarm.destroy()
+    await store.close()
+  }
+
+  // A second peer enters and tries to get the core from the blind peer
+  {
+    const { swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
+    t.is(store.active, false, 'sanity check')
+    const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+    t.teardown(async () => {
+      await client.close()
+    })
+
+    const passiveReadCore = store.get({ key: coreKey, active: false })
+    const [record] = await client.addCore(passiveReadCore)
+    t.alike(record.key, coreKey, 'added the core')
+    t.alike(await passiveReadCore.get(1), b4a.from('block1'), 'can download the core')
+  }
 })
 
-test('passive-mode downloader can download cores', async t => {
-  t.plan(5)
+test('passive-mode downloader cannot download cores if just swarming with the blind peer', async t => {
+  t.plan(4)
   const tAdded = t.test()
   tAdded.plan(1)
 
@@ -227,31 +252,31 @@ test('passive-mode downloader can download cores', async t => {
     const { swarm, store } = await setupPeer(t, bootstrap)
     const core = store.get({ key: coreKey })
     await core.ready()
-    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
 
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
     // TODO: revert to flushing when swarm.flush issue solved
     await new Promise(resolve => setTimeout(resolve, 500))
 
     const block = await core.get(1)
-    t.is(b4a.toString(block), 'Block 1', 'active-mode downloader can download the core from the blind peer')
+    t.alike(b4a.toString(block), 'Block 1', 'active-mode downloader can download the core from the blind peer')
     await swarm.destroy()
     await store.close()
   }
 
   {
-    const { swarm, store } = await setupPeer(t, bootstrap, { active: false })
-    t.is(store.active, false, 'sanity check')
-    const core = store.get({ key: coreKey })
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey, active: false })
     await core.ready()
     swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
 
     // TODO: revert to flushing when swarm.flush issue solved
     await new Promise(resolve => setTimeout(resolve, 500))
 
-    const block = await core.get(1)
-    t.is(b4a.toString(block), 'Block 1', 'passive mode downloader can download the core from the blind peer')
-    await swarm.destroy()
-    await store.close()
+    await t.exception(
+      async () => await core.get(1, { timeout: 500 }),
+      /REQUEST_TIMEOUT/,
+      'cannot get core if passive and did not call add-core first'
+    )
   }
 })
 
