@@ -94,9 +94,7 @@ test('client can use a blind-peer to add an autobase', async t => {
   {
     const expectedAddedKeys = new Set([
       b4a.toString(indexer.local.key, 'hex'),
-      b4a.toString(indexer.system.core.key, 'hex'),
-      b4a.toString(indexer._applyState.encryptionView.core.key, 'hex'),
-      b4a.toString(indexer.view.core.key, 'hex')
+      ...[...indexer.views()].map(v => b4a.toString(v.key, 'hex'))
     ])
 
     let nrAdded = 0
@@ -128,9 +126,7 @@ test('client can use a blind-peer to add an autobase', async t => {
   {
     const expectedAddedKeys = new Set([
       b4a.toString(bases[0].base.local.key, 'hex'),
-      b4a.toString(bases[0].base.system.core.key, 'hex'),
-      b4a.toString(bases[0].base._applyState.encryptionView.core.key, 'hex'),
-      b4a.toString(bases[0].base.view.core.key, 'hex')
+      ...[...bases[0].base.views()].map(v => b4a.toString(v.key, 'hex'))
     ])
 
     let nrAdded = 0
