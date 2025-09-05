@@ -155,6 +155,106 @@ test('client can use a blind-peer to add an autobase', async t => {
   }
 })
 
+test('passive client can use a blind-peer to add a passive core', async t => {
+  t.plan(3)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
+  t.is(store.active, false, 'sanity check')
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  const passiveCore = store.get({ name: 'passive', active: false })
+  await passiveCore.append('block0')
+  await passiveCore.append('block1')
+  const coreKey = passiveCore.key
+
+  const oncoreactivity = (core) => {
+    if (!b4a.equals(core.key, coreKey)) return
+    if (core.contiguousLength === passiveCore.length) {
+      t.pass('Fully downloaded the core')
+      blindPeer.off('core-activity', oncoreactivity)
+    }
+  }
+  blindPeer.on('core-activity', oncoreactivity)
+
+  const [record] = await client.addCore(passiveCore)
+  t.alike(record.key, coreKey, 'added the core')
+})
+
+test('passive-mode downloader can download cores', async t => {
+  t.plan(5)
+  const tAdded = t.test()
+  tAdded.plan(1)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, core } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+  })
+  const coreKey = core.key
+
+  const oncoreactivity = (core) => {
+    if (!b4a.equals(core.key, coreKey)) return
+    if (core.contiguousLength === core.length) {
+      tAdded.pass('Fully downloaded the core')
+      blindPeer.off('core-activity', oncoreactivity)
+    }
+  }
+  blindPeer.on('core-activity', oncoreactivity)
+
+  const [record] = await client.addCore(core)
+  t.alike(record.key, coreKey, 'added the core')
+  await tAdded
+
+  await client.close()
+  await swarm.destroy() // So the core holder stops announcing the core
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    // TODO: revert to flushing when swarm.flush issue solved
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    const block = await core.get(1)
+    t.is(b4a.toString(block), 'Block 1', 'active-mode downloader can download the core from the blind peer')
+    await swarm.destroy()
+    await store.close()
+  }
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap, { active: false })
+    t.is(store.active, false, 'sanity check')
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    // TODO: revert to flushing when swarm.flush issue solved
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    const block = await core.get(1)
+    t.is(b4a.toString(block), 'Block 1', 'passive mode downloader can download the core from the blind peer')
+    await swarm.destroy()
+    await store.close()
+  }
+})
+
 test('repeated add-core requests do not result in db updates', async t => {
   const { bootstrap } = await getTestnet(t)
 
@@ -768,10 +868,10 @@ async function getTestnet (t) {
   return testnet
 }
 
-async function setupPeer (t, bootstrap) {
+async function setupPeer (t, bootstrap, { active } = {}) {
   const storage = await tmpDir(t)
   const swarm = new Hyperswarm({ bootstrap })
-  const store = new Corestore(storage)
+  const store = new Corestore(storage, { active })
 
   const order = clientCounter++
   swarm.on('connection', c => {
@@ -866,8 +966,8 @@ test.skip('Cores added by someone who does not have them are downloaded from oth
   await client.close()
 })
 
-async function setupCoreHolder (t, bootstrap) {
-  const { swarm, store } = await setupPeer(t, bootstrap)
+async function setupCoreHolder (t, bootstrap, { active } = {}) {
+  const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
   const core = store.get({ name: 'core' })
   await core.append('Block 0')
