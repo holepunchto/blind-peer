@@ -7,6 +7,7 @@ const b4a = require('b4a')
 const Client = require('blind-peering')
 const Hyperswarm = require('hyperswarm')
 const promClient = require('prom-client')
+const Autobase = require('autobase')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -53,6 +54,104 @@ test('client can use a blind-peer to add a core', async t => {
 
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
+  }
+})
+
+test('client can use a blind-peer to add an autobase', async t => {
+  const tFirstAdd = t.test()
+  tFirstAdd.plan(2)
+  const tSecondAdd = t.test()
+  tSecondAdd.plan(2)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm: indexerSwarm, base: indexer, store: indexerStore } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const bases = []
+  for (let i = 0; i < 2; i++) {
+    const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
+    await swarm.flush()
+    await Promise.all([
+      once(base, 'is-indexer'),
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') })
+    ])
+
+    await base.append({ some: 'thing' })
+    bases.push({ base, swarm, store })
+  }
+
+  await indexer.append({ some: 'thing' })
+  for (const { base } of bases) { await base.append({ some: 'thing' }) }
+
+  t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
+
+  // A first writer adds the autobase
+  {
+    const expectedAddedKeys = new Set([
+      b4a.toString(indexer.local.key, 'hex'),
+      ...[...indexer.views()].map(v => b4a.toString(v.key, 'hex'))
+    ])
+
+    let nrAdded = 0
+    const addedKeys = new Set()
+    const onaddcore = (record) => {
+      nrAdded++
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+      if (addedKeys.size > expectedAddedKeys.size) {
+        t.fail('more keys added than expected')
+      }
+      if (addedKeys.size === expectedAddedKeys.size) {
+        if (DEBUG) console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
+        tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
+      }
+    }
+    blindPeer.on('add-core', onaddcore)
+
+    const client = new Client(indexerSwarm, indexerStore, { mirrors: [blindPeer.publicKey] })
+    await client.addAutobase(indexer)
+    await tFirstAdd
+
+    // Give some time for extra requests to cause test failure
+    await new Promise(resolve => setTimeout(resolve, 100))
+    blindPeer.off('add-core', onaddcore)
+  }
+
+  // Another writer adds the autobase as well
+  {
+    const expectedAddedKeys = new Set([
+      b4a.toString(bases[0].base.local.key, 'hex'),
+      ...[...bases[0].base.views()].map(v => b4a.toString(v.key, 'hex'))
+    ])
+
+    let nrAdded = 0
+    const addedKeys = new Set()
+    const onaddcore = (record) => {
+      nrAdded++
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+      if (addedKeys.size > expectedAddedKeys.size) {
+        t.fail('more keys added than expected')
+      }
+      if (addedKeys.size === expectedAddedKeys.size) {
+        if (DEBUG) console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        tSecondAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
+        tSecondAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
+      }
+    }
+    blindPeer.on('add-core', onaddcore)
+
+    const client = new Client(bases[0].swarm, bases[0].store, { mirrors: [blindPeer.publicKey] })
+    await client.addAutobase(bases[0].base)
+    await tSecondAdd
+
+    // Give some time for extra requests to cause test failure
+    await new Promise(resolve => setTimeout(resolve, 100))
+    blindPeer.off('add-core', onaddcore)
   }
 })
 
@@ -776,6 +875,32 @@ async function setupCoreHolder (t, bootstrap) {
   swarm.join(core.discoveryKey)
 
   return { swarm, store, core }
+}
+
+async function setupAutobaseHolder (t, bootstrap, autobaseBootstrap = null) {
+  const { swarm, store } = await setupPeer(t, bootstrap)
+
+  const open = (store) => {
+    return store.get('view', { valueEncoding: 'json' })
+  }
+
+  const apply = async (batch, view, base) => {
+    for (const { value } of batch) {
+      if (value.add) {
+        const key = b4a.from(value.add, 'hex')
+        await base.addWriter(key, { indexer: true })
+        continue
+      }
+
+      if (view) await view.append(value)
+    }
+  }
+
+  const base = new Autobase(store.namespace('base'), autobaseBootstrap, { open, apply, valueEncoding: 'json', ackInterval: 10, ackThreshold: 0 })
+  await base.ready()
+  swarm.join(base.discoveryKey)
+
+  return { swarm, store, base }
 }
 
 async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
