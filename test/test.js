@@ -77,8 +77,8 @@ test('client can use a blind-peer to add an autobase', async t => {
     const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
     await swarm.flush()
     await Promise.all([
-      indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
-      once(base, 'writable')
+      once(base, 'is-indexer'),
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') })
     ])
 
     await base.append({ some: 'thing' })
@@ -896,7 +896,7 @@ async function setupAutobaseHolder (t, bootstrap, autobaseBootstrap = null) {
     }
   }
 
-  const base = new Autobase(store.namespace('base'), autobaseBootstrap, { open, apply, valueEncoding: 'json', ackInterval: 0, ackThreshold: 0 })
+  const base = new Autobase(store.namespace('base'), autobaseBootstrap, { open, apply, valueEncoding: 'json', ackInterval: 10, ackThreshold: 0 })
   await base.ready()
   swarm.join(base.discoveryKey)
 
