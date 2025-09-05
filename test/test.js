@@ -421,6 +421,45 @@ test('Untrusted peers cannot set announce: true', async t => {
   }
 })
 
+test('Untrusted peers cannot setup RPC if trustedOnly set', async t => {
+  t.plan(2)
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const { core: trustedCore, swarm: trustedSwarm, store: trustedStore } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [trustedSwarm.dht.defaultKeyPair.publicKey],
+    trustedOnly: true
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  blindPeer.on('add-core', record => {
+    t.alike(record.key, trustedCore.key, 'added trusted core (and not untrusted one)')
+  })
+
+  const refusedKeys = new Set()
+  blindPeer.on('rpc-refused', conn => {
+    // Can trigger multiple times due to retry logic
+    refusedKeys.add(b4a.toString(conn.remotePublicKey, 'hex'))
+  })
+
+  const untrustedClient = new Client(swarm, store, { mirrors: [blindPeer.publicKey] })
+  await untrustedClient.addCore(core, undefined)
+
+  const trustedClient = new Client(trustedSwarm, trustedStore, { mirrors: [blindPeer.publicKey] })
+  await trustedClient.addCore(trustedCore, undefined)
+
+  t.alike(
+    refusedKeys,
+    new Set([b4a.toString(swarm.dht.defaultKeyPair.publicKey, 'hex')]),
+    'untrusted peer got refused'
+  )
+  await untrustedClient.close()
+  await trustedClient.close()
+})
+
 test('records with announce: true are announced upon startup', async t => {
   const { bootstrap } = await getTestnet(t)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -903,11 +942,11 @@ async function setupAutobaseHolder (t, bootstrap, autobaseBootstrap = null) {
   return { swarm, store, base }
 }
 
-async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
+async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys, trustedOnly } = {}) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
-  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, trustedPubKeys })
+  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, trustedPubKeys, trustedOnly })
 
   const order = clientCounter++
   t.teardown(async () => {
