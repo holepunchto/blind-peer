@@ -149,7 +149,7 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}) {
+  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, trustedOnly = false, port } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
@@ -158,6 +158,7 @@ class BlindPeer extends ReadyResource {
     this._port = port || 0
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
+    this.trustedOnly = trustedOnly
 
     this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this))
     this.ownsWakeup = !wakeup
@@ -358,6 +359,11 @@ class BlindPeer extends ReadyResource {
 
     if (this.ownsStore) this.store.replicate(conn)
     if (this.ownsWakeup) this.wakeup.addStream(conn)
+
+    if (this.trustedOnly && !this._isTrustedPeer(conn.remotePublicKey)) {
+      this.emit('rpc-refused', conn)
+      return
+    }
 
     const rpc = new ProtomuxRPC(conn, {
       id: this.swarm.keyPair.publicKey,

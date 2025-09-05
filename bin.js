@@ -20,6 +20,7 @@ const cmd = command('blind-peer',
   flag('--storage|-s [path]', 'Storage path, defaults to ./blind-peer'),
   flag('--port|-p [int]', 'DHT Port to try to bind to. Only relevant when that port is not firewalled. (defaults to a random port)'),
   flag('--trusted-peer|-t [trusted-peer]', 'Public key of a trusted peer (allowed to set announce: true). Can be more than 1.').multiple(),
+  flag('--trusted-only', 'Only setup RPC with peers that are explicitly trusted'),
   flag('--debug|-d', 'Enable debug mode (more logs)').multiple(),
   flag(`--max-storage|-m [int]', 'Max storage usage, in Mb (defaults to ${DEFAULT_STORAGE_LIMIT_MB})`),
   flag('--autodiscovery-rpc-key [autodiscovery-rpc-key]', 'Public key where the autodiscovery service is listening. When set, the autodiscovery-seed must also be set. Can be hex or z32.'),
@@ -42,11 +43,16 @@ const cmd = command('blind-peer',
 
     const maxBytes = 1_000_000 * parseInt(flags.maxStorage || DEFAULT_STORAGE_LIMIT_MB)
     const trustedPubKeys = (flags.trustedPeer || []).map(k => idEnc.decode(k))
+    const trustedOnly = flags.trustedOnly
 
-    const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes, port })
+    const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes, port, trustedOnly })
 
     blindPeer.on('flush-error', e => {
       logger.warn(`Error while flushing the db: ${e.stack}`)
+    })
+
+    blindPeer.on('rpc-refused', conn => {
+      logger.info(`RPC refused for peer ${idEnc.normalize(conn.remotePublicKey)}`)
     })
 
     blindPeer.on('add-core', (record, _, stream) => {
@@ -99,6 +105,7 @@ const cmd = command('blind-peer',
     if (trustedPubKeys.length > 0) {
       logger.info(`Trusted public keys:\n  -${[...blindPeer.trustedPubKeys].map(idEnc.normalize).join('\n  -')}`)
     }
+    if (blindPeer.trustedOnly) logger.info('Only accepting RPC connections from the trusted public keys')
 
     let instrumentation = null
     goodbye(async () => {
