@@ -20,7 +20,7 @@ const cmd = command('blind-peer',
   flag('--storage|-s [path]', 'Storage path, defaults to ./blind-peer'),
   flag('--port|-p [int]', 'DHT Port to try to bind to. Only relevant when that port is not firewalled. (defaults to a random port)'),
   flag('--trusted-peer|-t [trusted-peer]', 'Public key of a trusted peer (allowed to set announce: true). Can be more than 1.').multiple(),
-  flag('--debug|-d', 'Enable debug mode (more logs)').multiple(),
+  flag('--debug|-d', 'Enable debug mode (more logs)'),
   flag(`--max-storage|-m [int]', 'Max storage usage, in Mb (defaults to ${DEFAULT_STORAGE_LIMIT_MB})`),
   flag('--autodiscovery-rpc-key [autodiscovery-rpc-key]', 'Public key where the autodiscovery service is listening. When set, the autodiscovery-seed must also be set. Can be hex or z32.'),
   flag('--autodiscovery-seed [autodiscovery-seed]', '64-byte seed used to authenticate to the autodiscovery service.  Can be hex or z32.'),
@@ -28,6 +28,7 @@ const cmd = command('blind-peer',
   flag('--scraper-public-key [scraper-public-key]', 'Public key of a dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-secret [scraper-secret]', 'Secret of the dht-prometheus scraper.  Can be hex or z32.'),
   flag('--scraper-alias [scraper-alias]', '(optional) Alias with which to register to the scraper'),
+  flag('--log-streams', '(Temporary, Advanced): enable debug logs on the UDX streams managed by the dht'),
   flag('--repl [repl]', 'Expose a repl-swarm at the passed-in seed (32 bytes in hex or z32 notation). Use for debugging only.'),
   async function ({ flags }) {
     const debug = flags.debug
@@ -36,6 +37,8 @@ const cmd = command('blind-peer',
       name: 'blind-peer'
     })
     logger.info('Starting blind peer')
+
+    const logStreams = flags.logStreams
 
     const storage = flags.storage || 'blind-peer'
     const port = flags.port ? parseInt(flags.port) : null
@@ -135,6 +138,25 @@ const cmd = command('blind-peer',
           logger.info(`Connection error with ${key}: ${err.stack}`)
         })
       })
+    }
+
+    if (logStreams) {
+      logger.warn('Advanced debugging option log-streams enabled')
+      setInterval(() => {
+        try {
+          let nrBigStreams = 0
+          for (const stream of blindPeer.swarm.dht.rawStreams) {
+            const pendingWrites = stream._wreqs.length - stream._wfree.length
+            if (pendingWrites >= 100) {
+              nrBigStreams++
+              console.warn(`Stream ${stream.id} (remote id: ${stream.remoteId}) has ${pendingWrites} pending writes:\nStream JSON: ${JSON.stringify(stream.toJSON(), null, 1)}\nSocket json: ${stream.socket ? JSON.stringify(stream.socket.toJSON(), null, 1) : 'none'}\nhex streamhandle: ${b4a.toString(stream._handle, 'hex')}\nhex socket handle: ${stream.socket ? b4a.toString(stream.socket._handle, 'hex') : 'none'}`)
+            }
+          }
+          if (nrBigStreams > 0) console.warn(`Total streams with many pending writes: ${nrBigStreams}`)
+        } catch (e) { // we don't want to crash the process with our debugging
+          console.warn(`logStreams errored unexpectedly: ${e.stack}`)
+        }
+      }, 30_000)
     }
 
     await blindPeer.listen()
