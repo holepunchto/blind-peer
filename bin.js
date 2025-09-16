@@ -149,12 +149,12 @@ const cmd = command('blind-peer',
             const pendingWrites = stream._wreqs.length - stream._wfree.length
             if (pendingWrites >= 100) {
               nrBigStreams++
-              console.warn(`Stream ${stream.id} (remote id: ${stream.remoteId}) has ${pendingWrites} pending writes:\nStream JSON: ${JSON.stringify(stream.toJSON(), null, 1)}\nSocket json: ${stream.socket ? JSON.stringify(stream.socket.toJSON(), null, 1) : 'none'}\nhex streamhandle: ${b4a.toString(stream._handle, 'hex')}\nhex socket handle: ${stream.socket ? b4a.toString(stream.socket._handle, 'hex') : 'none'}`)
+              logger.warn(`Stream ${stream.id} (remote id: ${stream.remoteId}) has ${pendingWrites} pending writes:\nStream JSON: ${JSON.stringify(stream.toJSON(), null, 1)}\nSocket json: ${stream.socket ? JSON.stringify(stream.socket.toJSON(), null, 1) : 'none'}\nhex streamhandle: ${b4a.toString(stream._handle, 'hex')}\nhex socket handle: ${stream.socket ? b4a.toString(stream.socket._handle, 'hex') : 'none'}`)
             }
           }
-          if (nrBigStreams > 0) console.warn(`Total streams with many pending writes: ${nrBigStreams}`)
+          if (nrBigStreams > 0) logger.warn(`Total streams with many pending writes: ${nrBigStreams}`)
         } catch (e) { // we don't want to crash the process with our debugging
-          console.warn(`logStreams errored unexpectedly: ${e.stack}`)
+          logger.warn(`logStreams errored unexpectedly: ${e.stack}`)
         }
       }, 30_000)
     }
