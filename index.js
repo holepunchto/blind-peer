@@ -469,11 +469,11 @@ class BlindPeer extends ReadyResource {
     const coreId = IdEnc.normalize(key)
 
     if (this.announcedCores.has(coreId)) {
+      this.announcedCores.delete(coreId)
       this.swarm.leave(core.discoveryKey)
-      // Closes the download session
       try {
+        // Closes the download session
         await this.announcedCores.get(coreId).close()
-        this.announcedCores.delete(coreId)
       } catch (e) {
         safetyCatch(e)
       }
