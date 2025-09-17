@@ -464,6 +464,22 @@ class BlindPeer extends ReadyResource {
     const existing = await this.db.getCoreRecord(key)
     if (!existing) return false
 
+    const core = this.store.get({ key })
+    await core.ready()
+    const coreId = IdEnc.normalize(key)
+
+    if (this.announcedCores.has(coreId)) {
+      this.swarm.leave(core.discoveryKey)
+      // Closes the download session
+      try {
+        await this.announcedCores.get(coreId).close()
+      } catch (e) {
+        safetyCatch(e)
+      }
+    }
+
+    await core.clear(0, core.length)
+
     this.db.deleteCore(key)
     await this.flush()
     return true

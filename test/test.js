@@ -543,9 +543,17 @@ test('Trusted peers can delete a core', async t => {
   t.alike(record.key, coreKey, 'added the core')
   t.is(await blindPeer.db.hasCore(coreKey), true, 'core in db')
 
+  // give it time to download
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  t.is(blindPeer.db.digest.cores, 1, '1 core in digest (sanity check)')
+  t.is(blindPeer.db.digest.bytesAllocated > 0, true, 'digest has bytes allocated of the core')
+
   const [res] = await client.deleteCore(coreKey)
   t.is(res, true, 'returns true if core existed and is now deleted')
   t.is(await blindPeer.db.hasCore(coreKey), false, 'core removed from db')
+  t.is(blindPeer.db.digest.cores, 0, 'core removed from digest')
+  t.is(blindPeer.db.digest.bytesAllocated === 0, true, 'digest no longer has bytes allocated')
 
   const [res2] = await client.deleteCore(coreKey)
   t.is(res2, false, 'returns false if core did not exist')
