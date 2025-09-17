@@ -469,7 +469,6 @@ class BlindPeer extends ReadyResource {
     const coreId = IdEnc.normalize(key)
 
     if (this.announcedCores.has(coreId)) {
-      this.announcedCores.delete(coreId)
       this.swarm.leave(core.discoveryKey)
       try {
         // Closes the download session
@@ -477,6 +476,7 @@ class BlindPeer extends ReadyResource {
       } catch (e) {
         safetyCatch(e)
       }
+      this.announcedCores.delete(coreId)
     }
 
     const hexId = b4a.toString(core.discoveryKey, 'hex')
