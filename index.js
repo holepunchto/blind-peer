@@ -491,8 +491,6 @@ class BlindPeer extends ReadyResource {
       }
     }
 
-    // To make sure it's fully cleared, in case new blocks
-    // arrived after gc finished
     await core.clear(0, core.length)
 
     this.db.deleteCore(key)
