@@ -473,11 +473,26 @@ class BlindPeer extends ReadyResource {
       // Closes the download session
       try {
         await this.announcedCores.get(coreId).close()
+        this.announcedCores.delete(coreId)
       } catch (e) {
         safetyCatch(e)
       }
     }
 
+    const hexId = b4a.toString(core.discoveryKey, 'hex')
+    const tracker = this.activeReplication.get(hexId)
+    if (tracker) {
+      try {
+        // cancel the download request and trigger the cleanup logic
+        // which removes it from the active replication map
+        await tracker.core.close()
+      } catch (e) {
+        safetyCatch(e)
+      }
+    }
+
+    // To make sure it's fully cleared, in case new blocks
+    // arrived after gc finished
     await core.clear(0, core.length)
 
     this.db.deleteCore(key)
