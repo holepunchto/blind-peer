@@ -8,6 +8,7 @@ const Client = require('blind-peering')
 const Hyperswarm = require('hyperswarm')
 const promClient = require('prom-client')
 const Autobase = require('autobase')
+const IdEnc = require('hypercore-id-encoding')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -517,6 +518,69 @@ test('Trusted peers can update an existing record to start announcing it', async
     const [record] = await coreAddedProm
     t.is(record.announce, true, 'announce set in db')
   }
+
+  await swarm.destroy()
+  await client.close()
+})
+
+test('Trusted peers can delete a core', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const coreAddedProm = once(blindPeer, 'add-core')
+  coreAddedProm.catch(() => {})
+
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  const coreKey = core.key
+  await client.addCore(core, coreKey, { announce: true })
+
+  const [record] = await coreAddedProm
+  t.alike(record.key, coreKey, 'added the core')
+  t.is(await blindPeer.db.hasCore(coreKey), true, 'core in db')
+
+  const [res] = await client.deleteCore(coreKey)
+  t.is(res, true, 'returns true if core existed and is now deleted')
+  t.is(await blindPeer.db.hasCore(coreKey), false, 'core removed from db')
+
+  const [res2] = await client.deleteCore(coreKey)
+  t.is(res2, false, 'returns false if core did not exist')
+
+  await swarm.destroy()
+  await client.close()
+})
+
+test('Untrusted peers cannot delete a core', async t => {
+  t.plan(4)
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [IdEnc.decode('a'.repeat(64))] })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const coreAddedProm = once(blindPeer, 'add-core')
+  coreAddedProm.catch(() => {})
+
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  const coreKey = core.key
+  await client.addCore(core, coreKey)
+
+  const [record] = await coreAddedProm
+  t.alike(record.key, coreKey, 'added the core')
+  t.is(await blindPeer.db.hasCore(coreKey), true, 'core in db')
+
+  try {
+    await client.deleteCore(coreKey)
+  } catch (e) {
+    t.is(e.cause.message.includes('Only trusted peers can delete cores'), true, 'expected err msg')
+  }
+  t.is(await blindPeer.db.hasCore(coreKey), true, 'core still in db')
 
   await swarm.destroy()
   await client.close()
