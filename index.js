@@ -466,17 +466,16 @@ class BlindPeer extends ReadyResource {
 
     const core = this.store.get({ key })
     await core.ready()
-    const coreId = IdEnc.normalize(key)
 
-    if (this.announcedCores.has(coreId)) {
+    if (this.announcedCores.has(core.id)) {
       this.swarm.leave(core.discoveryKey)
       try {
         // Closes the download session
-        await this.announcedCores.get(coreId).close()
+        await this.announcedCores.get(core.id).close()
       } catch (e) {
         safetyCatch(e)
       }
-      this.announcedCores.delete(coreId)
+      this.announcedCores.delete(core.id)
     }
 
     const hexId = b4a.toString(core.discoveryKey, 'hex')
