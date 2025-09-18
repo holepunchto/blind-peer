@@ -429,6 +429,8 @@ class BlindPeer extends ReadyResource {
     // We only add it to the db the first time (prio, announce etc can't be changed)
     // Note: not race condition safe, but it's no problem if we do add the same core twice
     const existing = await this.db.getCoreRecord(record.key)
+    console.log('existing record')
+    console.log(existing)
     if (!existing) {
       this.db.addCore(record)
       await this.flush() // flush now as important data
@@ -458,6 +460,7 @@ class BlindPeer extends ReadyResource {
 
   async _ondeletecore (stream, { key }) {
     if (!this._isTrustedPeer(stream.remotePublicKey)) {
+      this.emit('untrusted-delete-attempt', stream, key)
       throw new Error('Only trusted peers can delete cores')
     }
 
