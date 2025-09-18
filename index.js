@@ -418,6 +418,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onaddcore (stream, record) {
+    console.log('onaddcore...')
     if (!this.opened) await this.ready()
 
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
@@ -454,7 +455,11 @@ class BlindPeer extends ReadyResource {
 
     await this._activateCore(stream, record)
 
+    console.log('getting the existing record before returning... first printing input')
+    console.log(record)
     const coreRecord = await this.db.getCoreRecord(record.key)
+    console.log('got record by key before returning')
+    console.log(coreRecord)
     return coreRecord
   }
 
