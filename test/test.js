@@ -174,7 +174,7 @@ for (let i = 0; i < 100; i++) {
     t.alike(record.key, coreKey, 'added the core (sanity check)')
 
     // wait for it to be downloaded
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise(resolve => setTimeout(resolve, 250))
     const initFlushes = blindPeer.db.stats.flushes
     t.is(initFlushes > 0, true, 'sanity check')
 
