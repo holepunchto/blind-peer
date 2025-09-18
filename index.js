@@ -15,6 +15,7 @@ const IdEnc = require('hypercore-id-encoding')
 const BlindPeerDB = require('./lib/db.js')
 
 const { AddCoreEncoding } = require('blind-peer-encodings')
+const { DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor (blindPeer, core) {
@@ -365,6 +366,7 @@ class BlindPeer extends ReadyResource {
     })
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
+    rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
   }
 
   async _activateCore (stream, record) {
@@ -452,6 +454,47 @@ class BlindPeer extends ReadyResource {
 
     const coreRecord = await this.db.getCoreRecord(record.key)
     return coreRecord
+  }
+
+  async _ondeletecore (stream, { key }) {
+    if (!this._isTrustedPeer(stream.remotePublicKey)) {
+      throw new Error('Only trusted peers can delete cores')
+    }
+
+    const existing = await this.db.getCoreRecord(key)
+    if (!existing) return false
+
+    const core = this.store.get({ key })
+    await core.ready()
+
+    if (this.announcedCores.has(core.id)) {
+      this.swarm.leave(core.discoveryKey)
+      try {
+        // Closes the download session
+        await this.announcedCores.get(core.id).close()
+      } catch (e) {
+        safetyCatch(e)
+      }
+      this.announcedCores.delete(core.id)
+    }
+
+    const hexId = b4a.toString(core.discoveryKey, 'hex')
+    const tracker = this.activeReplication.get(hexId)
+    if (tracker) {
+      try {
+        // cancel the download request and trigger the cleanup logic
+        // which removes it from the active replication map
+        await tracker.core.close()
+      } catch (e) {
+        safetyCatch(e)
+      }
+    }
+
+    await core.clear(0, core.length)
+
+    this.db.deleteCore(key)
+    await this.flush()
+    return true
   }
 
   async _close () {
