@@ -524,14 +524,34 @@ test('Trusted peers can update an existing record to start announcing it', async
 })
 
 test('Trusted peers can delete a core', async t => {
+  const tEvents = t.test('events')
+  tEvents.plan(7)
+
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  const trustedPubKeys = [swarm.dht.defaultKeyPair.publicKey]
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
+  let firstDelete = true
+  blindPeer.on('delete-core', (stream, { key, existing }) => {
+    if (firstDelete) {
+      tEvents.alike(stream.remotePublicKey, trustedPubKeys[0], 'delete-core stream')
+      tEvents.alike(key, core.key, 'delete-core key')
+      tEvents.is(existing, true, 'delete-core existing')
+      firstDelete = false
+      return
+    }
+    tEvents.is(existing, false, 'delete-core existing when it is not')
+  })
+  blindPeer.on('delete-core-end', (stream, { key, announced }) => {
+    tEvents.alike(stream.remotePublicKey, trustedPubKeys[0], 'delete-core-end stream')
+    tEvents.alike(key, core.key, 'delete-core-end key')
+    tEvents.is(announced, true, 'delete-core-end announced')
+  })
   const coreAddedProm = once(blindPeer, 'add-core')
   coreAddedProm.catch(() => {})
 
@@ -563,7 +583,7 @@ test('Trusted peers can delete a core', async t => {
 })
 
 test('Untrusted peers cannot delete a core', async t => {
-  t.plan(4)
+  t.plan(6)
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -571,6 +591,11 @@ test('Untrusted peers cannot delete a core', async t => {
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [IdEnc.decode('a'.repeat(64))] })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
+
+  blindPeer.once('delete-blocked', (stream, { key }) => {
+    t.alike(stream.remotePublicKey, swarm.dht.defaultKeyPair.publicKey, 'delete-blocked stream')
+    t.alike(key, core.key, 'delete-blocked key')
+  })
 
   const coreAddedProm = once(blindPeer, 'add-core')
   coreAddedProm.catch(() => {})

@@ -458,16 +458,19 @@ class BlindPeer extends ReadyResource {
 
   async _ondeletecore (stream, { key }) {
     if (!this._isTrustedPeer(stream.remotePublicKey)) {
+      this.emit('delete-blocked', stream, { key })
       throw new Error('Only trusted peers can delete cores')
     }
 
-    const existing = await this.db.getCoreRecord(key)
+    const existing = await this.db.getCoreRecord(key) !== null
+    this.emit('delete-core', stream, { key, existing })
     if (!existing) return false
 
     const core = this.store.get({ key })
     await core.ready()
 
-    if (this.announcedCores.has(core.id)) {
+    const announced = this.announcedCores.has(core.id)
+    if (announced) {
       this.swarm.leave(core.discoveryKey)
       try {
         // Closes the download session
@@ -494,6 +497,7 @@ class BlindPeer extends ReadyResource {
 
     this.db.deleteCore(key)
     await this.flush()
+    this.emit('delete-core-end', stream, { key, announced })
     return true
   }
 
