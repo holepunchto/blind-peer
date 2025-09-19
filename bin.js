@@ -60,6 +60,15 @@ const cmd = command('blind-peer',
         logger.info(record)
       }
     })
+    blindPeer.on('delete-blocked', (stream, { key }) => {
+      logger.info(`Blocked delete-core request from untrusted peer ${streamToStr(stream)} for core ${idEnc.normalize(key)}`)
+    })
+    blindPeer.on('delete-core', (stream, { key, existing }) => {
+      logger.info(`Received delete-core request from trusted peer ${streamToStr(stream)} for core ${idEnc.normalize(key)}. Existing: ${existing}`)
+    })
+    blindPeer.on('delete-core-end', (stream, { key, announced }) => {
+      logger.info(`Completed delete-core request from trusted peer ${streamToStr(stream)} for core ${idEnc.normalize(key)}. Was announced: ${announced}`)
+    })
 
     blindPeer.on('downgrade-announce', ({ record, remotePublicKey }) => {
       try {
