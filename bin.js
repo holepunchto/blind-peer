@@ -80,7 +80,6 @@ const cmd = command('blind-peer',
 
     blindPeer.on('announce-core', core => {
       logger.info(`Started announcing core ${coreToInfo(core)}`)
-      logger.info(`pub key is ${idEnc.normalize(core.key)}`)
     })
     blindPeer.on('core-downloaded', core => {
       logger.info(`Announced core fully downloaded: ${coreToInfo(core)}`)
