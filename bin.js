@@ -79,13 +79,13 @@ const cmd = command('blind-peer',
     })
 
     blindPeer.on('announce-core', core => {
-      logger.info(`Started announcing core ${coreToInfo(core)}`)
+      logger.info(`Started announcing core ${coreToInfo(core, true)}`)
     })
     blindPeer.on('core-downloaded', core => {
-      logger.info(`Announced core fully downloaded: ${coreToInfo(core)}`)
+      logger.info(`Announced core fully downloaded: ${coreToInfo(core, true)}`)
     })
     blindPeer.on('core-append', core => {
-      logger.info(`Detected announced-core length update: ${coreToInfo(core)}`)
+      logger.info(`Detected announced-core length update: ${coreToInfo(core, true)}`)
     })
 
     blindPeer.on('gc-start', ({ bytesToClear }) => {
@@ -229,9 +229,11 @@ function streamToStr (stream) {
   return `${pubKey}`
 }
 
-function coreToInfo (core) {
+function coreToInfo (core, includePublicKey = false) {
   const discKey = hypCrypto.discoveryKey(core.key)
-  return `Discovery key ${idEnc.normalize(discKey)} (${core.contiguousLength} / ${core.length}, ${core.peers.length} peers)`
+  let res = `Discovery key ${idEnc.normalize(discKey)} (${core.contiguousLength} / ${core.length}, ${core.peers.length} peers)`
+  if (includePublicKey) res += `. Public key: ${idEnc.normalize(core.key)}`
+  return res
 }
 
 cmd.parse()
