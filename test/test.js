@@ -174,10 +174,12 @@ test('repeated add-core requests do not result in db updates', async t => {
 
   // wait for it to be downloaded
   await new Promise(resolve => setTimeout(resolve, 1000))
+  await blindPeer.db.flush()
   const initFlushes = blindPeer.db.stats.flushes
   t.is(initFlushes > 0, true, 'sanity check')
 
   const [record2] = await client2.addCore(core)
+  await blindPeer.db.flush() // no-op since no changes
   t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
   t.alike(record2.key, record.key, 'sanity check: got record')
 
@@ -262,8 +264,8 @@ test('can lookup core after blind peer restart', async t => {
 test('garbage collection when space limit reached', async t => {
   const { bootstrap } = await getTestnet(t)
 
-  const enableGc = false // We trigger it manually, so we can test the accounting
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
+  const enableGc = true
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, gcDelay: 3000, maxBytes: 10_000 })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -290,14 +292,13 @@ test('garbage collection when space limit reached', async t => {
 
   // TODO: some event to ensure they're fully downloaded
   await new Promise(resolve => setTimeout(resolve, 2000))
+  await blindPeer.db.flush()
   const initBytes = blindPeer.digest.bytesAllocated
 
-  const [[{ bytesCleared }]] = await Promise.all([
-    once(blindPeer, 'gc-done'),
-    blindPeer._gc()
-  ])
+  const [{ bytesCleared }] = await once(blindPeer, 'gc-done')
 
   const nowBytes = blindPeer.digest.bytesAllocated
+  console.log('init', initBytes, 'now', nowBytes)
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
   t.is(nowBytes > 1000, true, 'did not gc too much')
   t.is(initBytes - bytesCleared, nowBytes, 'Bytes-cleared accounting correct')
@@ -314,13 +315,48 @@ test('garbage collection when space limit reached', async t => {
 
   await cores[gcdCoreI].append('Block-200')
   await new Promise(resolve => setTimeout(resolve, 1000))
-
+  await blindPeer.db.flush()
   const updatedRecord = await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)
 
   t.is(origRecord.bytesAllocated, 0, 'sanity check')
   t.is(updatedRecord.bytesAllocated, 9, 'Downloads newly added blocks after gc, but not old ones')
   t.is(updatedRecord.bytesCleared, origRecord.bytesCleared, 'Sanity check on bytesCleared accounting')
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
+})
+
+test('flushes when maxPendingUpdates reached', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { maxPendingDbUpdates: 2, flushDelay: 100000 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const cores = []
+
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+  }, { order: 0 })
+  for (let i = 0; i < 3; i++) {
+    const core = store.get({ name: `core-${i}` })
+    cores.push(core)
+    const blocks = []
+    for (let j = 0; j < 10; j++) blocks.push(`core-${i}-block-${j}`)
+    await core.append(blocks)
+  }
+
+  await client.addCore(cores[0])
+  await client.addCore(cores[1])
+
+  // To make sure it's not yet flushing
+  await new Promise(resolve => setTimeout(resolve, 250))
+
+  t.is(blindPeer.db.stats.flushes, 0, 'sanity check')
+  await client.addCore(cores[2])
+  // give it time to finish the background flush
+  await new Promise(resolve => setTimeout(resolve, 250))
+  t.is(blindPeer.db.stats.flushes, 1, 'flushed')
 })
 
 test('Trusted peers can set announce: true to have the blind peer announce it', async t => {
@@ -565,11 +601,13 @@ test('Trusted peers can delete a core', async t => {
 
   // give it time to download
   await new Promise(resolve => setTimeout(resolve, 1000))
-
+  await blindPeer.db.flush()
   t.is(blindPeer.db.digest.cores, 1, '1 core in digest (sanity check)')
   t.is(blindPeer.db.digest.bytesAllocated > 0, true, 'digest has bytes allocated of the core')
 
   const [res] = await client.deleteCore(coreKey)
+  await blindPeer.db.flush()
+
   t.is(res, true, 'returns true if core existed and is now deleted')
   t.is(await blindPeer.db.hasCore(coreKey), false, 'core removed from db')
   t.is(blindPeer.db.digest.cores, 0, 'core removed from digest')
@@ -1004,11 +1042,11 @@ async function setupAutobaseHolder (t, bootstrap, autobaseBootstrap = null) {
   return { swarm, store, base }
 }
 
-async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
+async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, gcDelay, flushDelay, maxPendingDbUpdates, trustedPubKeys } = {}) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
-  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, trustedPubKeys })
+  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, gcDelay, trustedPubKeys, flushDelay, maxPendingDbUpdates })
 
   const order = clientCounter++
   t.teardown(async () => {

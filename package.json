@@ -21,6 +21,7 @@
     "hyperdb": "^4.9.4",
     "hyperschema": "^1.10.3",
     "hyperswarm": "^4.13.1",
+    "mutexify": "^1.4.0",
     "paparam": "^1.8.0",
     "pino": "^9.6.0",
     "protomux-rpc": "^1.7.1",
@@ -29,7 +30,6 @@
     "repl-swarm": "^2.3.0",
     "rocksdb-native": "^3.1.6",
     "safety-catch": "^1.0.2",
-    "scope-lock": "^1.2.4",
     "tiny-byte-size": "^1.1.0"
   },
   "devDependencies": {

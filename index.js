@@ -9,7 +9,6 @@ const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
-const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
@@ -47,7 +46,6 @@ class CoreTracker {
     this.record.length = this.core.length
     this.record.bytesAllocated = this.core.byteLength - this.record.bytesCleared
     this.blindPeer.db.updateCore(this.record, this.id)
-    this.blindPeer.flush().then(this.announceToReferrerBound, safetyCatch)
   }
 
   _onactive () {
@@ -150,7 +148,7 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}) {
+  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port, flushDelay = 2000, maxPendingDbUpdates = 512, gcDelay = 60_000 } = {}) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
@@ -159,6 +157,9 @@ class BlindPeer extends ReadyResource {
     this._port = port || 0
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
+    this.flushDelay = flushDelay
+    this.gcDelay = gcDelay
+    this.maxPendingDbUpdates = maxPendingDbUpdates
 
     this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this))
     this.ownsWakeup = !wakeup
@@ -167,11 +168,10 @@ class BlindPeer extends ReadyResource {
     this.db = null
     this.activeReplication = new Map()
     this.activeWakeup = new Map()
-    this.flushInterval = null
     this.maxBytes = maxBytes
     this.enableGc = enableGc
-    this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
+    this._gcInterval = null
 
     this.stats = {
       bytesGcd: 0,
@@ -210,7 +210,11 @@ class BlindPeer extends ReadyResource {
 
     // legacy, we can remove once current ones are upgraded
     const { secretKey } = await this.store.createKeyPair('blind-mirror-swarm')
-    this.db = new BlindPeerDB(this.rocks.session(), { swarming: secretKey.subarray(0, 32), encryption: null })
+    this.db = new BlindPeerDB(
+      this.rocks.session(),
+      { swarming: secretKey.subarray(0, 32), encryption: null },
+      { flushDelay: this.flushDelay, maxPendingUpdates: this.maxPendingDbUpdates }
+    )
     await this.db.ready()
 
     // We don't need to track our own db, so we set this handler after the db core opened
@@ -229,7 +233,9 @@ class BlindPeer extends ReadyResource {
     }
     await Promise.all(announceProms)
 
-    this.flushInterval = setInterval(this.flush.bind(this), 10_000)
+    this._gcInterval = setInterval(
+      this.gc.bind(this), this.gcDelay
+    )
   }
 
   async _onwakeup (discoveryKey, muxer) {
@@ -265,7 +271,15 @@ class BlindPeer extends ReadyResource {
     return this.digest.bytesAllocated >= this.maxBytes
   }
 
-  async _gc () { // Do not call directly (assumes lock)
+  async gc () {
+    if (this._gcing) return this._gcing
+    this._gcing = this._gc()
+    await this._gcing
+  }
+
+  async _gc () { // Do not call directly
+    await this.db.flush() // ensure digest up to date
+    if (this.closing) return
     if (!this.needsGc()) return
 
     const bytesToClear = this.digest.bytesAllocated - this.maxBytes
@@ -336,19 +350,6 @@ class BlindPeer extends ReadyResource {
     session.on('invalid-request', (err, req, from) => {
       this.emit('invalid-request', session, err, req, from)
     })
-  }
-
-  async flush () { // not allowed to throw
-    if (!(await this.lock.lock())) return
-    try {
-      if (this.enableGc && this.needsGc()) await this._gc()
-      if (this.db.updated()) await this.db.flush()
-    } catch (e) {
-      this.emit('flush-error', e)
-      safetyCatch(e)
-    } finally {
-      this.lock.unlock()
-    }
   }
 
   _onconnection (conn) {
@@ -429,10 +430,7 @@ class BlindPeer extends ReadyResource {
     // We only add it to the db the first time (prio, announce etc can't be changed)
     // Note: not race condition safe, but it's no problem if we do add the same core twice
     const existing = await this.db.getCoreRecord(record.key)
-    if (!existing) {
-      this.db.addCore(record)
-      await this.flush() // flush now as important data
-    }
+    if (!existing) await this.db.addCore(record)
 
     if (record.referrer) {
       // ensure referrer is allocated...
@@ -495,17 +493,19 @@ class BlindPeer extends ReadyResource {
 
     await core.clear(0, core.length)
 
-    this.db.deleteCore(key)
-    await this.flush()
+    await this.db.deleteCore(key)
     this.emit('delete-core-end', stream, { key, announced })
     return true
   }
 
   async _close () {
-    clearInterval(this.flushInterval)
+    clearInterval(this._gcInterval)
+
+    // There is no sane way to abort a gc halfway, so we have to let it finish
+    if (this._gcing) await this._gcing
+
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
-    await this.flush()
     await this.db.close()
     if (this.ownsStore) await this.store.close()
     await this.rocks.close()
