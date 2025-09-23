@@ -172,6 +172,7 @@ class BlindPeer extends ReadyResource {
     this.enableGc = enableGc
     this.announcedCores = new Map()
     this._gcInterval = null
+    this._gcing = null
 
     this.stats = {
       bytesGcd: 0,
@@ -233,9 +234,7 @@ class BlindPeer extends ReadyResource {
     }
     await Promise.all(announceProms)
 
-    this._gcInterval = setInterval(
-      this.gc.bind(this), this.gcDelay
-    )
+    this._gcInterval = setInterval(this.gc.bind(this), this.gcDelay)
   }
 
   async _onwakeup (discoveryKey, muxer) {
@@ -274,7 +273,11 @@ class BlindPeer extends ReadyResource {
   async gc () {
     if (this._gcing) return this._gcing
     this._gcing = this._gc()
-    await this._gcing
+    try {
+      await this._gcing
+    } finally {
+      this._gcing = null
+    }
   }
 
   async _gc () { // Do not call directly
