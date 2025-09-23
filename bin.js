@@ -48,8 +48,10 @@ const cmd = command('blind-peer',
 
     const blindPeer = new BlindPeer(storage, { trustedPubKeys, maxBytes, port })
 
-    blindPeer.on('flush-error', e => {
-      logger.warn(`Error while flushing the db: ${e.stack}`)
+    blindPeer.db.on('error', e => {
+      console.error(`Irrecoverable blind peer db error: ${e.stack}`)
+      logger.fatal(`Irrecoverable blind peer db error: ${e.stack}`)
+      process.exit(1)
     })
 
     blindPeer.on('add-core', (record, _, stream) => {
