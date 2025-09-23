@@ -715,12 +715,16 @@ test('client gc logic', async t => {
     t.alike(record.key, coreKey, 'added the core')
   }
 
+  const ref = client.blindPeersByKey.get(b4a.toString(blindPeer.publicKey, 'hex'))
   t.is(client.blindPeersByKey.size, 1, 'not yet gcd (sanity check')
-
+  t.is(ref.cores.size, 1, 'client has 1 core (sanity check')
+  t.is(client.mirroring.size, 1, 'mirroring includes core (sanity checK)')
   await core.close()
   await new Promise(resolve => setTimeout(resolve, 1000))
 
   t.is(client.blindPeersByKey.size, 0, 'gcd after sufficient gc ticks')
+  t.is(ref.cores.size, 0, 'client no longer has the core')
+  t.is(client.mirroring.size, 0, 'no longer mirroring the core')
 
   await swarm.destroy()
   await client.close()
