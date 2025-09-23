@@ -298,7 +298,6 @@ test('garbage collection when space limit reached', async t => {
   const [{ bytesCleared }] = await once(blindPeer, 'gc-done')
 
   const nowBytes = blindPeer.digest.bytesAllocated
-  console.log('init', initBytes, 'now', nowBytes)
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
   t.is(nowBytes > 1000, true, 'did not gc too much')
   t.is(initBytes - bytesCleared, nowBytes, 'Bytes-cleared accounting correct')
