@@ -517,6 +517,7 @@ test('Trusted peers can update an existing record to start announcing it', async
 
     const [record] = await coreAddedProm
     t.is(record.announce, true, 'announce set in db')
+    t.is((await blindPeer.db.getCoreRecord(record.key)).announce, true)
   }
 
   await swarm.destroy()
