@@ -503,8 +503,6 @@ class BlindPeer extends ReadyResource {
 
   async _close () {
     clearInterval(this._gcInterval)
-
-    // There is no sane way to abort a gc halfway, so we have to let it finish
     if (this._gcing) await this._gcing
 
     if (this.ownsWakeup) this.wakeup.destroy()
