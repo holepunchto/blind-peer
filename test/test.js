@@ -58,6 +58,20 @@ test('client can use a blind-peer to add a core', async t => {
   }
 })
 
+test('client does not hang forever if the blind peer is unavailable', async t => {
+  const { bootstrap } = await getTestnet(t)
+
+  const noBlindPeerHere = b4a.from('a'.repeat(64), 'hex')
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm, store, { requestTimeout: 500, mirrors: [noBlindPeerHere] })
+
+  const start = Date.now()
+  await client.addCore(core)
+  t.ok(start + 400 < Date.now() && start + 2000 > Date.now(), 'timed out correctly')
+
+  await client.close()
+})
+
 test('client can use a blind-peer to add an autobase', async t => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(2)
