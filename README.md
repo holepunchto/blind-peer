@@ -71,18 +71,16 @@ blind.addAutobaseBackground(autobase1)
 
 // Add another core
 blind.addCore(core1, autobase1.wakeupCapability.key)
-
 ```
 
 Related services:
 
- https://github.com/holepunchto/autobase-discovery
- https://github.com/HDegroote/dht-prometheus
-
+https://github.com/holepunchto/autobase-discovery
+https://github.com/HDegroote/dht-prometheus
 
 ## Programmatic Usage
 
-``` js
+```js
 const BlindPeer = require('blind-peer')
 ```
 

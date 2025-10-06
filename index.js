@@ -18,7 +18,7 @@ const { AddCoreEncoding } = require('blind-peer-encodings')
 const { DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
-  constructor (blindPeer, core) {
+  constructor(blindPeer, core) {
     this.blindPeer = blindPeer
     this.core = core
     this.destroyed = false
@@ -40,7 +40,7 @@ class CoreTracker {
     this.core.on('append', onupdate)
   }
 
-  _onupdate () {
+  _onupdate() {
     this.updated = true
     if (!this.record) return
 
@@ -50,7 +50,7 @@ class CoreTracker {
     this.blindPeer.flush().then(this.announceToReferrerBound, safetyCatch)
   }
 
-  _onactive () {
+  _onactive() {
     this.activated = true
 
     if (this.record) {
@@ -60,7 +60,8 @@ class CoreTracker {
     this.blindPeer.emit('core-activity', this.core, this.record)
   }
 
-  gc () { // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
+  gc() {
+    // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
     const bytesCleared = this.core.byteLength
     const blocksCleared = this.core.length
     this.record.bytesAllocated = this.core.byteLength - bytesCleared
@@ -76,7 +77,7 @@ class CoreTracker {
     return bytesCleared
   }
 
-  async refresh () {
+  async refresh() {
     await this.core.ready()
     if (this.destroyed) return
 
@@ -93,11 +94,14 @@ class CoreTracker {
     if (this.activated) this._onactive()
   }
 
-  announceToReferrer () {
+  announceToReferrer() {
     if (!this.record || !this.record.referrer) return
-    if (!this.referrerDiscoveryKey) this.referrerDiscoveryKey = crypto.discoveryKey(this.record.referrer)
+    if (!this.referrerDiscoveryKey)
+      this.referrerDiscoveryKey = crypto.discoveryKey(this.record.referrer)
 
-    const sessions = this.blindPeer.wakeup.getSessions(null, { discoveryKey: this.referrerDiscoveryKey })
+    const sessions = this.blindPeer.wakeup.getSessions(null, {
+      discoveryKey: this.referrerDiscoveryKey
+    })
     if (sessions.length === 0) return
 
     const wakeup = [{ key: this.core.key, length: this.core.length }]
@@ -116,21 +120,21 @@ class CoreTracker {
     }
   }
 
-  destroy () {
+  destroy() {
     if (this.destroyed) return
     this.destroyed = true
   }
 }
 
 class WakeupHandler {
-  constructor (db, key, discoveryKey) {
+  constructor(db, key, discoveryKey) {
     this.db = db
     this.key = key
     this.discoveryKey = discoveryKey
     this.active = false
   }
 
-  async onpeeractive (peer, session) {
+  async onpeeractive(peer, session) {
     const referrer = this.key
     const query = {
       gte: { referrer },
@@ -150,7 +154,10 @@ class WakeupHandler {
 }
 
 class BlindPeer extends ReadyResource {
-  constructor (rocks, { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}) {
+  constructor(
+    rocks,
+    { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}
+  ) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
@@ -181,36 +188,39 @@ class BlindPeer extends ReadyResource {
     }
   }
 
-  get encryptionPublicKey () {
+  get encryptionPublicKey() {
     return this.db.encryptionKeyPair.publicKey
   }
 
-  get publicKey () {
+  get publicKey() {
     return this.swarm.keyPair.publicKey
   }
 
-  get digest () {
+  get digest() {
     return this.db.digest
   }
 
-  get nrAnnouncedCores () {
+  get nrAnnouncedCores() {
     return this.announcedCores.size
   }
 
-  addTrustedPubKey (key) {
+  addTrustedPubKey(key) {
     this.trustedPubKeys.add(IdEnc.normalize(key))
   }
 
-  _isTrustedPeer (key) {
+  _isTrustedPeer(key) {
     return this.trustedPubKeys.has(IdEnc.normalize(key))
   }
 
-  async _open () {
+  async _open() {
     await this.store.ready()
 
     // legacy, we can remove once current ones are upgraded
     const { secretKey } = await this.store.createKeyPair('blind-mirror-swarm')
-    this.db = new BlindPeerDB(this.rocks.session(), { swarming: secretKey.subarray(0, 32), encryption: null })
+    this.db = new BlindPeerDB(this.rocks.session(), {
+      swarming: secretKey.subarray(0, 32),
+      encryption: null
+    })
     await this.db.ready()
 
     // We don't need to track our own db, so we set this handler after the db core opened
@@ -218,7 +228,8 @@ class BlindPeer extends ReadyResource {
 
     if (this.swarm === null) {
       const swarmOpts = { keyPair: this.db.swarmingKeyPair }
-      if (this._port) swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
+      if (this._port)
+        swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
       this.swarm = new Hyperswarm(swarmOpts)
     }
     this.swarm.on('connection', this._onconnection.bind(this))
@@ -232,7 +243,7 @@ class BlindPeer extends ReadyResource {
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }
 
-  async _onwakeup (discoveryKey, muxer) {
+  async _onwakeup(discoveryKey, muxer) {
     this.stats.wakeups++
 
     const auth = await this.store.storage.getAuth(discoveryKey)
@@ -256,16 +267,17 @@ class BlindPeer extends ReadyResource {
     stream.once('close', () => w.destroy())
   }
 
-  async listen () {
+  async listen() {
     if (!this.opened) await this.ready()
     return this.swarm.listen()
   }
 
-  needsGc () {
+  needsGc() {
     return this.digest.bytesAllocated >= this.maxBytes
   }
 
-  async _gc () { // Do not call directly (assumes lock)
+  async _gc() {
+    // Do not call directly (assumes lock)
     if (!this.needsGc()) return
 
     const bytesToClear = this.digest.bytesAllocated - this.maxBytes
@@ -302,7 +314,7 @@ class BlindPeer extends ReadyResource {
     this.emit('gc-done', { bytesCleared })
   }
 
-  _onreferrerupdates (updates) {
+  _onreferrerupdates(updates) {
     const pending = new Set()
 
     for (const u of updates) {
@@ -319,7 +331,7 @@ class BlindPeer extends ReadyResource {
     }
   }
 
-  _oncoreopen (core) {
+  _oncoreopen(core) {
     const session = new Hypercore({ core, weak: true })
     const id = b4a.toString(core.discoveryKey, 'hex')
     const tracker = new CoreTracker(this, session)
@@ -338,7 +350,8 @@ class BlindPeer extends ReadyResource {
     })
   }
 
-  async flush () { // not allowed to throw
+  async flush() {
+    // not allowed to throw
     if (!(await this.lock.lock())) return
     try {
       if (this.enableGc && this.needsGc()) await this._gc()
@@ -351,7 +364,7 @@ class BlindPeer extends ReadyResource {
     }
   }
 
-  _onconnection (conn) {
+  _onconnection(conn) {
     if (this.closing) {
       conn.destroy()
       return
@@ -369,7 +382,7 @@ class BlindPeer extends ReadyResource {
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
   }
 
-  async _activateCore (stream, record) {
+  async _activateCore(stream, record) {
     this.stats.activations++
 
     const core = this.store.get({ key: record.key })
@@ -391,7 +404,7 @@ class BlindPeer extends ReadyResource {
     stream.on('close', () => core.close().catch(safetyCatch))
   }
 
-  async _announceCore (key) {
+  async _announceCore(key) {
     const coreId = IdEnc.normalize(key)
     if (this.announcedCores.has(coreId)) return
 
@@ -417,7 +430,7 @@ class BlindPeer extends ReadyResource {
     this.emit('announce-core', core)
   }
 
-  async _onaddcore (stream, record) {
+  async _onaddcore(stream, record) {
     if (!this.opened) await this.ready()
 
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
@@ -457,13 +470,13 @@ class BlindPeer extends ReadyResource {
     return coreRecord
   }
 
-  async _ondeletecore (stream, { key }) {
+  async _ondeletecore(stream, { key }) {
     if (!this._isTrustedPeer(stream.remotePublicKey)) {
       this.emit('delete-blocked', stream, { key })
       throw new Error('Only trusted peers can delete cores')
     }
 
-    const existing = await this.db.getCoreRecord(key) !== null
+    const existing = (await this.db.getCoreRecord(key)) !== null
     this.emit('delete-core', stream, { key, existing })
     if (!existing) return false
 
@@ -502,7 +515,7 @@ class BlindPeer extends ReadyResource {
     return true
   }
 
-  async _close () {
+  async _close() {
     clearInterval(this.flushInterval)
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
@@ -512,68 +525,76 @@ class BlindPeer extends ReadyResource {
     await this.rocks.close()
   }
 
-  registerMetrics (promClient) {
+  registerMetrics(promClient) {
     const self = this
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_bytes_allocated',
       help: 'The amount of bytes allocated by the hyperdb (as reported in its digest)',
-      collect () {
+      collect() {
         this.set(self.digest.bytesAllocated)
       }
     })
 
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_cores',
       help: 'The amount of cores (as reported in its digest)',
-      collect () {
+      collect() {
         this.set(self.digest.cores)
       }
     })
 
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_cores_added',
       help: 'The total amount of add-core RPC requests that have been processed',
-      collect () {
+      collect() {
         this.set(self.stats.coresAdded)
       }
     })
 
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_bytes_gcd',
       help: 'The total amount of bytes garbage collected since the process started',
-      collect () {
+      collect() {
         this.set(self.stats.bytesGcd)
       }
     })
 
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_core_activations',
       help: 'The total amount of hypercore activations since the process started',
-      collect () {
+      collect() {
         this.set(self.stats.activations)
       }
     })
 
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_wakeups',
       help: 'The total amount of hypercore wakeups since the process started',
-      collect () {
+      collect() {
         this.set(self.stats.wakeups)
       }
     })
 
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_db_flushes',
       help: 'The total amount of database flushes since the process started',
-      collect () {
+      collect() {
         this.set(self.db.stats.flushes)
       }
     })
 
-    new promClient.Gauge({ // eslint-disable-line no-new
+    new promClient.Gauge({
+      // eslint-disable-line no-new
       name: 'blind_peer_announced_cores',
       help: 'The amount of announced cores',
-      collect () {
+      collect() {
         this.set(self.nrAnnouncedCores)
       }
     })

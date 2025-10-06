@@ -14,7 +14,7 @@ const BlindPeer = require('..')
 const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 
-test('client can use a blind-peer to add a core', async t => {
+test('client can use a blind-peer to add a core', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
@@ -39,7 +39,7 @@ test('client can use a blind-peer to add a core', async t => {
 
   // TODO: expose an event in blind-peer which allows us to detect
   // when a core has updated
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
   await client.close()
   await swarm.destroy() // So the core holder stops announcing the core
 
@@ -51,14 +51,14 @@ test('client can use a blind-peer to add a core', async t => {
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
   }
 })
 
-test('client can use a blind-peer to add an autobase', async t => {
+test('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(2)
   const tSecondAdd = t.test()
@@ -70,7 +70,11 @@ test('client can use a blind-peer to add an autobase', async t => {
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const { swarm: indexerSwarm, base: indexer, store: indexerStore } = await setupAutobaseHolder(t, bootstrap)
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
   await indexerSwarm.flush()
 
   const bases = []
@@ -87,7 +91,9 @@ test('client can use a blind-peer to add an autobase', async t => {
   }
 
   await indexer.append({ some: 'thing' })
-  for (const { base } of bases) { await base.append({ some: 'thing' }) }
+  for (const { base } of bases) {
+    await base.append({ some: 'thing' })
+  }
 
   t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
 
@@ -95,7 +101,7 @@ test('client can use a blind-peer to add an autobase', async t => {
   {
     const expectedAddedKeys = new Set([
       b4a.toString(indexer.local.key, 'hex'),
-      ...[...indexer.views()].map(v => b4a.toString(v.key, 'hex'))
+      ...[...indexer.views()].map((v) => b4a.toString(v.key, 'hex'))
     ])
 
     let nrAdded = 0
@@ -107,7 +113,8 @@ test('client can use a blind-peer to add an autobase', async t => {
         t.fail('more keys added than expected')
       }
       if (addedKeys.size === expectedAddedKeys.size) {
-        if (DEBUG) console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        if (DEBUG)
+          console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
         tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
         tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
       }
@@ -119,7 +126,7 @@ test('client can use a blind-peer to add an autobase', async t => {
     await tFirstAdd
 
     // Give some time for extra requests to cause test failure
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
     blindPeer.off('add-core', onaddcore)
   }
 
@@ -127,7 +134,7 @@ test('client can use a blind-peer to add an autobase', async t => {
   {
     const expectedAddedKeys = new Set([
       b4a.toString(bases[0].base.local.key, 'hex'),
-      ...[...bases[0].base.views()].map(v => b4a.toString(v.key, 'hex'))
+      ...[...bases[0].base.views()].map((v) => b4a.toString(v.key, 'hex'))
     ])
 
     let nrAdded = 0
@@ -139,7 +146,8 @@ test('client can use a blind-peer to add an autobase', async t => {
         t.fail('more keys added than expected')
       }
       if (addedKeys.size === expectedAddedKeys.size) {
-        if (DEBUG) console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        if (DEBUG)
+          console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
         tSecondAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
         tSecondAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
       }
@@ -151,12 +159,12 @@ test('client can use a blind-peer to add an autobase', async t => {
     await tSecondAdd
 
     // Give some time for extra requests to cause test failure
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
     blindPeer.off('add-core', onaddcore)
   }
 })
 
-test('repeated add-core requests do not result in db updates', async t => {
+test('repeated add-core requests do not result in db updates', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
@@ -173,7 +181,7 @@ test('repeated add-core requests do not result in db updates', async t => {
   t.alike(record.key, coreKey, 'added the core (sanity check)')
 
   // wait for it to be downloaded
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
   const initFlushes = blindPeer.db.stats.flushes
   t.is(initFlushes > 0, true, 'sanity check')
 
@@ -190,7 +198,7 @@ test('repeated add-core requests do not result in db updates', async t => {
   await client3.close()
 })
 
-test('relayThrough opt passed through', async t => {
+test('relayThrough opt passed through', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
@@ -202,12 +210,16 @@ test('relayThrough opt passed through', async t => {
   const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey], relayThrough })
   await client.addCore(core)
 
-  t.alike([...client.blindPeersByKey.values()][0].peer.relayThrough, relayThrough, 'passed through to clients')
+  t.alike(
+    [...client.blindPeersByKey.values()][0].peer.relayThrough,
+    relayThrough,
+    'passed through to clients'
+  )
 
   await client.close()
 })
 
-test('can lookup core after blind peer restart', async t => {
+test('can lookup core after blind peer restart', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   let blindPeerStorage = null
@@ -235,7 +247,7 @@ test('can lookup core after blind peer restart', async t => {
 
     // TODO: expose an event in blind-peer which allows us to detect
     // when a core has updated
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
     await client.close()
     await blindPeer.close()
   }
@@ -252,14 +264,14 @@ test('can lookup core after blind peer restart', async t => {
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the restarted blind peer')
   }
 })
 
-test('garbage collection when space limit reached', async t => {
+test('garbage collection when space limit reached', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
@@ -274,9 +286,12 @@ test('garbage collection when space limit reached', async t => {
   const { swarm, store } = await setupCoreHolder(t, bootstrap)
   {
     const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
-    t.teardown(async () => {
-      await client.close()
-    }, { order: 0 })
+    t.teardown(
+      async () => {
+        await client.close()
+      },
+      { order: 0 }
+    )
 
     for (let i = 0; i < nrCores; i++) {
       const core = store.get({ name: `core-${i}` })
@@ -289,13 +304,10 @@ test('garbage collection when space limit reached', async t => {
   }
 
   // TODO: some event to ensure they're fully downloaded
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 2000))
   const initBytes = blindPeer.digest.bytesAllocated
 
-  const [[{ bytesCleared }]] = await Promise.all([
-    once(blindPeer, 'gc-done'),
-    blindPeer._gc()
-  ])
+  const [[{ bytesCleared }]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
 
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
@@ -313,22 +325,28 @@ test('garbage collection when space limit reached', async t => {
   }
 
   await cores[gcdCoreI].append('Block-200')
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
 
   const updatedRecord = await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)
 
   t.is(origRecord.bytesAllocated, 0, 'sanity check')
   t.is(updatedRecord.bytesAllocated, 9, 'Downloads newly added blocks after gc, but not old ones')
-  t.is(updatedRecord.bytesCleared, origRecord.bytesCleared, 'Sanity check on bytesCleared accounting')
+  t.is(
+    updatedRecord.bytesCleared,
+    origRecord.bytesCleared,
+    'Sanity check on bytesCleared accounting'
+  )
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
-test('Trusted peers can set announce: true to have the blind peer announce it', async t => {
+test('Trusted peers can set announce: true to have the blind peer announce it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
+  })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -354,7 +372,7 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
 
   // TODO: expose an event in blind-peer which allows us to detect
   // when a core has updated
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
   await client.close()
   await swarm.destroy() // So the core holder stops announcing the core
 
@@ -366,14 +384,18 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     const block = await core.get(1)
-    t.is(b4a.toString(block), 'Block 1', 'The blind peer is swarming directly on the core (announce processed)')
+    t.is(
+      b4a.toString(block),
+      'Block 1',
+      'The blind peer is swarming directly on the core (announce processed)'
+    )
   }
 })
 
-test('Untrusted peers cannot set announce: true', async t => {
+test('Untrusted peers cannot set announce: true', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -399,7 +421,7 @@ test('Untrusted peers cannot set announce: true', async t => {
 
   // TODO: expose an event in blind-peer which allows us to detect
   // when a core has updated
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
   await client.close()
 
   {
@@ -410,7 +432,7 @@ test('Untrusted peers cannot set announce: true', async t => {
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     await t.exception(
       async () => {
@@ -422,7 +444,7 @@ test('Untrusted peers cannot set announce: true', async t => {
   }
 })
 
-test('records with announce: true are announced upon startup', async t => {
+test('records with announce: true are announced upon startup', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const trustedPubKeys = [swarm.dht.defaultKeyPair.publicKey]
@@ -448,7 +470,7 @@ test('records with announce: true are announced upon startup', async t => {
     t.is(record.announce, true, 'announce set (sanity check)')
 
     // TODO: debug why, without this, we get an unhandled rejection
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     replicatedDiscKeys = [...blindPeer.activeReplication.keys()]
     t.alike(replicatedDiscKeys, [b4a.toString(core.discoveryKey, 'hex')])
@@ -472,11 +494,18 @@ test('records with announce: true are announced upon startup', async t => {
       'Sanity check: core not available without blind peer'
     )
 
-    const { blindPeer } = await setupBlindPeer(t, bootstrap, { storage: blindPeerStorage, trustedPubKeys })
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+      storage: blindPeerStorage,
+      trustedPubKeys
+    })
     await blindPeer.listen()
     await blindPeer.swarm.flush()
 
-    t.alike([...blindPeer.activeReplication.keys()], replicatedDiscKeys, 'announced core is tracked upon startup')
+    t.alike(
+      [...blindPeer.activeReplication.keys()],
+      replicatedDiscKeys,
+      'announced core is tracked upon startup'
+    )
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
@@ -487,12 +516,14 @@ test('records with announce: true are announced upon startup', async t => {
   }
 })
 
-test('Trusted peers can update an existing record to start announcing it', async t => {
+test('Trusted peers can update an existing record to start announcing it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
+  })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -524,7 +555,7 @@ test('Trusted peers can update an existing record to start announcing it', async
   await client.close()
 })
 
-test('Trusted peers can delete a core', async t => {
+test('Trusted peers can delete a core', async (t) => {
   const tEvents = t.test('events')
   tEvents.plan(7)
 
@@ -565,7 +596,7 @@ test('Trusted peers can delete a core', async t => {
   t.is(await blindPeer.db.hasCore(coreKey), true, 'core in db')
 
   // give it time to download
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
 
   t.is(blindPeer.db.digest.cores, 1, '1 core in digest (sanity check)')
   t.is(blindPeer.db.digest.bytesAllocated > 0, true, 'digest has bytes allocated of the core')
@@ -583,13 +614,15 @@ test('Trusted peers can delete a core', async t => {
   await client.close()
 })
 
-test('Untrusted peers cannot delete a core', async t => {
+test('Untrusted peers cannot delete a core', async (t) => {
   t.plan(6)
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [IdEnc.decode('a'.repeat(64))] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [IdEnc.decode('a'.repeat(64))]
+  })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -620,24 +653,26 @@ test('Untrusted peers cannot delete a core', async t => {
   await client.close()
 })
 
-test('Client can request multiple blind peers in one request', async t => {
+test('Client can request multiple blind peers in one request', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
   const blindPeers = []
   for (let i = 0; i < 3; i++) {
-    const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+      trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
+    })
     await blindPeer.listen()
     blindPeers.push(blindPeer)
   }
 
-  await new Promise(resolve => setTimeout(resolve, 500)) // TODO: swarm flushes
+  await new Promise((resolve) => setTimeout(resolve, 500)) // TODO: swarm flushes
 
   const coreAddedProm = Promise.all(blindPeers.map((bp) => once(bp, 'add-core')))
   coreAddedProm.catch(() => {})
 
-  const client = new Client(swarm, store, { mediaMirrors: blindPeers.map(bp => bp.publicKey) })
+  const client = new Client(swarm, store, { mediaMirrors: blindPeers.map((bp) => bp.publicKey) })
   const coreKey = core.key
   const res = await client.addCore(core, coreKey, { announce: true, pick: 3 })
 
@@ -655,12 +690,14 @@ test('Client can request multiple blind peers in one request', async t => {
   await swarm.destroy()
 })
 
-test('client suspend/resume logic', async t => {
+test('client suspend/resume logic', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
+  })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -676,7 +713,7 @@ test('client suspend/resume logic', async t => {
     t.alike(record.key, coreKey, 'added the core')
   }
 
-  const getSuspendeds = () => [...client.blindPeersByKey.values()].map(v => v.peer.suspended)
+  const getSuspendeds = () => [...client.blindPeersByKey.values()].map((v) => v.peer.suspended)
 
   t.alike(getSuspendeds(), [false], 'clients not yet suspended')
   t.is(client.suspended, false, 'not suspended')
@@ -695,12 +732,14 @@ test('client suspend/resume logic', async t => {
   await client.close()
 })
 
-test('client gc logic', async t => {
+test('client gc logic', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
+  })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -721,7 +760,7 @@ test('client gc logic', async t => {
   t.is(ref.cores.size, 1, 'client has 1 core (sanity check')
   t.is(client.mirroring.size, 1, 'mirroring includes core (sanity checK)')
   await core.close()
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
 
   t.is(client.blindPeersByKey.size, 0, 'gcd after sufficient gc ticks')
   t.is(ref.cores.size, 0, 'client no longer has the core')
@@ -731,7 +770,7 @@ test('client gc logic', async t => {
   await client.close()
 })
 
-test('invalid requests are emitted', async t => {
+test('invalid requests are emitted', async (t) => {
   t.plan(3)
 
   const { bootstrap } = await getTestnet(t)
@@ -758,7 +797,7 @@ test('invalid requests are emitted', async t => {
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
 
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
   await client.close()
   await swarm.destroy() // So the core holder stops announcing the core
 
@@ -768,7 +807,7 @@ test('invalid requests are emitted', async t => {
     await core.ready()
     swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
 
-    await new Promise(resolve => setTimeout(resolve, 250))
+    await new Promise((resolve) => setTimeout(resolve, 250))
     t.is(core.replicator.peers.length, 1, 'sanity check (we connected)')
 
     const invalidReq = {
@@ -790,7 +829,7 @@ test('invalid requests are emitted', async t => {
   }
 })
 
-test('Prometheus metrics', async t => {
+test('Prometheus metrics', async (t) => {
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
@@ -823,9 +862,12 @@ test('Prometheus metrics', async t => {
   const { swarm, store } = await setupCoreHolder(t, bootstrap)
   {
     const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
-    t.teardown(async () => {
-      await client.close()
-    }, { order: 0 })
+    t.teardown(
+      async () => {
+        await client.close()
+      },
+      { order: 0 }
+    )
 
     for (let i = 0; i < nrCores; i++) {
       const core = store.get({ name: `core-${i}` })
@@ -838,12 +880,9 @@ test('Prometheus metrics', async t => {
   }
 
   // TODO: some event to ensure they're fully downloaded
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 2000))
 
-  const [[{ bytesCleared }]] = await Promise.all([
-    once(blindPeer, 'gc-done'),
-    blindPeer._gc()
-  ])
+  const [[{ bytesCleared }]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
 
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
@@ -855,48 +894,58 @@ test('Prometheus metrics', async t => {
     const metrics = await promClient.register.metrics()
     t.is(getMetricValue(metrics, 'blind_peer_bytes_gcd'), bytesCleared, 'blind_peer_bytes_gcd')
     t.is(getMetricValue(metrics, 'blind_peer_cores_added'), nrCores, 'blind_peer_cores_added')
-    t.is(getMetricValue(metrics, 'blind_peer_bytes_allocated'), nowBytes, 'blind_peer_bytes_allocated')
+    t.is(
+      getMetricValue(metrics, 'blind_peer_bytes_allocated'),
+      nowBytes,
+      'blind_peer_bytes_allocated'
+    )
     t.is(getMetricValue(metrics, 'blind_peer_cores'), nrCores, 'blind_peer_cores')
     t.is(getMetricValue(metrics, 'blind_peer_db_flushes') > 0, true, 'blind_peer_db_flushes')
   }
 })
 
-async function getTestnet (t) {
+async function getTestnet(t) {
   const testnet = await setupTestnet()
-  t.teardown(async () => {
-    await testnet.destroy()
-  }, { order: Infinity })
+  t.teardown(
+    async () => {
+      await testnet.destroy()
+    },
+    { order: Infinity }
+  )
 
   return testnet
 }
 
-async function setupPeer (t, bootstrap) {
+async function setupPeer(t, bootstrap) {
   const storage = await tmpDir(t)
   const swarm = new Hyperswarm({ bootstrap })
   const store = new Corestore(storage)
 
   const order = clientCounter++
-  swarm.on('connection', c => {
+  swarm.on('connection', (c) => {
     if (DEBUG) console.log('(CORE HOLDER) connection opened')
     store.replicate(c)
     c.on('error', (e) => {
       if (DEBUG) console.warn(`Swarm error: ${e.stack}`)
     })
   })
-  t.teardown(async () => {
-    await swarm.destroy()
-    await store.close()
-  }, { order })
+  t.teardown(
+    async () => {
+      await swarm.destroy()
+      await store.close()
+    },
+    { order }
+  )
 
   return { swarm, store }
 }
 
 // Illustrates a bug
-test.skip('Cores added by someone who does not have them are downloaded from other peers', async t => {
+test.skip('Cores added by someone who does not have them are downloaded from other peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-  swarm.on('connection', conn =>
+  swarm.on('connection', (conn) =>
     console.log('CORE HOLDER swarm key', conn.publicKey.toString('hex'))
   )
   const { swarm: peerSwarm, store: peerStore } = await setupPeer(t, bootstrap)
@@ -905,7 +954,9 @@ test.skip('Cores added by someone who does not have them are downloaded from oth
   console.log('disckey core11', core.discoveryKey.toString('hex'))
   console.log('disckey core2', core2.discoveryKey.toString('hex'))
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [peerSwarm.dht.defaultKeyPair.publicKey] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [peerSwarm.dht.defaultKeyPair.publicKey]
+  })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -923,7 +974,7 @@ test.skip('Cores added by someone who does not have them are downloaded from oth
     const [record] = await coreAddedProm
     t.is(record.announce, true, 'announce set in db')
 
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
     const bpCore = blindPeer.store.get({ key: core.key })
     await bpCore.ready()
 
@@ -937,10 +988,12 @@ test.skip('Cores added by someone who does not have them are downloaded from oth
   {
     const coreAddedProm = once(blindPeer, 'add-core')
     coreAddedProm.catch(() => {})
-    const reply = await client.addCore(store.get({ key: core2.key }), core2.key, { announce: false })
+    const reply = await client.addCore(store.get({ key: core2.key }), core2.key, {
+      announce: false
+    })
     t.is(reply.announce, false, 'announce false (sanity check)')
   }
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
 
   console.log('\n\n\nCHECKING now\n\n\n')
 
@@ -968,7 +1021,7 @@ test.skip('Cores added by someone who does not have them are downloaded from oth
   await client.close()
 })
 
-async function setupCoreHolder (t, bootstrap) {
+async function setupCoreHolder(t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
 
   const core = store.get({ name: 'core' })
@@ -979,7 +1032,7 @@ async function setupCoreHolder (t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function setupAutobaseHolder (t, bootstrap, autobaseBootstrap = null) {
+async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
   const { swarm, store } = await setupPeer(t, bootstrap)
 
   const open = (store) => {
@@ -998,24 +1051,33 @@ async function setupAutobaseHolder (t, bootstrap, autobaseBootstrap = null) {
     }
   }
 
-  const base = new Autobase(store.namespace('base'), autobaseBootstrap, { open, apply, valueEncoding: 'json', ackInterval: 10, ackThreshold: 0 })
+  const base = new Autobase(store.namespace('base'), autobaseBootstrap, {
+    open,
+    apply,
+    valueEncoding: 'json',
+    ackInterval: 10,
+    ackThreshold: 0
+  })
   await base.ready()
   swarm.join(base.discoveryKey)
 
   return { swarm, store, base }
 }
 
-async function setupBlindPeer (t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
+async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
   const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, trustedPubKeys })
 
   const order = clientCounter++
-  t.teardown(async () => {
-    await peer.close()
-    await swarm.destroy()
-  }, { order })
+  t.teardown(
+    async () => {
+      await peer.close()
+      await swarm.destroy()
+    },
+    { order }
+  )
 
   await peer.listen()
   if (DEBUG) {

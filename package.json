@@ -47,7 +47,9 @@
     "lib/"
   ],
   "scripts": {
-    "test": "standard && brittle test/*.js"
+    "format": "prettier --write .",
+    "test": "prettier --check . && brittle test/*.js",
+    "test:bare": "bare test/basic.js"
   },
   "repository": {
     "type": "git",
