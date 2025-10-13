@@ -84,7 +84,7 @@ const cmd = command(
 
     blindPeer.on('add-core', (record, _, stream) => {
       try {
-        logger.info(
+        logger.debug(
           `add-core request received from peer ${streamToStr(stream)} for record ${recordToStr(record)}`
         )
       } catch (e) {

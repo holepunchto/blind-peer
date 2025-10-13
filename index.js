@@ -459,10 +459,11 @@ class BlindPeer extends ReadyResource {
       await core.close()
 
       await this._onwakeup(discoveryKey, muxer)
+
+      this.emit('add-core', record, true, stream)
     }
 
     this.stats.coresAdded++
-    this.emit('add-core', record, true, stream)
 
     await this._activateCore(stream, record)
 
