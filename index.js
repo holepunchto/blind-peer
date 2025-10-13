@@ -446,6 +446,7 @@ class BlindPeer extends ReadyResource {
     if (!existing || upgradeToAnnounce) {
       this.db.addCore(record)
       await this.flush() // flush now as important data
+      this.emit('add-new-core', record, true, stream)
     }
 
     if (record.referrer) {
@@ -459,11 +460,10 @@ class BlindPeer extends ReadyResource {
       await core.close()
 
       await this._onwakeup(discoveryKey, muxer)
-
-      this.emit('add-core', record, true, stream)
     }
 
     this.stats.coresAdded++
+    this.emit('add-core', record, true, stream)
 
     await this._activateCore(stream, record)
 
