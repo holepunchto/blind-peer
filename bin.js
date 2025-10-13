@@ -82,11 +82,17 @@ const cmd = command(
       logger.warn(`Error while flushing the db: ${e.stack}`)
     })
 
-    blindPeer.on('add-core', (record, _, stream) => {
+    blindPeer.on('add-new-core', (record, _, stream) => {
       try {
-        logger.info(
-          `add-core request received from peer ${streamToStr(stream)} for record ${recordToStr(record)}`
-        )
+        if (record.announce) {
+          logger.info(
+            `add-core request received from peer ${streamToStr(stream)} for record ${recordToStr(record)}`
+          )
+        } else {
+          logger.debug(
+            `add-core request received from peer ${streamToStr(stream)} for record ${recordToStr(record)}`
+          )
+        }
       } catch (e) {
         logger.info(`Invalid add-core request received: ${e.stack}`)
         logger.info(record)
