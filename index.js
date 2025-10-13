@@ -431,6 +431,7 @@ class BlindPeer extends ReadyResource {
     const existing = await this.db.getCoreRecord(record.key)
     const upgradeToAnnounce = existing && !existing.announce && record.announce
     if (!existing || upgradeToAnnounce) {
+      this.emit('add-core', record, true, stream)
       this.db.addCore(record)
       await this.flush() // flush now as important data
     }
@@ -449,7 +450,6 @@ class BlindPeer extends ReadyResource {
     }
 
     this.stats.coresAdded++
-    this.emit('add-core', record, true, stream)
 
     await this._activateCore(stream, record)
 
