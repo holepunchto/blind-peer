@@ -60,6 +60,10 @@ const cmd = command(
     '--repl [repl]',
     'Expose a repl-swarm at the passed-in seed (32 bytes in hex or z32 notation). Use for debugging only.'
   ),
+  flag(
+    '--auto-shutdown-minutes [auto-shutdown-minutes]',
+    '(Temporary, Advanced) Automatically shut the process down after X minutes, with a variation of 20%'
+  ),
   async function ({ flags }) {
     const debug = flags.debug
     const logger = pino({
@@ -290,6 +294,18 @@ const cmd = command(
 
     logger.info(`Listening at ${idEnc.normalize(blindPeer.publicKey)}`)
     logger.info(`Encryption public key is ${idEnc.normalize(blindPeer.encryptionPublicKey)}`)
+
+    if (flags.autoShutdownMinutes) {
+      const delay = flags.autoShutdownMinutes * (1 + Math.random() / 5)
+      logger.warn(`Automatically shutting down the process in ${delay} minutes`)
+      setTimeout(
+        () => {
+          logger.warn('Auto-shutdown triggered. Shutting down...')
+          goodbye.exit()
+        },
+        delay * 60 * 1000
+      )
+    }
   }
 )
 
