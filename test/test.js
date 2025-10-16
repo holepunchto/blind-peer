@@ -850,6 +850,7 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_wakeups 0'), 'blind_peer_wakeups')
     t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
     t.ok(metrics.includes('blind_peer_announced_cores 0'), 'blind_peer_announced_cores')
+    t.ok(metrics.includes('blind_peer_peer_active 0'), 'blind_peer_announced_cores')
   }
 
   await blindPeer.listen()

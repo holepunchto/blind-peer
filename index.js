@@ -127,14 +127,16 @@ class CoreTracker {
 }
 
 class WakeupHandler {
-  constructor(db, key, discoveryKey) {
+  constructor(db, key, discoveryKey, stats) {
     this.db = db
     this.key = key
     this.discoveryKey = discoveryKey
     this.active = false
+    this.stats = stats
   }
 
   async onpeeractive(peer, session) {
+    this.stats.peerActive++
     const referrer = this.key
     const query = {
       gte: { referrer },
@@ -184,7 +186,8 @@ class BlindPeer extends ReadyResource {
       bytesGcd: 0,
       coresAdded: 0,
       activations: 0,
-      wakeups: 0
+      wakeups: 0,
+      peerActive: 0
     }
   }
 
@@ -250,7 +253,7 @@ class BlindPeer extends ReadyResource {
     if (!auth) return
 
     const stream = muxer.stream
-    const handler = new WakeupHandler(this.db, auth.key, discoveryKey)
+    const handler = new WakeupHandler(this.db, auth.key, discoveryKey, this.stats)
 
     if (this.wakeup.hasStream(stream, auth.key, handler)) {
       return
@@ -579,6 +582,15 @@ class BlindPeer extends ReadyResource {
       help: 'The total amount of hypercore wakeups since the process started',
       collect() {
         this.set(self.stats.wakeups)
+      }
+    })
+
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_peer_active',
+      help: 'The total amount of times a peer has become active due to a wakeup',
+      collect() {
+        this.set(self.stats.peerActive)
       }
     })
 
