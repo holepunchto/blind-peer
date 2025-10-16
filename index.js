@@ -134,22 +134,8 @@ class WakeupHandler {
     this.active = false
   }
 
-  async onpeeractive(peer, session) {
-    const referrer = this.key
-    const query = {
-      gte: { referrer },
-      lte: { referrer },
-      reverse: true,
-      limit: 32
-    }
-
-    try {
-      const latest = await this.db.find('@blind-peer/cores-by-referrer', query).toArray()
-      if (peer.removed) return
-      session.announce(peer, latest)
-    } catch {
-      // do nothing
-    }
+  async onpeeractive(peer, session, latest) {
+    session.announce(peer, latest)
   }
 }
 
@@ -259,8 +245,23 @@ class BlindPeer extends ReadyResource {
     const w = this.wakeup.session(auth.key, handler)
     w.addStream(stream)
 
-    for (const peer of w.peers) {
-      if (peer.active) handler.onpeeractive(peer, w)
+    const referrer = this.key
+    const query = {
+      gte: { referrer },
+      lte: { referrer },
+      reverse: true,
+      limit: 32
+    }
+
+    try {
+      const latest = await this.db.find('@blind-peer/cores-by-referrer', query).toArray()
+      for (const peer of w.peers) {
+        if (peer.removed) continue
+        if (peer.active) handler.onpeeractive(peer, w, latest)
+      }
+    } catch (e) {
+      safetyCatch(e)
+      // do nothing
     }
 
     stream.setMaxListeners(0)
