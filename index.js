@@ -96,8 +96,9 @@ class CoreTracker {
 
   announceToReferrer() {
     if (!this.record || !this.record.referrer) return
-    if (!this.referrerDiscoveryKey)
+    if (!this.referrerDiscoveryKey) {
       this.referrerDiscoveryKey = crypto.discoveryKey(this.record.referrer)
+    }
 
     const sessions = this.blindPeer.wakeup.getSessions(null, {
       discoveryKey: this.referrerDiscoveryKey
@@ -150,6 +151,10 @@ class WakeupHandler {
     } catch {
       // do nothing
     }
+  }
+
+  onpeerinactive(peer, session) {
+    if (session.peers.length === 0) session.destroy()
   }
 }
 
@@ -228,8 +233,9 @@ class BlindPeer extends ReadyResource {
 
     if (this.swarm === null) {
       const swarmOpts = { keyPair: this.db.swarmingKeyPair }
-      if (this._port)
+      if (this._port) {
         swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
+      }
       this.swarm = new Hyperswarm(swarmOpts)
     }
     this.swarm.on('connection', this._onconnection.bind(this))
@@ -243,6 +249,14 @@ class BlindPeer extends ReadyResource {
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }
 
+  _getSession(key, discoveryKey) {
+    const sessions = this.wakeup.getSessions(key)
+    if (sessions.length) return sessions[0]
+
+    const handler = new WakeupHandler(this.db, key, discoveryKey)
+    return this.wakeup.session(key, handler)
+  }
+
   async _onwakeup(discoveryKey, muxer) {
     this.stats.wakeups++
 
@@ -250,21 +264,14 @@ class BlindPeer extends ReadyResource {
     if (!auth) return
 
     const stream = muxer.stream
-    const handler = new WakeupHandler(this.db, auth.key, discoveryKey)
+    const session = this._getSession(auth.key, discoveryKey)
 
-    if (this.wakeup.hasStream(stream, auth.key, handler)) {
-      return
-    }
+    if (session.hasStream(stream)) return
+    session.addStream(stream)
 
-    const w = this.wakeup.session(auth.key, handler)
-    w.addStream(stream)
-
-    for (const peer of w.peers) {
-      if (peer.active) handler.onpeeractive(peer, w)
-    }
-
-    stream.setMaxListeners(0)
-    stream.once('close', () => w.destroy())
+    // if new peer, send back the active handler for this peer
+    const peer = session.getPeer(stream)
+    if (peer && peer.active) handler.onpeeractive(peer, session)
   }
 
   async listen() {
