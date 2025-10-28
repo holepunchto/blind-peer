@@ -9,6 +9,7 @@ const Hyperswarm = require('hyperswarm')
 const promClient = require('prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
+const Wakeup = require('protomux-wakeup')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -162,6 +163,273 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     await new Promise((resolve) => setTimeout(resolve, 100))
     blindPeer.off('add-core', onaddcore)
   }
+})
+
+let writerI
+async function getWakeupPeer (t, bootstrap, indexer, blindPeer) {
+  const { store, swarm } = await setupPeer(t, bootstrap)
+  const wakeup = new Wakeup(() => {
+    console.log('WAKE UP CB CALLED')
+  })
+
+  const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
+  swarm.join(base.discoveryKey)
+  await Promise.all([
+    indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+    once(base, 'writable')
+  ])
+
+  const nr = writerI++
+  await base.append(`Message from writer ${nr}`)
+  const client = new Client(swarm, store, {
+    wakeup,
+    mirrors: [blindPeer.publicKey]
+  })
+  return { client, base, store, swarm, wakeup }
+}
+
+test('wakeup', async (t) => {
+  t.timeout(120000)
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const peers = []
+  const nrPeers = 3
+  for (let i = 0; i < nrPeers; i++) {
+    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+  }
+
+  console.log('\nADDING AUTOBASE TO BLIND PEER\n')
+  for (const { client, base } of peers) {
+    await client.addAutobase(base)
+  }
+
+  console.log('\nADDED ALL\n')
+  await peers[0].base.append('A new message')
+  await peers[0].base.append('A new message')
+  await peers[0].base.append('A new message')
+
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  console.log('\nADD NON-SWARMING USER\n')
+  const { store, swarm } = await setupPeer(t, bootstrap)
+  const wakeup = new Wakeup(() => {
+    console.log('WAKE UP CB CALLED')
+  })
+  const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
+  const client = new Client(swarm, store, {
+    wakeup,
+    mirrors: [blindPeer.publicKey]
+  })
+
+  await client.addAutobase(base)
+  await new Promise(resolve => setTimeout(resolve, 10000))
+})
+
+test.solo('wakeup race condition', async (t) => {
+  t.timeout(120000)
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { base: indexerBase1 } = await setupAutobaseHolder(t, bootstrap)
+  const { base: indexerBase2 } = await setupAutobaseHolder(t, bootstrap)
+
+  await new Promise(resolve => setTimeout(resolve, 250)) // flush
+  
+  const { base: peerBase1, store, swarm, wakeup } = await getWakeupPeer(t, bootstrap, indexerBase1, blindPeer)
+
+  console.log('setup peer 2')
+  const { base: peerBase2 } = await loadAutobase(store, indexerBase2.local.key, { wakeup })
+  swarm.join(peerBase2.discoveryKey)
+  await Promise.all([
+    indexerBase2.append({ add: b4a.toString(peerBase2.local.key, 'hex') }),
+    once(peerBase2, 'writable')
+  ])
+
+  console.log('setup done')
+
+
+  /*
+  const peers = []
+  const nrPeers = 3
+  for (let i = 0; i < nrPeers; i++) {
+    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+  }
+
+  console.log('\nADDING AUTOBASE TO BLIND PEER\n')
+  for (const { client, base } of peers) {
+    await client.addAutobase(base)
+  }
+
+  console.log('\nADDED ALL\n')
+  await peers[0].base.append('A new message')
+  await peers[0].base.append('A new message')
+  await peers[0].base.append('A new message')
+
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  console.log('\nADD NON-SWARMING USER\n')
+  const { store, swarm } = await setupPeer(t, bootstrap)
+  const wakeup = new Wakeup(() => {
+    console.log('WAKE UP CB CALLED')
+  })
+  const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
+  const client = new Client(swarm, store, {
+    wakeup,
+    mirrors: [blindPeer.publicKey]
+  })
+
+  await client.addAutobase(base)
+  await new Promise(resolve => setTimeout(resolve, 10000))
+  */
+})
+
+test.skip('client can use a blind-peer to add an autobase', async (t) => {
+  t.timeout(120000)
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const bases = []
+  const nrPeerAdds = new Map()
+  nrPeerAdds.set(0, 0)
+  nrPeerAdds.set(1, 0)
+
+  for (let i = 0; i < 2; i++) {
+    const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
+    console.log('base cap', base.wakeupCapability.key)
+    base.wakeupProtocol.session(base.wakeupCapability.key, {
+      onpeeradd: (peer, session) => {
+        console.log('base', i, 'on peer add handler called')
+        nrPeerAdds.set(i, nrPeerAdds.get(i) + 1)
+      }
+    })
+    await swarm.flush()
+    await Promise.all([
+      once(base, 'is-indexer'),
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') })
+    ])
+
+    await base.append({ some: 'thing' })
+    bases.push({ base, swarm, store })
+  }
+
+  await indexer.append({ some: 'thing' })
+  for (const { base } of bases) {
+    await base.append({ some: 'thing' })
+  }
+
+  t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
+
+  const clients = [
+    new Client(bases[0].swarm, bases[0].store, {
+      wakeup: bases[0].base.wakeupProtocol,
+      mirrors: [blindPeer.publicKey]
+    }),
+    new Client(bases[1].swarm, bases[1].store, {
+      wakeup: bases[1].base.wakeupProtocol,
+      mirrors: [blindPeer.publicKey]
+    })
+  ]
+  // A first writer adds the autobase
+  await clients[0].addAutobase(bases[0].base)
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  await bases[0].base.close()
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  await clients[1].addAutobase(bases[1].base)
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+
+  const nrReAdds = 10
+  for (let i =0; i < nrReAdds; i++) {
+    const { base: newBase } = await loadAutobase(bases[0].store, indexer.local.key, { wakeup: bases[0].wakeup})
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    console.log('\nadding it again')
+    await clients[0].addAutobase(newBase)
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    console.log(i, 'POST adds', nrPeerAdds)
+    await newBase.close()
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+
+  /* await clients[0].addAutobase(bases[0].base)
+  await clients[0].addAutobase(bases[0].base)
+  await clients[0].addAutobase(bases[0].base)
+  await clients[0].addAutobase(bases[0].base)
+  await clients[0].addAutobase(bases[0].base)
+  await clients[0].addAutobase(bases[0].base)
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  console.log('POST 1 nr peer adds', nrPeerAdds)
+  // TODO: Why would he see himself, and then not the other one later?
+  t.is(nrPeerAdds.get(0), 1, 'First base saw')
+  t.is(nrPeerAdds.get(1), 0, 'Second base did not see')
+
+  // Another writer adds the autobase as well
+  await clients[1].addAutobase(bases[1].base)
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  t.is(nrPeerAdds.get(0), 1, 'First base saw nothing new??')
+  t.is(nrPeerAdds.get(1), 1, 'Second base saw')
+  console.log('nr peer adds', nrPeerAdds)
+
+  /*
+  await clients[1].addAutobase(bases[1].base)
+  await clients[1].addAutobase(bases[1].base)
+  await clients[1].addAutobase(bases[1].base)
+  await clients[1].addAutobase(bases[1].base)
+  await clients[1].addAutobase(bases[1].base)
+  await clients[1].addAutobase(bases[1].base)
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  for (let i = 2; i < 5; i++) {
+    console.log('making base', i)
+    const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    base.wakeupProtocol.session(base.wakeupCapability.key, {
+      onpeeradd: (peer, session) => {
+        console.log('base', i, 'on peer add handler called')
+        nrPeerAdds.set(i, nrPeerAdds.get(i) + 1)
+      }
+    })
+    await swarm.flush()
+    await Promise.all([
+      once(base, 'is-indexer'),
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') })
+    ])
+    console.log('did', i)
+    await base.append({ some: 'thing' })
+    bases.push({ base, swarm, store })
+  }
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  console.log('nr peer adds', nrPeerAdds) */
 })
 
 test('repeated add-core requests do not result in db updates', async (t) => {
@@ -1032,9 +1300,7 @@ async function setupCoreHolder(t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
-  const { swarm, store } = await setupPeer(t, bootstrap)
-
+async function loadAutobase (store, autobaseBootstrap, { wakeup = null } = {}) {
   const open = (store) => {
     return store.get('view', { valueEncoding: 'json' })
   }
@@ -1043,7 +1309,7 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
     for (const { value } of batch) {
       if (value.add) {
         const key = b4a.from(value.add, 'hex')
-        await base.addWriter(key, { indexer: true })
+        await base.addWriter(key, { indexer: false })
         continue
       }
 
@@ -1052,6 +1318,7 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
   }
 
   const base = new Autobase(store.namespace('base'), autobaseBootstrap, {
+    wakeup,
     open,
     apply,
     valueEncoding: 'json',
@@ -1059,9 +1326,16 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
     ackThreshold: 0
   })
   await base.ready()
+
+  return { base, wakeup }
+}
+
+async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const { wakeup, base } = await loadAutobase(store, autobaseBootstrap)
   swarm.join(base.discoveryKey)
 
-  return { swarm, store, base }
+  return { swarm, store, base, wakeup }
 }
 
 async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {

@@ -135,6 +135,7 @@ class WakeupHandler {
   }
 
   async onpeeractive(peer, session) {
+    console.log('onpeeractive')
     const referrer = this.key
     const query = {
       gte: { referrer },
@@ -244,27 +245,38 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onwakeup(discoveryKey, muxer) {
+    console.log('disc key', discoveryKey)
+    console.log('_ONWAKEUP')
     this.stats.wakeups++
 
+    // We know the auth only after someone asked us to add the corresponding core
+    // Note: the flow for the first time a new core is added, is that onwakeup
+    // is called by the wakeupswarm when the connection opens, and before
+    // the rpc request is received, so the auth won't exist yet.
+    // If this is the reason we call onwakeup from add-core RPC, then we can do it cleaner
     const auth = await this.store.storage.getAuth(discoveryKey)
     if (!auth) return
+    console.log('on wakeup auth:', auth.discoveryKey)
 
     const stream = muxer.stream
     const handler = new WakeupHandler(this.db, auth.key, discoveryKey)
 
+    // console.log('muxer tream', muxer)
     if (this.wakeup.hasStream(stream, auth.key, handler)) {
+      console.log('has stream already for onwakeup') //  w id', w.topic.id, 'w.cap', w.topic.capability, 'w.peers', w.peers.length, 'penmding', w.topic.pendingPeers.length)
       return
     }
 
     const w = this.wakeup.session(auth.key, handler)
     w.addStream(stream)
 
+    console.log('onwakeup w id', w.topic.id, 'w.cap', w.topic.capability, 'w.peers', w.peers.length, 'penmding', w.topic.pendingPeers.length)
     for (const peer of w.peers) {
       if (peer.active) handler.onpeeractive(peer, w)
     }
 
     stream.setMaxListeners(0)
-    stream.once('close', () => w.destroy())
+    stream.once('close', () => w.destroy()) // TODO: move to just after when w is defined
   }
 
   async listen() {
@@ -371,7 +383,10 @@ class BlindPeer extends ReadyResource {
     }
 
     if (this.ownsStore) this.store.replicate(conn)
-    if (this.ownsWakeup) this.wakeup.addStream(conn)
+    if (this.ownsWakeup) {
+      console.log('blind peer sets up wakeup replication')
+      this.wakeup.addStream(conn)
+    }
 
     const rpc = new ProtomuxRPC(conn, {
       id: this.swarm.keyPair.publicKey,
@@ -431,6 +446,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onaddcore(stream, record) {
+    console.log('onaddcore')
     if (!this.opened) await this.ready()
 
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
@@ -450,6 +466,7 @@ class BlindPeer extends ReadyResource {
     }
 
     if (record.referrer) {
+      console.log('referrer', record.referrer)
       // ensure referrer is allocated...
       // TODO: move to a dedicated wakeup collection, insted of using a core since we moved away from that
       // still works atm, cause dkey
