@@ -527,6 +527,8 @@ class BlindPeer extends ReadyResource {
   }
 
   registerMetrics(promClient) {
+    this.wakeup.registerMetrics(promClient)
+
     const self = this
     new promClient.Gauge({
       // eslint-disable-line no-new
