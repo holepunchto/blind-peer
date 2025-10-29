@@ -14,6 +14,7 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
+let nrActive = 0
 const { AddCoreEncoding } = require('blind-peer-encodings')
 const { DeleteCoreEncoding } = require('blind-peer-encodings')
 
@@ -135,6 +136,7 @@ class WakeupHandler {
   }
 
   async onpeeractive(peer, session) {
+    console.log('ONPEERACTIVE', nrActive++)
     const referrer = this.key
     const query = {
       gte: { referrer },
@@ -146,6 +148,7 @@ class WakeupHandler {
     try {
       const latest = await this.db.find('@blind-peer/cores-by-referrer', query).toArray()
       if (peer.removed) return
+      console.log('announcing', peer.index)
       session.announce(peer, latest)
     } catch {
       // do nothing

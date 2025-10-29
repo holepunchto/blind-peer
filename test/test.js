@@ -9,6 +9,7 @@ const Hyperswarm = require('hyperswarm')
 const promClient = require('prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
+const Wakeup = require('protomux-wakeup')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -941,6 +942,167 @@ async function setupPeer(t, bootstrap) {
   return { swarm, store }
 }
 
+test.solo('wakeup', async (t) => {
+  t.timeout(120000)
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const peers = []
+  const nrPeers = 3
+  for (let i = 0; i < nrPeers; i++) {
+    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+  }
+
+  console.log('\nADDING AUTOBASE TO BLIND PEER\n')
+  for (const { client, base } of peers) {
+    await client.addAutobase(base)
+  }
+
+  console.log('\nADDED ALL\n')
+  console.log(blindPeer.wakeup.stats)
+  await peers[0].base.append('A new message')
+  await peers[1].base.append('A new message')
+  await peers[2].base.append('A new message')
+
+  console.log('\nCLOSING AND REOPENING')
+  for (let i = 0; i < 1; i++) {
+    await peers[0].base.close()
+    peers[0].base = (await loadAutobase(peers[0].store, indexer.local.key, { wakeup: peers[0].wakeup, addIndexers: false })).base
+    await new Promise(resolve => setTimeout(resolve, 500))
+    // console.log('peer wakeup stats', peers[0].wakeup.stats)
+    // console.log('peer wakeup stats', peers[1].wakeup.stats)
+    // console.log('peer wakeup stats', peers[2].wakeup.stats)
+
+    // console.log('blind peer wakeup stats', blindPeer.wakeup.stats)
+    // console.log(blindPeer.stats)
+  }
+
+  console.log('peer wakeup stats', peers[2].wakeup.stats)
+
+  console.log('blind peer wakeup stats', blindPeer.wakeup.stats)
+  console.log(blindPeer.stats)
+
+  /*
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  console.log(blindPeer.wakeup.stats)
+
+  console.log('\nADD NON-SWARMING USER\n')
+  const { store, swarm } = await setupPeer(t, bootstrap)
+  const wakeup = new Wakeup(() => {
+    console.log('WAKE UP CB CALLED')
+  })
+  const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
+  const client = new Client(swarm, store, {
+    wakeup,
+    mirrors: [blindPeer.publicKey]
+  })
+  const s1 = base.replicate(true)
+  const s2 = indexer.replicate(false)
+  s1.pipe(s2).pipe(s1)
+
+  console.log(blindPeer.stats)
+
+  await client.addAutobase(base)
+  console.log(blindPeer.wakeup.stats)
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  console.log(blindPeer.wakeup.stats)
+
+  await Promise.all([
+    indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+    once(base, 'writable')
+  ])
+  await base.append('A new message')
+
+  console.log([...peers[0].wakeup.topics.values()][0].active())
+  peers.map(p => [...peers[0].wakeup.topics.values()][0].inactive())
+  */
+  for (let i = 0; i < 3; i++) {
+    console.log('adding a batch of messages')
+    await peers[0].base.append('A new message')
+    await peers[1].base.append('A new message')
+    await peers[2].base.append('A new message')
+    await new Promise(resolve => setTimeout(resolve, 200))
+
+    // console.log('peer wakeup stats', peers[0].wakeup.stats)
+    // console.log('peer wakeup stats', peers[1].wakeup.stats)
+    // console.log('peer wakeup stats', peers[2].wakeup.stats)
+
+    console.log('blind peer wakeup stats', blindPeer.wakeup.stats)
+    console.log(blindPeer.stats)
+  }
+})
+
+test('wakeup race condition', async (t) => {
+  t.timeout(120000)
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { base: indexerBase1 } = await setupAutobaseHolder(t, bootstrap, null, { addIndexers: false })
+  const { base: indexerBase2 } = await setupAutobaseHolder(t, bootstrap, null, { addIndexers: false })
+
+  await new Promise(resolve => setTimeout(resolve, 250)) // flush
+  
+  const { base: peerBase1, store, swarm, wakeup } = await getWakeupPeer(t, bootstrap, indexerBase1, blindPeer)
+
+  console.log('setup peer 2')
+  const { base: peerBase2 } = await loadAutobase(store, indexerBase2.local.key, { wakeup })
+  swarm.join(peerBase2.discoveryKey)
+  await Promise.all([
+    indexerBase2.append({ add: b4a.toString(peerBase2.local.key, 'hex') }),
+    once(peerBase2, 'writable')
+  ])
+
+  console.log('setup done')
+
+
+  /*
+  const peers = []
+  const nrPeers = 3
+  for (let i = 0; i < nrPeers; i++) {
+    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+  }
+
+  console.log('\nADDING AUTOBASE TO BLIND PEER\n')
+  for (const { client, base } of peers) {
+    await client.addAutobase(base)
+  }
+
+  console.log('\nADDED ALL\n')
+  await peers[0].base.append('A new message')
+  await peers[0].base.append('A new message')
+  await peers[0].base.append('A new message')
+
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  console.log('\nADD NON-SWARMING USER\n')
+  const { store, swarm } = await setupPeer(t, bootstrap)
+  const wakeup = new Wakeup(() => {
+    console.log('WAKE UP CB CALLED')
+  })
+  const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
+  const client = new Client(swarm, store, {
+    wakeup,
+    mirrors: [blindPeer.publicKey]
+  })
+
+  await client.addAutobase(base)
+  await new Promise(resolve => setTimeout(resolve, 10000))
+  */
+})
+
 // Illustrates a bug
 test.skip('Cores added by someone who does not have them are downloaded from other peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
@@ -1033,9 +1195,7 @@ async function setupCoreHolder(t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
-  const { swarm, store } = await setupPeer(t, bootstrap)
-
+async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = true, wakeup = null } = {}) {
   const open = (store) => {
     return store.get('view', { valueEncoding: 'json' })
   }
@@ -1044,7 +1204,7 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
     for (const { value } of batch) {
       if (value.add) {
         const key = b4a.from(value.add, 'hex')
-        await base.addWriter(key, { indexer: true })
+        await base.addWriter(key, { indexer: addIndexers })
         continue
       }
 
@@ -1053,6 +1213,7 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
   }
 
   const base = new Autobase(store.namespace('base'), autobaseBootstrap, {
+    wakeup,
     open,
     apply,
     valueEncoding: 'json',
@@ -1060,9 +1221,8 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
     ackThreshold: 0
   })
   await base.ready()
-  swarm.join(base.discoveryKey)
 
-  return { swarm, store, base }
+  return { base }
 }
 
 async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
@@ -1088,4 +1248,35 @@ async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trust
   }
 
   return { blindPeer: peer, storage }
+}
+
+async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const { wakeup, base } = await loadAutobase(store, autobaseBootstrap)
+  swarm.join(base.discoveryKey)
+
+  return { swarm, store, base, wakeup }
+}
+
+let writerI
+async function getWakeupPeer (t, bootstrap, indexer, blindPeer) {
+  const { store, swarm } = await setupPeer(t, bootstrap)
+  const wakeup = new Wakeup(() => {
+    console.log('WAKE UP CB CALLED')
+  })
+
+  const { base } = await loadAutobase(store, indexer.local.key, { addIndexers: false, wakeup })
+  swarm.join(base.discoveryKey)
+  await Promise.all([
+    indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+    once(base, 'writable')
+  ])
+
+  const nr = writerI++
+  await base.append(`Message from writer ${nr}`)
+  const client = new Client(swarm, store, {
+    wakeup,
+    mirrors: [blindPeer.publicKey]
+  })
+  return { client, base, store, swarm, wakeup }
 }
