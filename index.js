@@ -185,7 +185,16 @@ class WakeupHandler {
 class BlindPeer extends ReadyResource {
   constructor(
     rocks,
-    { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}
+    {
+      swarm,
+      store,
+      wakeup,
+      maxBytes = 100_000_000_000,
+      enableGc = true,
+      trustedPubKeys,
+      port,
+      wakeupGcTickTime = null
+    } = {}
   ) {
     super()
 
@@ -196,7 +205,7 @@ class BlindPeer extends ReadyResource {
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
-    this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this))
+    this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this), { gcTickTime: wakeupGcTickTime })
     this.ownsWakeup = !wakeup
     this.ownsSwarm = !swarm
     this.ownsStore = !store
