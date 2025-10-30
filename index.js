@@ -128,26 +128,27 @@ class CoreTracker {
 }
 
 class WakeupHandler {
-  constructor(db, key, discoveryKey) {
+  constructor(wakeup, db, key, discoveryKey) {
+    this.wakeup = wakeup
     this.db = db
     this.key = key
     this.discoveryKey = discoveryKey
     this.active = false
-    this.timeout = setTimeout(this._gc.bind(this), 10_000) // sanity
+    this.timeout = setTimeout(this._gc.bind(this), 15_000) // sanity
   }
 
-  active() {
+  _clearTimeout() {
     if (!this.timeout) return
     clearTimeout(this.timeout)
     this.timeout = null
   }
 
   onpeeradd(peer, session) {
-    this.active()
+    this._clearTimeout()
   }
 
   onpeerremove(peer, session) {
-    this.active()
+    this._clearTimeout()
     if (session.peers.length === 0) session.destroy()
   }
 
@@ -174,6 +175,10 @@ class WakeupHandler {
     if (!sessions.length) return
     const session = sessions[0]
     if (session.peers.length === 0) session.destroy()
+  }
+
+  ondestroy(session) {
+    this._clearTimeout()
   }
 }
 
@@ -272,7 +277,7 @@ class BlindPeer extends ReadyResource {
     const sessions = this.wakeup.getSessions(key)
     if (sessions.length) return sessions[0]
 
-    const handler = new WakeupHandler(this.db, key, discoveryKey)
+    const handler = new WakeupHandler(this.wakeup, this.db, key, discoveryKey)
     const session = this.wakeup.session(key, handler)
     if (session.peers.length) handler.active()
     return session
