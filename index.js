@@ -142,9 +142,16 @@ class WakeupHandler {
     this.timeout = null
   }
 
-  async onpeeractive(peer, session) {
+  onpeeradd(peer, session) {
     this.active()
+  }
 
+  onpeerremove(peer, session) {
+    this.active()
+    if (session.peers.length === 0) session.destroy()
+  }
+
+  async onpeeractive(peer, session) {
     const referrer = this.key
     const query = {
       gte: { referrer },
@@ -160,10 +167,6 @@ class WakeupHandler {
     } catch {
       // do nothing
     }
-  }
-
-  onpeerremove(peer, session) {
-    if (session.peers.length === 0) session.destroy()
   }
 
   _gc() {
@@ -270,7 +273,9 @@ class BlindPeer extends ReadyResource {
     if (sessions.length) return sessions[0]
 
     const handler = new WakeupHandler(this.db, key, discoveryKey)
-    return this.wakeup.session(key, handler)
+    const session = this.wakeup.session(key, handler)
+    if (session.peers.length) handler.active()
+    return session
   }
 
   async _onwakeup(discoveryKey, muxer) {
@@ -280,6 +285,8 @@ class BlindPeer extends ReadyResource {
     if (!auth) return
 
     const stream = muxer.stream
+    if (stream.destroying || stream.destroyed) return
+
     const session = this._getSession(auth.key, discoveryKey)
 
     if (session.hasStream(stream)) return
@@ -287,7 +294,7 @@ class BlindPeer extends ReadyResource {
 
     // if new peer, send back the active handler for this peer
     const peer = session.getPeer(stream)
-    if (peer && peer.active) handler.onpeeractive(peer, session)
+    if (peer && peer.active) session.handlers.onpeeractive(peer, session)
   }
 
   async listen() {
