@@ -137,18 +137,18 @@ class WakeupHandler {
     this.timeout = setTimeout(this._gc.bind(this), 15_000) // sanity
   }
 
-  _clearTimeout() {
+  remoteAttached() {
     if (!this.timeout) return
     clearTimeout(this.timeout)
     this.timeout = null
   }
 
   onpeeradd(peer, session) {
-    this._clearTimeout()
+    this.remoteAttached()
   }
 
   onpeerremove(peer, session) {
-    this._clearTimeout()
+    this.remoteAttached()
     if (session.peers.length === 0) session.destroy()
   }
 
@@ -178,7 +178,7 @@ class WakeupHandler {
   }
 
   ondestroy(session) {
-    this._clearTimeout()
+    this.remoteAttached()
   }
 }
 
@@ -279,7 +279,7 @@ class BlindPeer extends ReadyResource {
 
     const handler = new WakeupHandler(this.wakeup, this.db, key, discoveryKey)
     const session = this.wakeup.session(key, handler)
-    if (session.peers.length) handler.active()
+    if (session.peers.length) handler.remoteAttached()
     return session
   }
 
