@@ -951,10 +951,9 @@ test.solo('wakeup', async (t) => {
 
   const {
     swarm: indexerSwarm,
-    base: indexer,
-    store: indexerStore
+    base: indexer
   } = await setupAutobaseHolder(t, bootstrap)
-  await indexerSwarm.flush()
+  await new Promise(resolve => setTimeout(resolve, 250)) // flush
 
   const peers = []
   const nrPeers = 3
@@ -969,71 +968,57 @@ test.solo('wakeup', async (t) => {
   t.is(blindPeer.wakeup.stats.sessionsOpened, 1)
   console.log(blindPeer.wakeup.stats)
 
-  const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
-  await peers[0].base.append('A new message')
-  await new Promise(resolve => setTimeout(resolve, 250))
-  t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
+  {
+    const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
+    await peers[0].base.append('A new message')
+    await new Promise(resolve => setTimeout(resolve, 500))
+    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
+  }
 
   console.log(blindPeer.wakeup.stats)
-
-  await peers[0].base.close()
-  peers[0].base = (
-    await loadAutobase(peers[0].store, indexer.local.key, {
-      wakeup: peers[0].wakeup,
-      addIndexers: false
-    })
-  ).base
-  await new Promise((resolve) => setTimeout(resolve, 250))
-  console.log(blindPeer.wakeup.stats)
-
-  /*
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  console.log(blindPeer.wakeup.stats)
-
-  console.log('\nADD NON-SWARMING USER\n')
-  const { store, swarm } = await setupPeer(t, bootstrap)
-  const wakeup = new Wakeup(() => {
-    console.log('WAKE UP CB CALLED')
-  })
-  const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
-  const client = new Client(swarm, store, {
-    wakeup,
-    mirrors: [blindPeer.publicKey]
-  })
-  const s1 = base.replicate(true)
-  const s2 = indexer.replicate(false)
-  s1.pipe(s2).pipe(s1)
 
   console.log(blindPeer.stats)
 
-  await client.addAutobase(base)
-  console.log(blindPeer.wakeup.stats)
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  console.log(blindPeer.wakeup.stats)
+  // Add non-swarming user
+  {
+    const initAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
+    const { store, swarm } = await setupPeer(t, bootstrap)
+    const wakeup = new Wakeup()
+    const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
+    const s1 = base.replicate(true)
+    const s2 = indexer.replicate(false)
+    s1.pipe(s2).pipe(s1)
+    await Promise.all([
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+      once(base, 'writable')
+    ])
+    t.is(blindPeer.wakeup.stats.wireAnnounce.tx, 6, 'sanity check')
+    const client = new Client(swarm, store, {
+      wakeup,
+      mirrors: [blindPeer.publicKey]
+    })
+    await client.addAutobase(base)
 
-  await Promise.all([
-    indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
-    once(base, 'writable')
-  ])
-  await base.append('A new message')
-
-  console.log([...peers[0].wakeup.topics.values()][0].active())
-  peers.map(p => [...peers[0].wakeup.topics.values()][0].inactive())
-  
-  for (let i = 0; i < 3; i++) {
-    console.log('adding a batch of messages')
-    await peers[0].base.append('A new message')
-    await peers[1].base.append('A new message')
-    await peers[2].base.append('A new message')
-    await new Promise((resolve) => setTimeout(resolve, 200))
-
-    // console.log('peer wakeup stats', peers[0].wakeup.stats)
-    // console.log('peer wakeup stats', peers[1].wakeup.stats)
-    // console.log('peer wakeup stats', peers[2].wakeup.stats)
-
-    console.log('blind peer wakeup stats', blindPeer.wakeup.stats)
+    await new Promise(resolve => setTimeout(resolve, 500))
+    console.log(blindPeer.wakeup.stats)
     console.log(blindPeer.stats)
-  } */
+
+    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announces')
+    t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
+    t.is(blindPeer.wakeup.stats.topicsAdded, 1, 'still using the same topic')
+
+    await client.close()
+    await base.close()
+    s1.destroy()
+    s2.destroy()
+  }
+
+  await indexer.close()
+  await Promise.all(peers.map(p => p.base.close()))
+  await new Promise(resolve => setTimeout(resolve, 500))
+
+  console.log(blindPeer.wakeup.stats)
+  console.log(blindPeer.stats)
 })
 
 test('wakeup race condition', async (t) => {
@@ -1284,5 +1269,10 @@ async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
     wakeup,
     mirrors: [blindPeer.publicKey]
   })
+
+  t.teardown(async () => {
+    await client.close()
+  })
+
   return { client, base, store, swarm, wakeup }
 }
