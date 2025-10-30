@@ -943,7 +943,6 @@ async function setupPeer(t, bootstrap) {
 }
 
 test.solo('wakeup', async (t) => {
-  t.timeout(120000)
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
@@ -963,34 +962,29 @@ test.solo('wakeup', async (t) => {
     peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
   }
 
-  console.log('\nADDING AUTOBASE TO BLIND PEER\n')
   for (const { client, base } of peers) {
     await client.addAutobase(base)
   }
 
-  console.log('\nADDED ALL\n')
+  t.is(blindPeer.wakeup.stats.sessionsOpened, 1)
   console.log(blindPeer.wakeup.stats)
+
+  const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
   await peers[0].base.append('A new message')
-  await peers[1].base.append('A new message')
-  await peers[2].base.append('A new message')
+  await new Promise(resolve => setTimeout(resolve, 250))
+  t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
 
-  console.log('\nCLOSING AND REOPENING')
-  for (let i = 0; i < 1; i++) {
-    await peers[0].base.close()
-    peers[0].base = (await loadAutobase(peers[0].store, indexer.local.key, { wakeup: peers[0].wakeup, addIndexers: false })).base
-    await new Promise(resolve => setTimeout(resolve, 500))
-    // console.log('peer wakeup stats', peers[0].wakeup.stats)
-    // console.log('peer wakeup stats', peers[1].wakeup.stats)
-    // console.log('peer wakeup stats', peers[2].wakeup.stats)
+  console.log(blindPeer.wakeup.stats)
 
-    // console.log('blind peer wakeup stats', blindPeer.wakeup.stats)
-    // console.log(blindPeer.stats)
-  }
-
-  console.log('peer wakeup stats', peers[2].wakeup.stats)
-
-  console.log('blind peer wakeup stats', blindPeer.wakeup.stats)
-  console.log(blindPeer.stats)
+  await peers[0].base.close()
+  peers[0].base = (
+    await loadAutobase(peers[0].store, indexer.local.key, {
+      wakeup: peers[0].wakeup,
+      addIndexers: false
+    })
+  ).base
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  console.log(blindPeer.wakeup.stats)
 
   /*
   await new Promise(resolve => setTimeout(resolve, 1000))
@@ -1025,13 +1019,13 @@ test.solo('wakeup', async (t) => {
 
   console.log([...peers[0].wakeup.topics.values()][0].active())
   peers.map(p => [...peers[0].wakeup.topics.values()][0].inactive())
-  */
+  
   for (let i = 0; i < 3; i++) {
     console.log('adding a batch of messages')
     await peers[0].base.append('A new message')
     await peers[1].base.append('A new message')
     await peers[2].base.append('A new message')
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise((resolve) => setTimeout(resolve, 200))
 
     // console.log('peer wakeup stats', peers[0].wakeup.stats)
     // console.log('peer wakeup stats', peers[1].wakeup.stats)
@@ -1039,7 +1033,7 @@ test.solo('wakeup', async (t) => {
 
     console.log('blind peer wakeup stats', blindPeer.wakeup.stats)
     console.log(blindPeer.stats)
-  }
+  } */
 })
 
 test('wakeup race condition', async (t) => {
@@ -1050,12 +1044,21 @@ test('wakeup race condition', async (t) => {
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const { base: indexerBase1 } = await setupAutobaseHolder(t, bootstrap, null, { addIndexers: false })
-  const { base: indexerBase2 } = await setupAutobaseHolder(t, bootstrap, null, { addIndexers: false })
+  const { base: indexerBase1 } = await setupAutobaseHolder(t, bootstrap, null, {
+    addIndexers: false
+  })
+  const { base: indexerBase2 } = await setupAutobaseHolder(t, bootstrap, null, {
+    addIndexers: false
+  })
 
-  await new Promise(resolve => setTimeout(resolve, 250)) // flush
-  
-  const { base: peerBase1, store, swarm, wakeup } = await getWakeupPeer(t, bootstrap, indexerBase1, blindPeer)
+  await new Promise((resolve) => setTimeout(resolve, 250)) // flush
+
+  const {
+    base: peerBase1,
+    store,
+    swarm,
+    wakeup
+  } = await getWakeupPeer(t, bootstrap, indexerBase1, blindPeer)
 
   console.log('setup peer 2')
   const { base: peerBase2 } = await loadAutobase(store, indexerBase2.local.key, { wakeup })
@@ -1066,7 +1069,6 @@ test('wakeup race condition', async (t) => {
   ])
 
   console.log('setup done')
-
 
   /*
   const peers = []
@@ -1195,7 +1197,11 @@ async function setupCoreHolder(t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = true, wakeup = null } = {}) {
+async function loadAutobase(
+  store,
+  autobaseBootstrap = null,
+  { addIndexers = true, wakeup = null } = {}
+) {
   const open = (store) => {
     return store.get('view', { valueEncoding: 'json' })
   }
@@ -1259,7 +1265,7 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
 }
 
 let writerI
-async function getWakeupPeer (t, bootstrap, indexer, blindPeer) {
+async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   const { store, swarm } = await setupPeer(t, bootstrap)
   const wakeup = new Wakeup(() => {
     console.log('WAKE UP CB CALLED')
