@@ -1022,77 +1022,8 @@ test('wakeup', async (t) => {
   t.is(
     blindPeer.wakeup.stats.topicsGcd,
     1,
-    'topic gcarbage collected after all peers close their channel'
+    'topic garbage collected after all peers close their channel'
   )
-})
-
-test('wakeup race condition', async (t) => {
-  t.timeout(120000)
-  const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
-
-  const { base: indexerBase1 } = await setupAutobaseHolder(t, bootstrap, null, {
-    addIndexers: false
-  })
-  const { base: indexerBase2 } = await setupAutobaseHolder(t, bootstrap, null, {
-    addIndexers: false
-  })
-
-  await new Promise((resolve) => setTimeout(resolve, 250)) // flush
-
-  const {
-    base: peerBase1,
-    store,
-    swarm,
-    wakeup
-  } = await getWakeupPeer(t, bootstrap, indexerBase1, blindPeer)
-
-  console.log('setup peer 2')
-  const { base: peerBase2 } = await loadAutobase(store, indexerBase2.local.key, { wakeup })
-  swarm.join(peerBase2.discoveryKey)
-  await Promise.all([
-    indexerBase2.append({ add: b4a.toString(peerBase2.local.key, 'hex') }),
-    once(peerBase2, 'writable')
-  ])
-
-  console.log('setup done')
-
-  /*
-  const peers = []
-  const nrPeers = 3
-  for (let i = 0; i < nrPeers; i++) {
-    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
-  }
-
-  console.log('\nADDING AUTOBASE TO BLIND PEER\n')
-  for (const { client, base } of peers) {
-    await client.addAutobase(base)
-  }
-
-  console.log('\nADDED ALL\n')
-  await peers[0].base.append('A new message')
-  await peers[0].base.append('A new message')
-  await peers[0].base.append('A new message')
-
-  await new Promise(resolve => setTimeout(resolve, 1000))
-
-  console.log('\nADD NON-SWARMING USER\n')
-  const { store, swarm } = await setupPeer(t, bootstrap)
-  const wakeup = new Wakeup(() => {
-    console.log('WAKE UP CB CALLED')
-  })
-  const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
-  const client = new Client(swarm, store, {
-    wakeup,
-    mirrors: [blindPeer.publicKey]
-  })
-
-  await client.addAutobase(base)
-  await new Promise(resolve => setTimeout(resolve, 10000))
-  */
 })
 
 // Illustrates a bug
