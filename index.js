@@ -128,11 +128,28 @@ class CoreTracker {
 }
 
 class WakeupHandler {
-  constructor(db, key, discoveryKey) {
+  constructor(wakeup, db, key, discoveryKey) {
+    this.wakeup = wakeup
     this.db = db
     this.key = key
     this.discoveryKey = discoveryKey
     this.active = false
+    this.timeout = setTimeout(this._gc.bind(this), 15_000) // sanity
+  }
+
+  remoteAttached() {
+    if (!this.timeout) return
+    clearTimeout(this.timeout)
+    this.timeout = null
+  }
+
+  onpeeradd(peer, session) {
+    this.remoteAttached()
+  }
+
+  onpeerremove(peer, session) {
+    this.remoteAttached()
+    if (session.peers.length === 0) session.destroy()
   }
 
   async onpeeractive(peer, session) {
@@ -153,8 +170,15 @@ class WakeupHandler {
     }
   }
 
-  onpeerinactive(peer, session) {
+  _gc() {
+    const sessions = this.wakeup.getSessions(this.key)
+    if (!sessions.length) return
+    const session = sessions[0]
     if (session.peers.length === 0) session.destroy()
+  }
+
+  ondestroy(session) {
+    this.remoteAttached()
   }
 }
 
@@ -253,8 +277,10 @@ class BlindPeer extends ReadyResource {
     const sessions = this.wakeup.getSessions(key)
     if (sessions.length) return sessions[0]
 
-    const handler = new WakeupHandler(this.db, key, discoveryKey)
-    return this.wakeup.session(key, handler)
+    const handler = new WakeupHandler(this.wakeup, this.db, key, discoveryKey)
+    const session = this.wakeup.session(key, handler)
+    if (session.peers.length) handler.remoteAttached()
+    return session
   }
 
   async _onwakeup(discoveryKey, muxer) {
@@ -264,6 +290,8 @@ class BlindPeer extends ReadyResource {
     if (!auth) return
 
     const stream = muxer.stream
+    if (stream.destroying || stream.destroyed) return
+
     const session = this._getSession(auth.key, discoveryKey)
 
     if (session.hasStream(stream)) return
@@ -271,7 +299,7 @@ class BlindPeer extends ReadyResource {
 
     // if new peer, send back the active handler for this peer
     const peer = session.getPeer(stream)
-    if (peer && peer.active) handler.onpeeractive(peer, session)
+    if (peer && peer.active) session.handlers.onpeeractive(peer, session)
   }
 
   async listen() {
