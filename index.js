@@ -133,9 +133,18 @@ class WakeupHandler {
     this.key = key
     this.discoveryKey = discoveryKey
     this.active = false
+    this.timeout = setTimeout(this._gc.bind(this), 10_000) // sanity
+  }
+
+  active() {
+    if (!this.timeout) return
+    clearTimeout(this.timeout)
+    this.timeout = null
   }
 
   async onpeeractive(peer, session) {
+    this.active()
+
     const referrer = this.key
     const query = {
       gte: { referrer },
@@ -153,7 +162,14 @@ class WakeupHandler {
     }
   }
 
-  onpeerinactive(peer, session) {
+  onpeerremove(peer, session) {
+    if (session.peers.length === 0) session.destroy()
+  }
+
+  _gc() {
+    const sessions = this.wakeup.getSessions(this.key)
+    if (!sessions.length) return
+    const session = sessions[0]
     if (session.peers.length === 0) session.destroy()
   }
 }
