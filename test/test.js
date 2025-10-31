@@ -1194,9 +1194,7 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
 let writerI
 async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   const { store, swarm } = await setupPeer(t, bootstrap)
-  const wakeup = new Wakeup(() => {
-    console.log('WAKE UP CB CALLED')
-  })
+  const wakeup = new Wakeup(() => { })
 
   const { base } = await loadAutobase(store, indexer.local.key, { addIndexers: false, wakeup })
   swarm.join(base.discoveryKey)
