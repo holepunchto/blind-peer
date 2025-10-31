@@ -24,7 +24,7 @@
     "paparam": "^1.8.0",
     "pino": "^9.6.0",
     "protomux-rpc": "^1.7.1",
-    "protomux-wakeup": "hdegroote/protomux-wakeup#expose-gc-tick-time",
+    "protomux-wakeup": "^2.9.0",
     "ready-resource": "^1.1.2",
     "repl-swarm": "^2.3.0",
     "rocksdb-native": "^3.1.6",
