@@ -339,7 +339,7 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
-test.solo('can gc core that is not currently active', async (t) => {
+test('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
@@ -376,7 +376,8 @@ test.solo('can gc core that is not currently active', async (t) => {
 
   await swarm.destroy()
   await store.close()
-  await new Promise(resolve => setTimeout(resolve, 10000))
+  // TODO: expose corestore gc tick time (it takes 4 ticks to gc weak cores)
+  await new Promise((resolve) => setTimeout(resolve, 10000))
 
   t.is(blindPeer.activeReplication.size, 0, 'sanity check (core not active)')
   t.ok(blindPeer.digest.bytesAllocated > 10_000, 'sanity check')
@@ -386,8 +387,6 @@ test.solo('can gc core that is not currently active', async (t) => {
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
   t.is(nowBytes > 1000, true, 'did not gc too much')
-
-
 })
 
 test('Trusted peers can set announce: true to have the blind peer announce it', async (t) => {
