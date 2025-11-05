@@ -339,6 +339,57 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
+test.solo('can gc core that is not currently active', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const enableGc = false // We trigger it manually, so we can test the accounting
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const nrCores = 10
+  const nrBlocks = 200
+  const cores = []
+
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  {
+    const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+    t.teardown(
+      async () => {
+        await client.close()
+      },
+      { order: 0 }
+    )
+
+    for (let i = 0; i < nrCores; i++) {
+      const core = store.get({ name: `core-${i}` })
+      cores.push(core)
+      const blocks = []
+      for (let j = 0; j < nrBlocks; j++) blocks.push(`core-${i}-block-${j}`)
+      await core.append(blocks)
+      client.addCoreBackground(core)
+    }
+  }
+
+  // TODO: some event to ensure they're fully downloaded
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
+  await swarm.destroy()
+  await store.close()
+  await new Promise(resolve => setTimeout(resolve, 10000))
+
+  t.is(blindPeer.activeReplication.size, 0, 'sanity check (core not active)')
+  t.ok(blindPeer.digest.bytesAllocated > 10_000, 'sanity check')
+
+  await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+
+  const nowBytes = blindPeer.digest.bytesAllocated
+  t.is(nowBytes < 10_000, true, 'gcd till below limit')
+  t.is(nowBytes > 1000, true, 'did not gc too much')
+
+
+})
+
 test('Trusted peers can set announce: true to have the blind peer announce it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
