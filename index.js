@@ -61,6 +61,8 @@ class CoreTracker {
   }
 
   gc() {
+    if (!this.record) throw new Error('Record must be set before calling gc')
+
     // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
     const bytesCleared = this.core.byteLength
     const blocksCleared = this.core.length
@@ -336,6 +338,7 @@ class BlindPeer extends ReadyResource {
 
       try {
         const tracker = this.activeReplication.get(id)
+        if (!tracker.record) await tracker.refresh()
         const coreBytesCleared = tracker.gc()
         bytesCleared += coreBytesCleared
       } finally {
