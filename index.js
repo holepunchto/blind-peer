@@ -14,8 +14,11 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
-const { AddCoreEncoding } = require('blind-peer-encodings')
-const { DeleteCoreEncoding } = require('blind-peer-encodings')
+const {
+  AddCoreEncoding,
+  AddAutobaseCoresEncoding,
+  DeleteCoreEncoding
+} = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -418,6 +421,11 @@ class BlindPeer extends ReadyResource {
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
+    rpc.respond(
+      'add-autobase-cores',
+      AddAutobaseCoresEncoding,
+      this._onaddautobasecores.bind(this, conn)
+    )
   }
 
   async _activateCore(stream, record) {
@@ -507,6 +515,48 @@ class BlindPeer extends ReadyResource {
 
     const coreRecord = await this.db.getCoreRecord(record.key)
     return coreRecord
+  }
+
+  async _onaddautobasecores(stream, request) {
+    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
+    const { cores, referrer } = request
+
+    const records = cores.map((c) => {
+      return { key: c.key, referrer, priority, announce: false } // TODO: include length?
+    })
+
+    // Note: not race condition safe, but it's no problem if we do add the same core twice
+    const indicesAdded = await Promise.all(
+      records.map(async (record) => {
+        if ((await this.db.getCoreRecord(record.key)) !== null) return false
+        this.db.addCore(record)
+        return true
+      })
+    )
+
+    if (indicesAdded.includes(true)) await this.flush() // flush now as important data
+
+    // TODO: revisit this code (copy-pasted from add-core)
+    // ensure referrer is allocated...
+    // TODO: move to a dedicated wakeup collection, insted of using a core since we moved away from that
+    // still works atm, cause dkey
+    const muxer = stream.userData
+    const core = this.store.get({ key: referrer })
+    await core.ready()
+    const discoveryKey = core.discoveryKey
+    await core.close()
+    await this._onwakeup(discoveryKey, muxer)
+
+    const activateProms = []
+    for (let i = 0; i < indicesAdded.length; i++) {
+      const newlyAdded = indicesAdded[i]
+      if (newlyAdded) this.emit('add-new-core', records[i], true, stream)
+      this.emit('add-core', records[i], true, stream)
+      activateProms.push(this._activateCore(stream, records[i]))
+    }
+    await Promise.all(activateProms)
+
+    return null // TODO: decide return value
   }
 
   async _ondeletecore(stream, { key }) {

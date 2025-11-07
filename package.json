@@ -10,7 +10,7 @@
     "autobase": "^7.0.18",
     "autobase-discovery": "^1.0.0",
     "b4a": "^1.6.7",
-    "blind-peer-encodings": "^3.1.0",
+    "blind-peer-encodings": "holepunchto/blind-peer-encodings#add-cores",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.4.4",
     "graceful-goodbye": "^1.3.3",
@@ -33,7 +33,7 @@
     "tiny-byte-size": "^1.1.0"
   },
   "devDependencies": {
-    "blind-peering": "^1.13.0",
+    "blind-peering": "holepunchto/blind-peering#add-cores",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",
