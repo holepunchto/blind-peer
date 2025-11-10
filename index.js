@@ -187,7 +187,16 @@ class WakeupHandler {
 class BlindPeer extends ReadyResource {
   constructor(
     rocks,
-    { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}
+    {
+      swarm,
+      store,
+      wakeup,
+      maxBytes = 100_000_000_000,
+      enableGc = true,
+      trustedPubKeys,
+      port,
+      announcingInterval = 100
+    } = {}
   ) {
     super()
 
@@ -195,6 +204,7 @@ class BlindPeer extends ReadyResource {
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
     this._port = port || 0
+    this.announcingInterval = announcingInterval || 100
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
@@ -266,11 +276,18 @@ class BlindPeer extends ReadyResource {
     }
     this.swarm.on('connection', this._onconnection.bind(this))
 
-    const announceProms = []
+    const startTime = Date.now()
+    let counter = 0
+
     for await (const record of this.db.createAnnouncingCoresStream()) {
-      announceProms.push(this._announceCore(record.key))
+      const delay = Math.max(0, startTime + counter * this.announcingInterval - Date.now())
+
+      setTimeout(() => {
+        if (this.closing) return
+        this._announceCore(record.key).catch(safetyCatch)
+      }, delay)
+      counter++
     }
-    await Promise.all(announceProms)
 
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }

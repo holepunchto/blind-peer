@@ -557,6 +557,9 @@ test('records with announce: true are announced upon startup', async (t) => {
       'announced core is tracked upon startup'
     )
 
+    // wait a bit for announcing to complete
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
     await topic.refresh()
