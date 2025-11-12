@@ -276,19 +276,7 @@ class BlindPeer extends ReadyResource {
     }
     this.swarm.on('connection', this._onconnection.bind(this))
 
-    const startTime = Date.now()
-    let counter = 0
-
-    for await (const record of this.db.createAnnouncingCoresStream()) {
-      const delay = Math.max(0, startTime + counter * this.announcingInterval - Date.now())
-
-      setTimeout(() => {
-        if (this.closing) return
-        this._announceCore(record.key).catch(safetyCatch)
-      }, delay)
-      counter++
-    }
-
+    this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }
 
@@ -457,6 +445,18 @@ class BlindPeer extends ReadyResource {
 
     core.replicate(stream)
     stream.on('close', () => core.close().catch(safetyCatch))
+  }
+
+  async _announceCores() {
+    for await (const record of this.db.createAnnouncingCoresStream()) {
+      if (this.closing) return
+      await this._announceCore(record.key)
+      if (this.closing) return
+      await new Promise((resolve) => setTimeout(resolve, this.announcingInterval))
+      if (this.closing) return
+    }
+
+    this.emit('announce-cores')
   }
 
   async _announceCore(key) {

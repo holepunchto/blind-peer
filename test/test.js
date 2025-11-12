@@ -557,8 +557,8 @@ test('records with announce: true are announced upon startup', async (t) => {
       'announced core is tracked upon startup'
     )
 
-    // wait a bit for announcing to complete
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    // wait for announcing to complete
+    await once(blindPeer, 'announce-cores')
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
