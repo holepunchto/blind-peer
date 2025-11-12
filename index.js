@@ -61,6 +61,8 @@ class CoreTracker {
   }
 
   gc() {
+    if (!this.record) throw new Error('Record must be set before calling gc')
+
     // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
     const bytesCleared = this.core.byteLength
     const blocksCleared = this.core.length
@@ -193,6 +195,7 @@ class BlindPeer extends ReadyResource {
       enableGc = true,
       trustedPubKeys,
       port,
+      announcingInterval = 100,
       wakeupGcTickTime = null
     } = {}
   ) {
@@ -202,6 +205,7 @@ class BlindPeer extends ReadyResource {
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
     this._port = port || 0
+    this.announcingInterval = announcingInterval
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
@@ -273,12 +277,7 @@ class BlindPeer extends ReadyResource {
     }
     this.swarm.on('connection', this._onconnection.bind(this))
 
-    const announceProms = []
-    for await (const record of this.db.createAnnouncingCoresStream()) {
-      announceProms.push(this._announceCore(record.key))
-    }
-    await Promise.all(announceProms)
-
+    this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }
 
@@ -345,6 +344,7 @@ class BlindPeer extends ReadyResource {
 
       try {
         const tracker = this.activeReplication.get(id)
+        if (!tracker.record) await tracker.refresh()
         const coreBytesCleared = tracker.gc()
         bytesCleared += coreBytesCleared
       } finally {
@@ -446,6 +446,18 @@ class BlindPeer extends ReadyResource {
 
     core.replicate(stream)
     stream.on('close', () => core.close().catch(safetyCatch))
+  }
+
+  async _announceCores() {
+    for await (const record of this.db.createAnnouncingCoresStream()) {
+      if (this.closing) return
+      await this._announceCore(record.key)
+      if (this.closing) return
+      await new Promise((resolve) => setTimeout(resolve, this.announcingInterval))
+      if (this.closing) return
+    }
+
+    this.emit('announced-initial-cores')
   }
 
   async _announceCore(key) {
