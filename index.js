@@ -204,7 +204,7 @@ class BlindPeer extends ReadyResource {
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
     this._port = port || 0
-    this.announcingInterval = announcingInterval || 100
+    this.announcingInterval = announcingInterval
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
@@ -456,7 +456,7 @@ class BlindPeer extends ReadyResource {
       if (this.closing) return
     }
 
-    this.emit('announce-cores')
+    this.emit('announced-initial-cores')
   }
 
   async _announceCore(key) {
