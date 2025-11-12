@@ -117,9 +117,6 @@ const cmd = command(
         `Completed delete-core request from trusted peer ${streamToStr(stream)} for core ${idEnc.normalize(key)}. Was announced: ${announced}`
       )
     })
-    blindPeer.on('announced-initial-cores', () => {
-      logger.info('Finished announcing all existing cores')
-    })
 
     blindPeer.on('downgrade-announce', ({ record, remotePublicKey }) => {
       try {
