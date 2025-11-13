@@ -995,89 +995,91 @@ async function setupPeer(t, bootstrap) {
   return { swarm, store }
 }
 
-test('wakeup', async (t) => {
-  const { bootstrap } = await getTestnet(t)
+for (let i = 0; i < 10; i++) {
+  test.solo('wakeup', async (t) => {
+    const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+    const { blindPeer } = await setupBlindPeer(t, bootstrap)
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
 
-  const { base: indexer, swarm: indexerSwarm } = await setupAutobaseHolder(t, bootstrap)
-  await new Promise((resolve) => setTimeout(resolve, 250)) // flush
+    const { base: indexer, swarm: indexerSwarm } = await setupAutobaseHolder(t, bootstrap)
+    await new Promise((resolve) => setTimeout(resolve, 250)) // flush
 
-  const peers = []
-  const nrPeers = 3
-  for (let i = 0; i < nrPeers; i++) {
-    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
-  }
+    const peers = []
+    const nrPeers = 3
+    for (let i = 0; i < nrPeers; i++) {
+      peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+    }
 
-  for (const { client, base } of peers) {
-    await client.addAutobase(base)
-  }
+    for (const { client, base } of peers) {
+      await client.addAutobase(base)
+    }
 
-  t.is(blindPeer.wakeup.stats.sessionsOpened, 1)
+    t.is(blindPeer.wakeup.stats.sessionsOpened, 1)
 
-  {
-    const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
-    await peers[0].base.append('A new message')
-    await new Promise((resolve) => setTimeout(resolve, 250))
-    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
-  }
+    {
+      const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
+      await peers[0].base.append('A new message')
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
+    }
 
-  // Add non-swarming user
-  {
-    const initAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
-    const initAnnounceRxOther = peers[0].wakeup.stats.wireAnnounce.rx
-    const { store, swarm } = await setupPeer(t, bootstrap)
-    const wakeup = new Wakeup()
-    const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
-    const s1 = base.replicate(true)
-    const s2 = indexer.replicate(false)
-    s1.pipe(s2).pipe(s1)
-    await Promise.all([
-      indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
-      once(base, 'writable')
-    ])
-    t.is(blindPeer.wakeup.stats.wireAnnounce.tx, 6, 'sanity check')
-    const client = new Client(swarm, store, {
-      wakeup,
-      mirrors: [blindPeer.publicKey]
-    })
-    await client.addAutobase(base)
+    // Add non-swarming user
+    {
+      const initAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
+      const initAnnounceRxOther = peers[0].wakeup.stats.wireAnnounce.rx
+      const { store, swarm } = await setupPeer(t, bootstrap)
+      const wakeup = new Wakeup()
+      const { base } = await loadAutobase(store, indexer.local.key, { wakeup })
+      const s1 = base.replicate(true)
+      const s2 = indexer.replicate(false)
+      s1.pipe(s2).pipe(s1)
+      await Promise.all([
+        indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+        once(base, 'writable')
+      ])
+      t.is(blindPeer.wakeup.stats.wireAnnounce.tx, 6, 'sanity check')
+      const client = new Client(swarm, store, {
+        wakeup,
+        mirrors: [blindPeer.publicKey]
+      })
+      await client.addAutobase(base)
 
-    await new Promise((resolve) => setTimeout(resolve, 250))
+      await new Promise((resolve) => setTimeout(resolve, 250))
 
-    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announces')
-    t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
-    t.is(blindPeer.wakeup.stats.topicsAdded, 1, 'still using the same topic')
-    t.ok(
-      initAnnounceRxOther < peers[0].wakeup.stats.wireAnnounce.rx,
-      'not-directly-connected peer received announce'
+      t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announces')
+      t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
+      t.is(blindPeer.wakeup.stats.topicsAdded, 1, 'still using the same topic')
+      t.ok(
+        initAnnounceRxOther < peers[0].wakeup.stats.wireAnnounce.rx,
+        'not-directly-connected peer received announce'
+      )
+
+      await client.close()
+      await base.close()
+      s1.destroy()
+      s2.destroy()
+      wakeup.destroy()
+    }
+
+    await indexerSwarm.destroy()
+    await Promise.all(peers.map((p) => p.swarm.destroy()))
+    // Give topic time to gc
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    t.is(
+      blindPeer.wakeup.stats.sessionsClosed,
+      1,
+      'session closed after all peers close their channel'
     )
-
-    await client.close()
-    await base.close()
-    s1.destroy()
-    s2.destroy()
-    wakeup.destroy()
-  }
-
-  await indexerSwarm.destroy()
-  await Promise.all(peers.map((p) => p.swarm.destroy()))
-  // Give topic time to gc
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-
-  t.is(
-    blindPeer.wakeup.stats.sessionsClosed,
-    1,
-    'session closed after all peers close their channel'
-  )
-  t.is(
-    blindPeer.wakeup.stats.topicsGcd,
-    1,
-    'topic garbage collected after all peers close their channel'
-  )
-})
+    t.is(
+      blindPeer.wakeup.stats.topicsGcd,
+      1,
+      'topic garbage collected after all peers close their channel'
+    )
+  })
+}
 
 // Illustrates a bug
 test.skip('Cores added by someone who does not have them are downloaded from other peers', async (t) => {
