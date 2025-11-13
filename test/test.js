@@ -1046,6 +1046,10 @@ for (let i = 0; i < 10; i++) {
       })
       await client.addAutobase(base)
 
+      // Just adding the autobase should suffice to trigger the announce,
+      // but even appending a message doesn't help
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      await base.append('something')
       await new Promise((resolve) => setTimeout(resolve, 250))
 
       t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announces')
