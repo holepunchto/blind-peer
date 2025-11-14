@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bare
 
 const { command, flag } = require('paparam')
 const goodbye = require('graceful-goodbye')
