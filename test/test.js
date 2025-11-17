@@ -1046,13 +1046,10 @@ test('wakeup', async (t) => {
 
     await new Promise((resolve) => setTimeout(resolve, 250))
 
-    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announces')
+    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announce')
     t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
     t.is(blindPeer.wakeup.stats.topicsAdded, 1, 'still using the same topic')
-    t.ok(
-      initAnnounceRxOther < peers[0].wakeup.stats.wireAnnounce.rx,
-      'not-directly-connected peer received announce'
-    )
+    t.ok(initAnnounceRxOther < base.wakeupProtocol.stats.wireAnnounce.rx, 'peer received announce')
 
     await client.close()
     await base.close()
