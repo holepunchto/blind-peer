@@ -9,7 +9,6 @@ const Hyperswarm = require('hyperswarm')
 const promClient = require('prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
-const Wakeup = require('protomux-wakeup')
 const BlindPeer = require('..')
 
 const DEBUG = false
