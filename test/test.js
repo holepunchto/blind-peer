@@ -1028,8 +1028,12 @@ test('wakeup', async (t) => {
     const initAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
     const { store, swarm } = await setupPeer(t, bootstrap)
     const { base } = await loadAutobase(store, indexer.local.key)
-    const s1 = base.replicate(true)
-    const s2 = indexer.replicate(false)
+
+    // We want to test that the wakeup announce comes from
+    // the blind-peer connection, so disable the wakeup protocol
+    // between the indexer and this new writer
+    const s1 = base.store.replicate(true)
+    const s2 = indexer.store.replicate(false)
     s1.pipe(s2).pipe(s1)
     await Promise.all([
       indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
