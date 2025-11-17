@@ -188,7 +188,7 @@ test('repeated add-core requests do not result in db updates', async (t) => {
   const initFlushes = blindPeer.db.stats.flushes
   t.is(initFlushes > 0, true, 'sanity check')
 
-  const [record2] = await client2.addCore(core)
+  await client2.addCore(core)
   t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
 
   await client3.addCore(core, undefined, { priority: 1 })
