@@ -193,6 +193,7 @@ test('repeated add-core requests do not result in db updates', async (t) => {
 
   await client3.addCore(core, undefined, { priority: 1 })
   t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
+  await blindPeer.flush()
   const record3 = await blindPeer.db.getCoreRecord(core.key)
   t.is(record3.priority, 0, 'cannot change the record after it was added')
 
