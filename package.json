@@ -36,10 +36,7 @@
   },
   "devDependencies": {
     "bare-events": "^2.8.2",
-    "bare-os": "^3.6.2",
     "bare-process": "^4.2.2",
-    "bare-url": "^2.3.2",
-    "bare-utils": "^1.5.1",
     "blind-peering": "^1.13.0",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
