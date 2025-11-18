@@ -9,7 +9,7 @@ const { once } = require('events')
 const b4a = require('b4a')
 const Client = require('blind-peering')
 const Hyperswarm = require('hyperswarm')
-const promClient = require('prom-client', { with: { imports: './imports.json' } })
+const promClient = isBare ? null : require('prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
 const BlindPeer = require('..')
@@ -886,6 +886,13 @@ test('invalid requests are emitted', async (t) => {
 })
 
 test('Prometheus metrics', async (t) => {
+  if (isBare) {
+    // We'd need to add an import map to prom-client for this test to work on bare
+    // but hyper-instrument already does that for us when we use it in bin.js
+    // so we simply do not run this test on bare
+    t.pass('prometheus metrics test is skipped on bare')
+    return
+  }
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
