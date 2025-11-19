@@ -24,7 +24,7 @@
     "hyperswarm": "^4.13.1",
     "paparam": "^1.8.0",
     "pino": "^9.6.0",
-    "pino-bare": "github:pinojs/pino-bare",
+    "pino-bare": "^0.0.1",
     "protomux-rpc": "^1.7.1",
     "protomux-wakeup": "^2.7.0",
     "ready-resource": "^1.1.2",
