@@ -195,7 +195,8 @@ class BlindPeer extends ReadyResource {
       enableGc = true,
       trustedPubKeys,
       port,
-      announcingInterval = 100
+      announcingInterval = 100,
+      wakeupGcTickTime = null
     } = {}
   ) {
     super()
@@ -208,7 +209,7 @@ class BlindPeer extends ReadyResource {
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
-    this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this))
+    this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this), { gcTickTime: wakeupGcTickTime })
     this.ownsWakeup = !wakeup
     this.ownsSwarm = !swarm
     this.ownsStore = !store
