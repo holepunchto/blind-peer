@@ -35,6 +35,7 @@
     "tiny-byte-size": "^1.1.0"
   },
   "devDependencies": {
+    "bare-events": "^2.8.2",
     "bare-process": "^4.2.2",
     "blind-peering": "^1.13.0",
     "brittle": "^3.7.0",
@@ -71,6 +72,10 @@
     "pino": {
       "bare": "pino-bare",
       "default": "pino"
+    },
+    "events": {
+      "bare": "bare-events",
+      "default": "events"
     }
   }
 }
