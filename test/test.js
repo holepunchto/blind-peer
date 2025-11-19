@@ -179,8 +179,11 @@ test('repeated add-core requests do not result in db updates', async (t) => {
   const client2 = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
   const client3 = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
 
+  t.is(await blindPeer.db.getCoreRecord(core.key), null, 'sanity check')
   const coreKey = core.key
-  const [record] = await client.addCore(core)
+  await client.addCore(core)
+  const record = await blindPeer.db.getCoreRecord(core.key)
+
   t.alike(record.key, coreKey, 'added the core (sanity check)')
 
   // wait for it to be downloaded
@@ -188,12 +191,13 @@ test('repeated add-core requests do not result in db updates', async (t) => {
   const initFlushes = blindPeer.db.stats.flushes
   t.is(initFlushes > 0, true, 'sanity check')
 
-  const [record2] = await client2.addCore(core)
+  await client2.addCore(core)
   t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
-  t.alike(record2.key, record.key, 'sanity check: got record')
 
-  const [record3] = await client3.addCore(core, undefined, { priority: 1 })
+  await client3.addCore(core, undefined, { priority: 1 })
   t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
+  await blindPeer.flush()
+  const record3 = await blindPeer.db.getCoreRecord(core.key)
   t.is(record3.priority, 0, 'cannot change the record after it was added')
 
   await client.close()
