@@ -167,6 +167,73 @@ test('client can use a blind-peer to add an autobase', async (t) => {
   }
 })
 
+test('adding autobase cores only results in replication sessions if there are length differences', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  let {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
+
+  const bases = []
+  for (let i = 0; i < 2; i++) {
+    const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
+    await swarm.flush()
+    await Promise.all([
+      once(base, 'is-indexer'),
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') })
+    ])
+
+    await base.append({ some: 'thing' })
+    bases.push({ base, swarm, store })
+  }
+
+  await indexer.append({ some: 'thing' })
+  for (const { base } of bases) {
+    await base.append({ some: 'thing' })
+  }
+
+  t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
+
+  // Give some time for them to gossip their lengths
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const initLengths = getLengths(indexer)
+  t.is(blindPeer.stats.activations, 0, 'sanity check')
+
+  // A first writer adds the autobase
+  {
+    const client = new Client(indexerSwarm, indexerStore, { mirrors: [blindPeer.publicKey] })
+    t.teardown(async () => await client.close())
+    await client.addAutobase(indexer)
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
+    t.is(blindPeer.stats.activations, 4, '3 views and 1 indexer core activated')
+
+    // 2nd time, everything is already known (no change in autobase state)
+    // Re-opening needed, else it won't be added again by the client
+    await indexer.close()
+    {
+      const { base } = await loadAutobase(indexerStore, null)
+      indexer = base
+    }
+
+    await client.addAutobase(indexer)
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    t.alike(initLengths, getLengths(indexer), 'sanity check: autobase cores did not change')
+    t.is(blindPeer.stats.activations, 7, 'only the 3 views activated')
+  }
+})
+
 test('repeated add-core requests do not result in db updates', async (t) => {
   const { bootstrap } = await getTestnet(t)
 

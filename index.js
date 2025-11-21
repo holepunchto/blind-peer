@@ -539,25 +539,30 @@ class BlindPeer extends ReadyResource {
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
     const { cores, referrer } = request
 
-    const records = cores.map((c) => {
-      return { key: c.key, referrer, priority, announce: false } // TODO: include length?
-    })
+    const records = new Map()
+    const lengths = new Map()
+    for (const c of cores) {
+      const id = IdEnc.normalize(c.key)
+      records.set(id, { key: c.key, referrer, priority, announce: false })
+      lengths.set(id, c.length)
+    }
 
     // Note: not race condition safe, but it's no problem if we do add the same core twice
-    const indicesAdded = await Promise.all(
-      records.map(async (record) => {
-        if ((await this.db.getCoreRecord(record.key)) !== null) return false
-        this.db.addCore(record)
-        return true
+    const dbRecords = new Map()
+    const recordsToAdd = []
+    await Promise.all(
+      [...records.entries()].map(async ([id, record]) => {
+        const dbRecord = await this.db.getCoreRecord(record.key)
+        dbRecords.set(id, dbRecord)
+        if (dbRecord === null) recordsToAdd.push(record)
       })
     )
 
-    if (indicesAdded.includes(true)) await this.flush() // flush now as important data
+    for (const record of recordsToAdd) this.db.addCore(record)
+
+    if (recordsToAdd.length > 0) await this.flush() // flush now as important data
 
     // TODO: revisit this code (copy-pasted from add-core)
-    // ensure referrer is allocated...
-    // TODO: move to a dedicated wakeup collection, insted of using a core since we moved away from that
-    // still works atm, cause dkey
     const muxer = stream.userData
     const core = this.store.get({ key: referrer })
     await core.ready()
@@ -565,12 +570,14 @@ class BlindPeer extends ReadyResource {
     await core.close()
     await this._onwakeup(discoveryKey, muxer)
 
+    for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
+
     const activateProms = []
-    for (let i = 0; i < indicesAdded.length; i++) {
-      const newlyAdded = indicesAdded[i]
-      if (newlyAdded) this.emit('add-new-core', records[i], true, stream)
-      this.emit('add-core', records[i], true, stream)
-      activateProms.push(this._activateCore(stream, records[i]))
+    for (const [id, dbRecord] of dbRecords.entries()) {
+      const noChange = dbRecord && lengths.get(id) === dbRecord.length
+      if (noChange) continue
+      this.emit('add-core', records.get(id), true, stream)
+      activateProms.push(this._activateCore(stream, records.get(id)))
     }
     await Promise.all(activateProms)
 
