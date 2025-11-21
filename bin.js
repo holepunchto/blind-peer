@@ -10,6 +10,7 @@ const byteSize = require('tiny-byte-size')
 const pino = require('pino')
 const b4a = require('b4a')
 const hypCrypto = require('hypercore-crypto')
+const { version: ownVersion } = require('./package.json')
 
 const BlindPeer = require('.')
 
@@ -130,6 +131,9 @@ const cmd = command(
 
     blindPeer.on('announce-core', (core) => {
       logger.info(`Started announcing core ${coreToInfo(core, true)}`)
+    })
+    blindPeer.on('announced-initial-cores', () => {
+      logger.info(`Announced all initial cores`)
     })
     blindPeer.on('core-downloaded', (core) => {
       logger.info(`Announced core fully downloaded: ${coreToInfo(core, true)}`)
@@ -284,7 +288,8 @@ const cmd = command(
         scraperPublicKey,
         prometheusAlias,
         scraperSecret,
-        prometheusServiceName: SERVICE_NAME
+        prometheusServiceName: SERVICE_NAME,
+        version: ownVersion
       })
 
       blindPeer.registerMetrics(instrumentation.promClient)

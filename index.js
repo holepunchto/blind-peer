@@ -190,7 +190,17 @@ class WakeupHandler {
 class BlindPeer extends ReadyResource {
   constructor(
     rocks,
-    { swarm, store, wakeup, maxBytes = 100_000_000_000, enableGc = true, trustedPubKeys, port } = {}
+    {
+      swarm,
+      store,
+      wakeup,
+      maxBytes = 100_000_000_000,
+      enableGc = true,
+      trustedPubKeys,
+      port,
+      announcingInterval = 100,
+      wakeupGcTickTime = null
+    } = {}
   ) {
     super()
 
@@ -198,10 +208,11 @@ class BlindPeer extends ReadyResource {
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
     this._port = port || 0
+    this.announcingInterval = announcingInterval
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
 
-    this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this))
+    this.wakeup = wakeup || new Wakeup(this._onwakeup.bind(this), { gcTickTime: wakeupGcTickTime })
     this.ownsWakeup = !wakeup
     this.ownsSwarm = !swarm
     this.ownsStore = !store
@@ -269,12 +280,7 @@ class BlindPeer extends ReadyResource {
     }
     this.swarm.on('connection', this._onconnection.bind(this))
 
-    const announceProms = []
-    for await (const record of this.db.createAnnouncingCoresStream()) {
-      announceProms.push(this._announceCore(record.key))
-    }
-    await Promise.all(announceProms)
-
+    this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
   }
 
@@ -448,6 +454,18 @@ class BlindPeer extends ReadyResource {
 
     core.replicate(stream)
     stream.on('close', () => core.close().catch(safetyCatch))
+  }
+
+  async _announceCores() {
+    for await (const record of this.db.createAnnouncingCoresStream()) {
+      if (this.closing) return
+      await this._announceCore(record.key)
+      if (this.closing) return
+      await new Promise((resolve) => setTimeout(resolve, this.announcingInterval))
+      if (this.closing) return
+    }
+
+    this.emit('announced-initial-cores')
   }
 
   async _announceCore(key) {

@@ -1,3 +1,6 @@
+const { isBare } = require('which-runtime')
+if (isBare) require('bare-process/global')
+
 const test = require('brittle')
 const setupTestnet = require('hyperdht/testnet')
 const Corestore = require('corestore')
@@ -6,7 +9,7 @@ const { once } = require('events')
 const b4a = require('b4a')
 const Client = require('blind-peering')
 const Hyperswarm = require('hyperswarm')
-const promClient = require('prom-client')
+const promClient = isBare ? null : require('prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
 const BlindPeer = require('..')
@@ -176,8 +179,11 @@ test('repeated add-core requests do not result in db updates', async (t) => {
   const client2 = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
   const client3 = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
 
+  t.is(await blindPeer.db.getCoreRecord(core.key), null, 'sanity check')
   const coreKey = core.key
-  const [record] = await client.addCore(core)
+  await client.addCore(core)
+  const record = await blindPeer.db.getCoreRecord(core.key)
+
   t.alike(record.key, coreKey, 'added the core (sanity check)')
 
   // wait for it to be downloaded
@@ -185,12 +191,13 @@ test('repeated add-core requests do not result in db updates', async (t) => {
   const initFlushes = blindPeer.db.stats.flushes
   t.is(initFlushes > 0, true, 'sanity check')
 
-  const [record2] = await client2.addCore(core)
+  await client2.addCore(core)
   t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
-  t.alike(record2.key, record.key, 'sanity check: got record')
 
-  const [record3] = await client3.addCore(core, undefined, { priority: 1 })
+  await client3.addCore(core, undefined, { priority: 1 })
   t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
+  await blindPeer.flush()
+  const record3 = await blindPeer.db.getCoreRecord(core.key)
   t.is(record3.priority, 0, 'cannot change the record after it was added')
 
   await client.close()
@@ -557,6 +564,9 @@ test('records with announce: true are announced upon startup', async (t) => {
       'announced core is tracked upon startup'
     )
 
+    // wait for announcing to complete
+    await once(blindPeer, 'announced-initial-cores')
+
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
     await topic.refresh()
@@ -880,6 +890,13 @@ test('invalid requests are emitted', async (t) => {
 })
 
 test('Prometheus metrics', async (t) => {
+  if (isBare) {
+    // We'd need to add an import map to prom-client for this test to work on bare
+    // but hyper-instrument already does that for us when we use it in bin.js
+    // so we simply do not run this test on bare
+    t.pass('prometheus metrics test is skipped on bare')
+    return
+  }
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
@@ -991,6 +1008,89 @@ async function setupPeer(t, bootstrap) {
   return { swarm, store }
 }
 
+test('wakeup', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { base: indexer, swarm: indexerSwarm } = await setupAutobaseHolder(t, bootstrap)
+  await new Promise((resolve) => setTimeout(resolve, 250)) // flush
+
+  const peers = []
+  const nrPeers = 3
+  for (let i = 0; i < nrPeers; i++) {
+    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+  }
+
+  for (const { client, base } of peers) {
+    await client.addAutobase(base)
+  }
+
+  t.is(blindPeer.wakeup.stats.sessionsOpened, 1)
+
+  {
+    const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
+    await peers[0].base.append('A new message')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
+  }
+
+  // Add non-swarming user
+  {
+    const initAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
+    const { store, swarm } = await setupPeer(t, bootstrap)
+    const { base } = await loadAutobase(store, indexer.local.key)
+
+    // We want to test that the wakeup announce comes from
+    // the blind-peer connection, so disable the wakeup protocol
+    // between the indexer and this new writer
+    const s1 = base.store.replicate(true)
+    const s2 = indexer.store.replicate(false)
+    s1.pipe(s2).pipe(s1)
+    await Promise.all([
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+      once(base, 'writable')
+    ])
+    const initAnnounceRxOther = base.wakeupProtocol.stats.wireAnnounce.rx
+    t.is(blindPeer.wakeup.stats.wireAnnounce.tx, 6, 'sanity check')
+    const client = new Client(swarm, store, {
+      wakeup: base.wakeupProtocol,
+      mirrors: [blindPeer.publicKey]
+    })
+    await client.addAutobase(base)
+
+    await new Promise((resolve) => setTimeout(resolve, 250))
+
+    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announce')
+    t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
+    t.is(blindPeer.wakeup.stats.topicsAdded, 1, 'still using the same topic')
+    t.ok(initAnnounceRxOther < base.wakeupProtocol.stats.wireAnnounce.rx, 'peer received announce')
+
+    await client.close()
+    await base.close()
+    s1.destroy()
+    s2.destroy()
+  }
+
+  await indexerSwarm.destroy()
+  await Promise.all(peers.map((p) => p.swarm.destroy()))
+  // Give topic time to gc
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  t.is(
+    blindPeer.wakeup.stats.sessionsClosed,
+    1,
+    'session closed after all peers close their channel'
+  )
+  t.is(
+    blindPeer.wakeup.stats.topicsGcd,
+    1,
+    'topic garbage collected after all peers close their channel'
+  )
+})
+
 // Illustrates a bug
 test.skip('Cores added by someone who does not have them are downloaded from other peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
@@ -1083,9 +1183,7 @@ async function setupCoreHolder(t, bootstrap) {
   return { swarm, store, core }
 }
 
-async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
-  const { swarm, store } = await setupPeer(t, bootstrap)
-
+async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = true } = {}) {
   const open = (store) => {
     return store.get('view', { valueEncoding: 'json' })
   }
@@ -1094,7 +1192,7 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
     for (const { value } of batch) {
       if (value.add) {
         const key = b4a.from(value.add, 'hex')
-        await base.addWriter(key, { indexer: true })
+        await base.addWriter(key, { indexer: addIndexers })
         continue
       }
 
@@ -1110,16 +1208,21 @@ async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
     ackThreshold: 0
   })
   await base.ready()
-  swarm.join(base.discoveryKey)
 
-  return { swarm, store, base }
+  return { base }
 }
 
 async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
-  const peer = new BlindPeer(storage, { swarm, maxBytes, enableGc, trustedPubKeys })
+  const peer = new BlindPeer(storage, {
+    swarm,
+    maxBytes,
+    enableGc,
+    trustedPubKeys,
+    wakeupGcTickTime: 100
+  })
 
   const order = clientCounter++
   t.teardown(
@@ -1138,4 +1241,37 @@ async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trust
   }
 
   return { blindPeer: peer, storage }
+}
+
+async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const { wakeup, base } = await loadAutobase(store, autobaseBootstrap)
+  swarm.join(base.discoveryKey)
+
+  return { swarm, store, base, wakeup }
+}
+
+let writerI
+async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
+  const { store, swarm } = await setupPeer(t, bootstrap)
+
+  const { base } = await loadAutobase(store, indexer.local.key, { addIndexers: false })
+  swarm.join(base.discoveryKey)
+  await Promise.all([
+    indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+    once(base, 'writable')
+  ])
+
+  const nr = writerI++
+  await base.append(`Message from writer ${nr}`)
+  const client = new Client(swarm, store, {
+    wakeup: base.wakeupProtocol,
+    mirrors: [blindPeer.publicKey]
+  })
+
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  return { client, base, store, swarm, wakeup: base.wakeupProtocol }
 }
