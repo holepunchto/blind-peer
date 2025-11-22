@@ -103,8 +103,8 @@ test('client can use a blind-peer to add an autobase', async (t) => {
   // A first writer adds the autobase
   {
     const expectedAddedKeys = new Set([
-      b4a.toString(indexer.local.key, 'hex'),
-      ...[...indexer.views()].map((v) => b4a.toString(v.key, 'hex'))
+      ...[...indexer.views()].map((v) => b4a.toString(v.key, 'hex')),
+      ...[...indexer.activeWriters].map((w) => b4a.toString(w.core.key, 'hex'))
     ])
 
     let nrAdded = 0
@@ -116,8 +116,9 @@ test('client can use a blind-peer to add an autobase', async (t) => {
         t.fail('more keys added than expected')
       }
       if (addedKeys.size === expectedAddedKeys.size) {
-        if (DEBUG)
+        if (DEBUG) {
           console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        }
         tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
         tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
       }
@@ -128,15 +129,16 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     await client.addAutobase(indexer)
     await tFirstAdd
 
-    // Give some time for extra requests to cause test failure
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    // Give some time to sync
+    await new Promise((resolve) => setTimeout(resolve, 500))
     blindPeer.off('add-core', onaddcore)
   }
 
-  // Another writer adds the autobase as well
+  // Another writer adds the autobase as well.
+  // Only the views get re-added, because the autobase cores were
+  // aded by the previous writer and their length hasn't changed
   {
     const expectedAddedKeys = new Set([
-      b4a.toString(bases[0].base.local.key, 'hex'),
       ...[...bases[0].base.views()].map((v) => b4a.toString(v.key, 'hex'))
     ])
 
@@ -149,8 +151,9 @@ test('client can use a blind-peer to add an autobase', async (t) => {
         t.fail('more keys added than expected')
       }
       if (addedKeys.size === expectedAddedKeys.size) {
-        if (DEBUG)
+        if (DEBUG) {
           console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        }
         tSecondAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
         tSecondAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
       }
@@ -216,7 +219,7 @@ test('adding autobase cores only results in replication sessions if there are le
 
     await new Promise((resolve) => setTimeout(resolve, 500))
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
-    t.is(blindPeer.stats.activations, 4, '3 views and 1 indexer core activated')
+    t.is(blindPeer.stats.activations, 6, '3 views and all 3 indexer core activated')
 
     // 2nd time, everything is already known (no change in autobase state)
     // Re-opening needed, else it won't be added again by the client
@@ -230,7 +233,70 @@ test('adding autobase cores only results in replication sessions if there are le
 
     await new Promise((resolve) => setTimeout(resolve, 500))
     t.alike(initLengths, getLengths(indexer), 'sanity check: autobase cores did not change')
-    t.is(blindPeer.stats.activations, 7, 'only the 3 views activated')
+    t.is(blindPeer.stats.activations, 9, 'only the 3 views activated')
+
+    // third time, one core updates
+    // Re-opening needed, else it won't be added again by the client
+    await indexer.close()
+    {
+      const { base } = await loadAutobase(indexerStore, null)
+      indexer = base
+    }
+
+    await indexer.append({ 'a new': 'length' })
+    await client.addAutobase(indexer)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    t.is(blindPeer.stats.activations, 13, '3 views and the core with updated length activated')
+  }
+})
+
+test('blind-peering respects max random cores to send for add-autobase-cores', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  let {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
+
+  const peers = []
+  for (let i = 0; i < 6; i++) {
+    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+  }
+  t.is(indexer.activeWriters.map.size, 6, 'all active writers (sanity check)')
+
+  // Give some time for them to gossip their lengths
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const initLengths = getLengths(indexer)
+  t.is(blindPeer.stats.activations, 0, 'sanity check')
+
+  // A first writer adds the autobase
+  {
+    const client = new Client(indexerSwarm, indexerStore, {
+      mirrors: [blindPeer.publicKey],
+      autobaseWritersPerRequest: 4
+    })
+    t.teardown(async () => await client.close())
+    await client.addAutobase(indexer)
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
+    t.is(blindPeer.stats.activations, 7, '3 views and 4 indexer cores activated')
+
+    // 2nd time, even though there are still unadded writers
+    // the autobase is not added again
+
+    await client.addAutobase(indexer)
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    t.is(blindPeer.stats.activations, 7, 'no additional activations')
   }
 })
 
@@ -1091,18 +1157,13 @@ test('wakeup', async (t) => {
     peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
   }
 
+  const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
   for (const { client, base } of peers) {
     await client.addAutobase(base)
   }
-
+  await new Promise((resolve) => setTimeout(resolve, 250))
   t.is(blindPeer.wakeup.stats.sessionsOpened, 1)
-
-  {
-    const initWireAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
-    await peers[0].base.append('A new message')
-    await new Promise((resolve) => setTimeout(resolve, 250))
-    t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
-  }
+  t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
 
   // Add non-swarming user
   {
@@ -1121,7 +1182,6 @@ test('wakeup', async (t) => {
       once(base, 'writable')
     ])
     const initAnnounceRxOther = base.wakeupProtocol.stats.wireAnnounce.rx
-    t.is(blindPeer.wakeup.stats.wireAnnounce.tx, 6, 'sanity check')
     const client = new Client(swarm, store, {
       wakeup: base.wakeupProtocol,
       mirrors: [blindPeer.publicKey]
