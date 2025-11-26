@@ -539,27 +539,53 @@ class BlindPeer extends ReadyResource {
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
     const { cores, referrer } = request
 
-    const records = new Map()
-    const lengths = new Map()
+    const discKeys = []
+    const overview = new Map()
     for (const c of cores) {
-      const id = IdEnc.normalize(c.key)
-      records.set(id, { key: c.key, referrer, priority, announce: false })
-      lengths.set(id, c.length)
+      const discoveryKey = crypto.discoveryKey(c.key)
+      discKeys.push(discoveryKey)
+      const id = IdEnc.normalize(discoveryKey)
+      overview.set(id, {
+        key: c.key,
+        discoveryKey,
+        remoteLength: c.length,
+        announce: false,
+        priority,
+        referrer,
+        ownLength: null, // set later
+        ownContigLength: null, // set later
+        needsActivation: false // changed later if needed
+      })
     }
 
-    // Note: not race condition safe, but it's no problem if we do add the same core twice
-    const dbRecords = new Map()
     const recordsToAdd = []
-    await Promise.all(
-      [...records.entries()].map(async ([id, record]) => {
-        const dbRecord = await this.db.getCoreRecord(record.key)
-        dbRecords.set(id, dbRecord)
-        if (dbRecord === null) recordsToAdd.push(record)
-      })
-    )
+    const infos = await this.store.storage.getInfos(discKeys)
+    for (let i = 0; i < infos.length; i++) {
+      const id = IdEnc.normalize(discKeys[i])
+      const storageInfo = infos[i]
+      const entry = overview.get(id)
 
+      if (storageInfo === null) {
+        // new core
+        entry.needsActivation = true
+        recordsToAdd.push({
+          key: entry.key,
+          priority: entry.priority,
+          announce: entry.announce,
+          referrer: entry.referrer
+        })
+      } else {
+        entry.ownLength = storageInfo.head.length
+        entry.ownContigLength = storageInfo.hints.contiguousLength
+        if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
+        // TODO: debug why our contiguousLength is less than our length even when core.contiguousLength is not
+        if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
+      }
+    }
+
+    // Note: not race condition safe when called with the same cores at a similar time,
+    // but it's no problem if we do add the same core twice
     for (const record of recordsToAdd) this.db.addCore(record)
-
     if (recordsToAdd.length > 0) await this.flush() // flush now as important data
 
     // TODO: revisit this code (copy-pasted from add-core)
@@ -573,11 +599,10 @@ class BlindPeer extends ReadyResource {
     for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
 
     const activateProms = []
-    for (const [id, dbRecord] of dbRecords.entries()) {
-      const noChange = dbRecord && lengths.get(id) === dbRecord.length
-      if (noChange) continue
-      this.emit('add-core', records.get(id), true, stream)
-      activateProms.push(this._activateCore(stream, records.get(id)))
+    for (const entry of overview.values()) {
+      if (!entry.needsActivation) continue
+      this.emit('add-core', entry, true, stream) // TODO: check if entry has correct signature (it's expecting the db record)
+      activateProms.push(this._activateCore(stream, entry))
     }
     await Promise.all(activateProms)
 
