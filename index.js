@@ -14,11 +14,7 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
-const {
-  AddCoreEncoding,
-  AddAutobaseCoresEncoding,
-  DeleteCoreEncoding
-} = require('blind-peer-encodings')
+const { AddCoreEncoding, AddCoresEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -427,11 +423,7 @@ class BlindPeer extends ReadyResource {
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
-    rpc.respond(
-      'add-autobase-cores',
-      AddAutobaseCoresEncoding,
-      this._onaddautobasecores.bind(this, conn)
-    )
+    rpc.respond('add-cores', AddCoresEncoding, this._onaddcores.bind(this, conn))
   }
 
   async _activateCore(stream, record) {
@@ -535,7 +527,7 @@ class BlindPeer extends ReadyResource {
     return coreRecord
   }
 
-  async _onaddautobasecores(stream, request) {
+  async _onaddcores(stream, request) {
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
     const { cores, referrer } = request
 
