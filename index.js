@@ -14,8 +14,7 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
-const { AddCoreEncoding } = require('blind-peer-encodings')
-const { DeleteCoreEncoding } = require('blind-peer-encodings')
+const { AddCoreEncoding, AddCoresEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -424,6 +423,7 @@ class BlindPeer extends ReadyResource {
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
+    rpc.respond('add-cores', AddCoresEncoding, this._onaddcores.bind(this, conn))
   }
 
   async _activateCore(stream, record) {
@@ -525,6 +525,80 @@ class BlindPeer extends ReadyResource {
 
     const coreRecord = await this.db.getCoreRecord(record.key)
     return coreRecord
+  }
+
+  async _onaddcores(stream, request) {
+    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
+    const { cores, referrer } = request
+
+    const discKeys = []
+    const overview = new Map()
+    for (const c of cores) {
+      const discoveryKey = crypto.discoveryKey(c.key)
+      discKeys.push(discoveryKey)
+      const id = IdEnc.normalize(discoveryKey)
+      overview.set(id, {
+        key: c.key,
+        discoveryKey,
+        remoteLength: c.length,
+        announce: false,
+        priority,
+        referrer,
+        ownLength: null, // set later
+        ownContigLength: null, // set later
+        needsActivation: false // changed later if needed
+      })
+    }
+
+    const recordsToAdd = []
+    const infos = await this.store.storage.getInfos(discKeys)
+    for (let i = 0; i < infos.length; i++) {
+      const id = IdEnc.normalize(discKeys[i])
+      const storageInfo = infos[i]
+      const entry = overview.get(id)
+
+      if (storageInfo === null) {
+        // new core
+        entry.needsActivation = true
+        recordsToAdd.push({
+          key: entry.key,
+          priority: entry.priority,
+          announce: entry.announce,
+          referrer: entry.referrer
+        })
+      } else {
+        entry.ownLength = storageInfo.head.length
+        entry.ownContigLength = storageInfo.hints.contiguousLength
+        if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
+        // TODO: debug why our contiguousLength is less than our length even when core.contiguousLength is not
+        if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
+      }
+    }
+
+    // Note: not race condition safe when called with the same cores at a similar time,
+    // but it's no problem if we do add the same core twice
+    for (const record of recordsToAdd) this.db.addCore(record)
+    if (recordsToAdd.length > 0) await this.flush() // flush now as important data
+
+    // TODO: revisit this code (copy-pasted from add-core)
+    const muxer = stream.userData
+    const core = this.store.get({ key: referrer })
+    await core.ready()
+    const discoveryKey = core.discoveryKey
+    await core.close()
+    await this._onwakeup(discoveryKey, muxer)
+
+    for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
+
+    const activateProms = []
+    for (const entry of overview.values()) {
+      if (!entry.needsActivation) continue
+      this.emit('add-core', entry, true, stream) // TODO: check if entry has correct signature (it's expecting the db record)
+      activateProms.push(this._activateCore(stream, entry))
+    }
+    await Promise.all(activateProms)
+
+    return null // TODO: decide return value
   }
 
   async _ondeletecore(stream, { key }) {
