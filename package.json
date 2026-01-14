@@ -38,6 +38,8 @@
   },
   "files": [
     "index.js",
+    "server.js",
+    "testblindpeer.js",
     "lib/"
   ],
   "scripts": {
