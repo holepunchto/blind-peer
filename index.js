@@ -196,7 +196,8 @@ class BlindPeer extends ReadyResource {
       trustedPubKeys,
       port,
       announcingInterval = 100,
-      wakeupGcTickTime = null
+      wakeupGcTickTime = null,
+      coreLagThreshold = 100
     } = {}
   ) {
     super()
@@ -221,6 +222,7 @@ class BlindPeer extends ReadyResource {
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
+    this.coreLagThreshold = coreLagThreshold
 
     this.stats = {
       bytesGcd: 0,
@@ -467,17 +469,39 @@ class BlindPeer extends ReadyResource {
     const core = this.store.get({ key })
     this.announcedCores.set(coreId, core)
 
+    let activeSession = null
+
     core.on('append', () => {
       this.emit('core-append', core)
+
+      if (!activeSession) return
+
+      const replicationLag = core.length - core.contiguousLength
+      if (!activeSession.isClient && replicationLag > this.coreLagThreshold) {
+        activeSession.refresh({ server: true, client: true })
+      }
     })
     core.on('download', () => {
       if (core.length === core.contiguousLength) {
         this.emit('core-downloaded', core)
       }
+
+      if (!activeSession) return
+
+      const replicationLag = core.length - core.contiguousLength
+      if (activeSession.isClient && replicationLag === 0) {
+        activeSession.refresh({ server: true, client: false })
+      }
     })
 
     await core.ready()
-    this.swarm.join(core.discoveryKey, { server: true, client: false })
+
+    const replicationLag = core.length - core.contiguousLength
+    if (replicationLag > this.coreLagThreshold) {
+      activeSession = this.swarm.join(core.discoveryKey, { server: true, client: true })
+    } else {
+      activeSession = this.swarm.join(core.discoveryKey, { server: true, client: false })
+    }
 
     // WARNING: we do not yet handle the case where
     // data of an announced core is cleared
