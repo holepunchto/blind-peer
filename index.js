@@ -472,32 +472,28 @@ class BlindPeer extends ReadyResource {
     let activeSession = null
 
     core.on('append', () => {
-      this.emit('core-append', core)
-
-      if (!activeSession) return
-
       const replicationLag = core.length - core.contiguousLength
       if (!activeSession.isClient && replicationLag > this.coreLagThreshold) {
         activeSession.refresh({ server: true, client: true })
       }
+
+      this.emit('core-append', core)
     })
     core.on('download', () => {
-      if (core.length === core.contiguousLength) {
-        this.emit('core-downloaded', core)
-      }
-
-      if (!activeSession) return
-
       const replicationLag = core.length - core.contiguousLength
-      if (activeSession.isClient && replicationLag === 0) {
-        activeSession.refresh({ server: true, client: false })
+      if (replicationLag === 0) {
+        if (activeSession.isClient) {
+          activeSession.refresh({ server: true, client: false })
+        }
+
+        this.emit('core-downloaded', core)
       }
     })
 
     await core.ready()
 
     const replicationLag = core.length - core.contiguousLength
-    if (replicationLag > this.coreLagThreshold) {
+    if (replicationLag > this.coreLagThreshold || (core.length === 0 && replicationLag === 0)) {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: true })
     } else {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: false })

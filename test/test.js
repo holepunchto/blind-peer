@@ -1091,6 +1091,95 @@ test('wakeup', async (t) => {
   )
 })
 
+test('core lag threshold', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { swarm: peer1Swarm, store: peer1Store } = await setupPeer(t, bootstrap)
+  const { swarm: peer2Swarm, store: peer2Store } = await setupPeer(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    coreLagThreshold: 10,
+    trustedPubKeys: [
+      peer1Swarm.dht.defaultKeyPair.publicKey,
+      peer2Swarm.dht.defaultKeyPair.publicKey
+    ]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client1 = new Client(peer1Swarm, peer1Store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client1.close()
+  })
+  const coreToAnnounce = peer1Store.get({ name: 'test' })
+  await coreToAnnounce.ready()
+  t.teardown(async () => {
+    await coreToAnnounce.close()
+  })
+
+  for (let i = 0; i < 11; i++) {
+    await coreToAnnounce.append(b4a.from(`block${i}`))
+  }
+  peer1Swarm.join(coreToAnnounce.discoveryKey, { server: true, client: false })
+
+  const client2 = new Client(peer2Swarm, peer2Store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client2.close()
+  })
+  const coreToAnnounce2 = peer2Store.get({ key: coreToAnnounce.key })
+  await client2.addCore(coreToAnnounce2, coreToAnnounce2.key, { announce: true })
+
+  await once(blindPeer, 'core-downloaded')
+
+  await peer1Swarm.destroy()
+
+  await new Promise((resolve) => setTimeout(resolve, 1_000))
+
+  // now after core got downloaded fully
+  const { swarm: peer3Swarm } = await setupPeer(t, bootstrap)
+  peer3Swarm.join(coreToAnnounce.discoveryKey, { server: true, client: false })
+
+  await Promise.race([
+    once(peer3Swarm, 'connection').then(() => t.fail('peer3 connected')),
+    new Promise((resolve) => setTimeout(resolve, 5_000))
+  ])
+  t.pass('peer3 did not connect after 5 seconds')
+})
+
+test.solo('test swarms', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { swarm: peer1Swarm } = await setupPeer(t, bootstrap)
+  const { swarm: peer2Swarm } = await setupPeer(t, bootstrap)
+  const { swarm: peer3Swarm } = await setupPeer(t, bootstrap)
+
+  let peer1Connections = 0
+  let peer2Connections = 0
+  let peer3Connections = 0
+
+  const topic = Buffer.alloc(32).fill('hello world')
+
+  peer1Swarm.on('connection', (conn) => {
+    peer1Connections++
+  })
+  const session1 = await peer1Swarm.join(topic, { server: false, client: true })
+  peer2Swarm.on('connection', (conn) => {
+    peer2Connections++
+  })
+  await peer2Swarm.join(topic, { server: true, client: false }).flushed()
+  peer3Swarm.on('connection', (conn) => {
+    peer3Connections++
+  })
+  await peer3Swarm.join(topic, { server: true, client: false }).flushed()
+
+  await session1.refresh()
+
+  await new Promise((resolve) => setTimeout(resolve, 5_000))
+
+  t.is(peer1Connections, 2, 'peer1Swarm has 2 connections')
+  t.is(peer2Connections, 1, 'peer2Swarm has 1 connection')
+  t.is(peer3Connections, 1, 'peer3Swarm has 1 connection')
+})
 // Illustrates a bug
 test.skip('Cores added by someone who does not have them are downloaded from other peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
@@ -1212,7 +1301,11 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
   return { base }
 }
 
-async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
+async function setupBlindPeer(
+  t,
+  bootstrap,
+  { storage, maxBytes, enableGc, trustedPubKeys, coreLagThreshold } = {}
+) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
@@ -1221,7 +1314,8 @@ async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trust
     maxBytes,
     enableGc,
     trustedPubKeys,
-    wakeupGcTickTime: 100
+    wakeupGcTickTime: 100,
+    coreLagThreshold
   })
 
   const order = clientCounter++
