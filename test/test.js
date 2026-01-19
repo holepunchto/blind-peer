@@ -1100,7 +1100,7 @@ test('switch client mode depending on core lag', async (t) => {
   const { swarm: peer2Swarm, store: peer2Store } = await setupPeer(t, bootstrap)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, {
-    coreLagThreshold: 10,
+    replicationLagThreshold: 10,
     trustedPubKeys: [
       peer1Swarm.dht.defaultKeyPair.publicKey,
       peer2Swarm.dht.defaultKeyPair.publicKey
@@ -1259,7 +1259,7 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
 async function setupBlindPeer(
   t,
   bootstrap,
-  { storage, maxBytes, enableGc, trustedPubKeys, coreLagThreshold } = {}
+  { storage, maxBytes, enableGc, trustedPubKeys, replicationLagThreshold } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
 
@@ -1270,7 +1270,7 @@ async function setupBlindPeer(
     enableGc,
     trustedPubKeys,
     wakeupGcTickTime: 100,
-    coreLagThreshold
+    replicationLagThreshold
   })
 
   const order = clientCounter++

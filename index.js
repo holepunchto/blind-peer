@@ -197,7 +197,7 @@ class BlindPeer extends ReadyResource {
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
-      coreLagThreshold = 100
+      replicationLagThreshold = 100
     } = {}
   ) {
     super()
@@ -222,7 +222,7 @@ class BlindPeer extends ReadyResource {
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
-    this.coreLagThreshold = coreLagThreshold
+    this.replicationLagThreshold = replicationLagThreshold
 
     this.stats = {
       bytesGcd: 0,
@@ -473,7 +473,7 @@ class BlindPeer extends ReadyResource {
 
     core.on('append', () => {
       const replicationLag = core.length - core.contiguousLength
-      if (!activeSession.isClient && replicationLag > this.coreLagThreshold) {
+      if (!activeSession.isClient && replicationLag > this.replicationLagThreshold) {
         activeSession.refresh({ server: true, client: true })
         this.emit('core-client-mode-changed', core, true)
       }
@@ -495,7 +495,7 @@ class BlindPeer extends ReadyResource {
     await core.ready()
 
     const replicationLag = core.length - core.contiguousLength
-    if (replicationLag > this.coreLagThreshold || core.length === 0) {
+    if (replicationLag > this.replicationLagThreshold || core.length === 0) {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: true })
     } else {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: false })
