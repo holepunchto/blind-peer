@@ -1091,6 +1091,50 @@ test('wakeup', async (t) => {
   )
 })
 
+test('switch client mode depending on core lag', async (t) => {
+  t.plan(2)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { swarm: peer1Swarm, store: peer1Store } = await setupPeer(t, bootstrap)
+  const { swarm: peer2Swarm, store: peer2Store } = await setupPeer(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    replicationLagThreshold: 10,
+    trustedPubKeys: [
+      peer1Swarm.dht.defaultKeyPair.publicKey,
+      peer2Swarm.dht.defaultKeyPair.publicKey
+    ]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const coreToAnnounce = peer1Store.get({ name: 'test' })
+  await coreToAnnounce.ready()
+  t.teardown(async () => {
+    await coreToAnnounce.close()
+  })
+
+  for (let i = 0; i < 11; i++) {
+    await coreToAnnounce.append(b4a.from(`block${i}`))
+  }
+  peer1Swarm.join(coreToAnnounce.discoveryKey, { server: true, client: false })
+
+  const client2 = new Client(peer2Swarm, peer2Store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client2.close()
+  })
+  const coreToAnnounce2 = peer2Store.get({ key: coreToAnnounce.key })
+  await client2.addCore(coreToAnnounce2, coreToAnnounce2.key, { announce: true })
+
+  blindPeer.on('core-client-mode-changed', (core, mode) => {
+    t.alike(core.key, coreToAnnounce.key, 'core key')
+    t.is(mode, false, 'client mode is false')
+  })
+
+  await once(blindPeer, 'core-downloaded')
+})
+
 // Illustrates a bug
 test.skip('Cores added by someone who does not have them are downloaded from other peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
@@ -1212,7 +1256,11 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
   return { base }
 }
 
-async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trustedPubKeys } = {}) {
+async function setupBlindPeer(
+  t,
+  bootstrap,
+  { storage, maxBytes, enableGc, trustedPubKeys, replicationLagThreshold } = {}
+) {
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
@@ -1221,7 +1269,8 @@ async function setupBlindPeer(t, bootstrap, { storage, maxBytes, enableGc, trust
     maxBytes,
     enableGc,
     trustedPubKeys,
-    wakeupGcTickTime: 100
+    wakeupGcTickTime: 100,
+    replicationLagThreshold
   })
 
   const order = clientCounter++

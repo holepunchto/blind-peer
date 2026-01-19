@@ -196,7 +196,8 @@ class BlindPeer extends ReadyResource {
       trustedPubKeys,
       port,
       announcingInterval = 100,
-      wakeupGcTickTime = null
+      wakeupGcTickTime = null,
+      replicationLagThreshold = 100
     } = {}
   ) {
     super()
@@ -221,6 +222,7 @@ class BlindPeer extends ReadyResource {
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
+    this.replicationLagThreshold = replicationLagThreshold
 
     this.stats = {
       bytesGcd: 0,
@@ -467,17 +469,37 @@ class BlindPeer extends ReadyResource {
     const core = this.store.get({ key })
     this.announcedCores.set(coreId, core)
 
+    let activeSession = null
+
     core.on('append', () => {
+      const replicationLag = core.length - core.contiguousLength
+      if (!activeSession.isClient && replicationLag > this.replicationLagThreshold) {
+        activeSession.refresh({ server: true, client: true })
+        this.emit('core-client-mode-changed', core, true)
+      }
+
       this.emit('core-append', core)
     })
     core.on('download', () => {
-      if (core.length === core.contiguousLength) {
+      const replicationLag = core.length - core.contiguousLength
+      if (replicationLag === 0) {
+        if (activeSession.isClient) {
+          activeSession.refresh({ server: true, client: false })
+          this.emit('core-client-mode-changed', core, false)
+        }
+
         this.emit('core-downloaded', core)
       }
     })
 
     await core.ready()
-    this.swarm.join(core.discoveryKey, { server: true, client: false })
+
+    const replicationLag = core.length - core.contiguousLength
+    if (replicationLag > this.replicationLagThreshold || core.length === 0) {
+      activeSession = this.swarm.join(core.discoveryKey, { server: true, client: true })
+    } else {
+      activeSession = this.swarm.join(core.discoveryKey, { server: true, client: false })
+    }
 
     // WARNING: we do not yet handle the case where
     // data of an announced core is cleared
