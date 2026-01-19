@@ -475,6 +475,7 @@ class BlindPeer extends ReadyResource {
       const replicationLag = core.length - core.contiguousLength
       if (!activeSession.isClient && replicationLag > this.coreLagThreshold) {
         activeSession.refresh({ server: true, client: true })
+        this.emit('core-client-mode-changed', core, true)
       }
 
       this.emit('core-append', core)
@@ -484,6 +485,7 @@ class BlindPeer extends ReadyResource {
       if (replicationLag === 0) {
         if (activeSession.isClient) {
           activeSession.refresh({ server: true, client: false })
+          this.emit('core-client-mode-changed', core, false)
         }
 
         this.emit('core-downloaded', core)
@@ -493,7 +495,7 @@ class BlindPeer extends ReadyResource {
     await core.ready()
 
     const replicationLag = core.length - core.contiguousLength
-    if (replicationLag > this.coreLagThreshold || (core.length === 0 && replicationLag === 0)) {
+    if (replicationLag > this.coreLagThreshold || core.length === 0) {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: true })
     } else {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: false })
