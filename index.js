@@ -497,6 +497,7 @@ class BlindPeer extends ReadyResource {
     const replicationLag = core.length - core.contiguousLength
     if (replicationLag > this.replicationLagThreshold || core.length === 0) {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: true })
+      this.emit('core-client-mode-changed', core, true)
     } else {
       activeSession = this.swarm.join(core.discoveryKey, { server: true, client: false })
     }
