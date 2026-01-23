@@ -593,7 +593,6 @@ class BlindPeer extends ReadyResource {
         entry.ownLength = storageInfo.head.length
         entry.ownContigLength = storageInfo.hints.contiguousLength
         if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
-        // TODO: debug why our contiguousLength is less than our length even when core.contiguousLength is not
         if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
       }
     }
