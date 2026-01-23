@@ -620,7 +620,7 @@ class BlindPeer extends ReadyResource {
     }
     await Promise.all(activateProms)
 
-    return null // TODO: decide return value
+    return null
   }
 
   async _ondeletecore(stream, { key }) {
