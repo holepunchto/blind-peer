@@ -567,8 +567,8 @@ class BlindPeer extends ReadyResource {
         announce: false,
         priority,
         referrer,
-        ownLength: null, // set later
-        ownContigLength: null, // set later
+        ownLength: 0, // set later
+        ownContigLength: 0, // set later
         needsActivation: false // changed later if needed
       })
     }
