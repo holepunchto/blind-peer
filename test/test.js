@@ -31,11 +31,13 @@ test('client can use a blind-peer to add a core', async (t) => {
   let client = null
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-  client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   coreKey = core.key
+  console.log('adding in background')
   client.addCoreBackground(core)
 
   const [record] = await coreAddedProm
+  console.log(record)
   t.alike(record.key, coreKey, 'added the core')
   t.is(record.priority, 0, '0 Default priority')
   t.is(record.announce, false, 'default no announce')
@@ -61,7 +63,7 @@ test('client can use a blind-peer to add a core', async (t) => {
   }
 })
 
-test('client can use a blind-peer to add an autobase', async (t) => {
+test.solo('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(2)
   const tSecondAdd = t.test()
@@ -125,7 +127,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     }
     blindPeer.on('add-core', onaddcore)
 
-    const client = new Client(indexerSwarm, indexerStore, { mirrors: [blindPeer.publicKey] })
+    const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
     await client.addAutobase(indexer)
     await tFirstAdd
 
@@ -134,6 +136,8 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     blindPeer.off('add-core', onaddcore)
   }
 
+  console.log('\n\n\nsecond part...')
+  a// wait new Promise((resolve) => setTimeout(resolve, 5000))
   // Another writer adds the autobase as well.
   // Only the views get re-added, because the autobase cores were
   // aded by the previous writer and their length hasn't changed
@@ -160,7 +164,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     }
     blindPeer.on('add-core', onaddcore)
 
-    const client = new Client(bases[0].swarm, bases[0].store, { mirrors: [blindPeer.publicKey] })
+    const client = new Client(bases[0].swarm.dht, bases[0].store, { keys: [blindPeer.publicKey] })
     await client.addAutobase(bases[0].base)
     await tSecondAdd
 

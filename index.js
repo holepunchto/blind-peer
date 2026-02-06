@@ -5,6 +5,7 @@ const ReadyResource = require('ready-resource')
 const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
+const BlindPeerMuxer = require('blind-peer-muxer')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
@@ -410,6 +411,7 @@ class BlindPeer extends ReadyResource {
   }
 
   _onconnection(conn) {
+    console.log('conn')
     if (this.closing) {
       conn.destroy()
       return
@@ -426,6 +428,24 @@ class BlindPeer extends ReadyResource {
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
     rpc.respond('add-cores', AddCoresEncoding, this._onaddcores.bind(this, conn))
+
+    console.log('pairing')
+    const self = this
+    BlindPeerMuxer.pair(conn, function () {
+      new BlindPeerMuxer(conn, {
+        async oncores(request) {
+          // the request's encoding is compatible with our AddCoresEncoding (sets all required fields and has no additional fields)
+          console.log('-->', request)
+          try {
+            await self._onaddcores(conn, request)
+          } catch (e) {
+            console.error(e)
+            throw e
+          }
+        }
+      })
+    })
+    console.log('paired')
   }
 
   async _activateCore(stream, record) {
@@ -575,6 +595,7 @@ class BlindPeer extends ReadyResource {
 
     const recordsToAdd = []
     const infos = await this.store.storage.getInfos(discKeys)
+    console.log('infos', infos)
     for (let i = 0; i < infos.length; i++) {
       const id = IdEnc.normalize(discKeys[i])
       const storageInfo = infos[i]
@@ -603,12 +624,14 @@ class BlindPeer extends ReadyResource {
     if (recordsToAdd.length > 0) await this.flush() // flush now as important data
 
     // TODO: revisit this code (copy-pasted from add-core)
-    const muxer = stream.userData
-    const core = this.store.get({ key: referrer })
-    await core.ready()
-    const discoveryKey = core.discoveryKey
-    await core.close()
-    await this._onwakeup(discoveryKey, muxer)
+    if (referrer) {
+      const muxer = stream.userData
+      const core = this.store.get({ key: referrer })
+      await core.ready()
+      const discoveryKey = core.discoveryKey
+      await core.close()
+      await this._onwakeup(discoveryKey, muxer)
+    }
 
     for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
 
