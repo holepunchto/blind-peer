@@ -411,7 +411,6 @@ class BlindPeer extends ReadyResource {
   }
 
   _onconnection(conn) {
-    console.log('conn')
     if (this.closing) {
       conn.destroy()
       return
@@ -429,13 +428,11 @@ class BlindPeer extends ReadyResource {
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
     rpc.respond('add-cores', AddCoresEncoding, this._onaddcores.bind(this, conn))
 
-    console.log('pairing')
     const self = this
     BlindPeerMuxer.pair(conn, function () {
       new BlindPeerMuxer(conn, {
         async oncores(request) {
           // the request's encoding is compatible with our AddCoresEncoding (sets all required fields and has no additional fields)
-          console.log('-->', request)
           try {
             await self._onaddcores(conn, request)
           } catch (e) {
@@ -445,7 +442,6 @@ class BlindPeer extends ReadyResource {
         }
       })
     })
-    console.log('paired')
   }
 
   async _activateCore(stream, record) {
@@ -574,6 +570,15 @@ class BlindPeer extends ReadyResource {
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
     const { cores, referrer } = request
 
+    if (request.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
+      // Note: we can't use the original downgrade-announce event because that assumes a 'record' object
+      this.emit('add-cores-downgrade-announce', {
+        request,
+        remotePublicKey: stream.remotePublicKey
+      })
+      request.announce = false
+    }
+
     const discKeys = []
     const overview = new Map()
     for (const c of cores) {
@@ -584,7 +589,7 @@ class BlindPeer extends ReadyResource {
         key: c.key,
         discoveryKey,
         remoteLength: c.length,
-        announce: false,
+        announce: request.announce,
         priority,
         referrer,
         ownLength: 0, // set later
@@ -595,13 +600,13 @@ class BlindPeer extends ReadyResource {
 
     const recordsToAdd = []
     const infos = await this.store.storage.getInfos(discKeys)
-    console.log('infos', infos)
     for (let i = 0; i < infos.length; i++) {
       const id = IdEnc.normalize(discKeys[i])
       const storageInfo = infos[i]
       const entry = overview.get(id)
 
-      if (storageInfo === null) {
+      if (storageInfo === null || entry.announce) {
+        // allow upgrading to announce: true
         // new core
         entry.needsActivation = true
         recordsToAdd.push({
@@ -611,8 +616,8 @@ class BlindPeer extends ReadyResource {
           referrer: entry.referrer
         })
       } else {
-        entry.ownLength = storageInfo.head.length
-        entry.ownContigLength = storageInfo.hints.contiguousLength
+        entry.ownLength = storageInfo.head?.length || 0
+        entry.ownContigLength = storageInfo.hints?.contiguousLength || 0
         if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
         if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
       }
@@ -638,11 +643,13 @@ class BlindPeer extends ReadyResource {
     const activateProms = []
     for (const entry of overview.values()) {
       if (!entry.needsActivation) continue
+      this.stats.coresAdded++
       this.emit('add-core', entry, true, stream) // TODO: check if entry has correct signature (it's expecting the db record)
       activateProms.push(this._activateCore(stream, entry))
     }
     await Promise.all(activateProms)
 
+    this.emit('add-cores-done')
     return null
   }
 
