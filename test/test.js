@@ -684,17 +684,13 @@ test('records with announce: true are announced upon startup', async (t) => {
       storage: blindPeerStorage,
       trustedPubKeys
     })
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
+    await Promise.all([blindPeer.listen(), once(blindPeer, 'announced-initial-cores')])
 
     t.alike(
       [...blindPeer.activeReplication.keys()],
       replicatedDiscKeys,
       'announced core is tracked upon startup'
     )
-
-    // wait for announcing to complete
-    await once(blindPeer, 'announced-initial-cores')
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()

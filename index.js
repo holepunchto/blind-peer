@@ -12,10 +12,12 @@ const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
+const { getEncoding: getMuxerEncoding } = require('blind-peer-muxer/spec/hyperschema')
+const AddCoresEncoding = getMuxerEncoding('@blind-peer/cores')
 
 const BlindPeerDB = require('./lib/db.js')
 
-const { AddCoreEncoding, AddCoresEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
+const { AddCoreEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor(blindPeer, core) {
