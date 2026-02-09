@@ -607,7 +607,10 @@ class BlindPeer extends ReadyResource {
       const storageInfo = infos[i]
       const entry = overview.get(id)
 
-      if (storageInfo === null || entry.announce) {
+      // DEVNOTE: just the null check does not suffice for storageInfo, because we already try
+      // loading some keys from other contexts, like when the system core of an autobase is
+      // used as a referrer.
+      if (storageInfo === null || storageInfo.head === null || entry.announce) {
         // allow upgrading to announce: true
         // new core
         entry.needsActivation = true
