@@ -12,6 +12,7 @@ const Hyperswarm = require('hyperswarm')
 const promClient = require('bare-prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
+const IpBanList = require('ip-ban-list')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -972,6 +973,97 @@ test('Prometheus metrics', async (t) => {
   }
 })
 
+test('banned IP add-core request times out', async (t) => {
+  t.plan(1)
+
+  const { bootstrap } = await getTestnet(t)
+
+  // Operator side: create and seed the ban list
+  const banListStore = new Corestore(await tmpDir(t))
+  t.teardown(() => banListStore.close())
+
+  const banIpList = new IpBanList(banListStore)
+  t.teardown(() => banIpList.close())
+
+  await banIpList.ready()
+  await banIpList.ban('127.0.0.1')
+
+  const banListSwarm = new Hyperswarm({ bootstrap })
+  t.teardown(() => banListSwarm.destroy())
+
+  banListSwarm.on('connection', (conn) => banListStore.replicate(conn))
+  banListSwarm.join(banIpList.discoveryKey)
+  await banListSwarm.flush()
+
+  // Blind peer side: replicate the ban list over the network
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    banIpListKey: banIpList.key,
+    banTimeout: 500
+  })
+  // blind-peering retries based on backoffValues in lib/client.js,
+  // so connection-banned fires multiple times. Using once() as workaround.
+  blindPeer.once('connection-banned', () => {
+    t.pass('connection-banned event emitted')
+  })
+  await blindPeer.swarm.flush()
+
+  // Wait for ban list replication to complete
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+    await swarm.destroy()
+  })
+
+  client.addCoreBackground(core)
+})
+
+test('non-banned IP connections work normally with banIpList', async (t) => {
+  t.plan(1)
+
+  const { bootstrap } = await getTestnet(t)
+
+  // Operator side: create and seed an empty ban list (no IPs banned)
+  const banListStore = new Corestore(await tmpDir(t))
+  t.teardown(() => banListStore.close())
+
+  const banIpList = new IpBanList(banListStore)
+  t.teardown(() => banIpList.close())
+
+  await banIpList.ready()
+
+  const banListSwarm = new Hyperswarm({ bootstrap })
+  t.teardown(() => banListSwarm.destroy())
+
+  banListSwarm.on('connection', (conn) => banListStore.replicate(conn))
+  banListSwarm.join(banIpList.discoveryKey)
+  await banListSwarm.flush()
+
+  // Blind peer side: replicate the ban list over the network
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    banIpListKey: banIpList.key
+  })
+  await blindPeer.swarm.flush()
+
+  // Wait for ban list replication to complete
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm, store, { mediaMirrors: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+    await swarm.destroy()
+  })
+
+  blindPeer.on('add-core', (record) => {
+    t.alike(record.key, core.key, 'core added despite banIpList being present')
+  })
+
+  client.addCoreBackground(core)
+})
+
 async function getTestnet(t) {
   const testnet = await setupTestnet()
   t.teardown(
@@ -1259,7 +1351,15 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
 async function setupBlindPeer(
   t,
   bootstrap,
-  { storage, maxBytes, enableGc, trustedPubKeys, replicationLagThreshold } = {}
+  {
+    storage,
+    maxBytes,
+    enableGc,
+    trustedPubKeys,
+    banIpListKey,
+    banTimeout,
+    replicationLagThreshold
+  } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
 
@@ -1269,6 +1369,8 @@ async function setupBlindPeer(
     maxBytes,
     enableGc,
     trustedPubKeys,
+    banIpListKey,
+    banTimeout,
     wakeupGcTickTime: 100,
     replicationLagThreshold
   })

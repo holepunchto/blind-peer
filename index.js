@@ -11,11 +11,13 @@ const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
+const rrp = require('resolve-reject-promise')
 
 const BlindPeerDB = require('./lib/db.js')
 
 const { AddCoreEncoding } = require('blind-peer-encodings')
 const { DeleteCoreEncoding } = require('blind-peer-encodings')
+const IpBanList = require('ip-ban-list')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -194,6 +196,8 @@ class BlindPeer extends ReadyResource {
       maxBytes = 100_000_000_000,
       enableGc = true,
       trustedPubKeys,
+      banIpListKey = null,
+      banTimeout = 16_000,
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
@@ -205,6 +209,9 @@ class BlindPeer extends ReadyResource {
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
+    this.banIpList = banIpListKey ? new IpBanList(this.store, { key: banIpListKey }) : null
+    this.banTimeout = banTimeout
+
     this._port = port || 0
     this.announcingInterval = announcingInterval
     this.trustedPubKeys = new Set()
@@ -258,6 +265,10 @@ class BlindPeer extends ReadyResource {
 
   async _open() {
     await this.store.ready()
+    if (this.banIpList) {
+      await this.banIpList.ready()
+      await this.swarm.join(this.banIpList.discoveryKey, { server: false, client: true })
+    }
 
     // legacy, we can remove once current ones are upgraded
     const { secretKey } = await this.store.createKeyPair('blind-mirror-swarm')
@@ -428,6 +439,42 @@ class BlindPeer extends ReadyResource {
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
   }
 
+  async _isBlocked(conn) {
+    if (!this.banIpList) return false
+
+    const host = conn.rawStream && conn.rawStream.remoteHost
+    if (!host) return false
+
+    let banned = false
+    try {
+      banned = await this.banIpList.isBanned(host)
+    } catch {
+      return false
+    }
+
+    if (!banned) return false
+
+    await this._timeout(this.banTimeout)
+    return true
+  }
+
+  _timeout(interval) {
+    const { promise, resolve } = rrp()
+
+    const done = () => {
+      clearTimeout(timeout)
+      this.off('close', done)
+      resolve()
+    }
+
+    const timeout = setTimeout(done, interval)
+    timeout.unref()
+
+    this.on('close', done)
+
+    return promise
+  }
+
   async _activateCore(stream, record) {
     this.stats.activations++
 
@@ -511,6 +558,10 @@ class BlindPeer extends ReadyResource {
 
   async _onaddcore(stream, record) {
     if (!this.opened) await this.ready()
+    if (await this._isBlocked(stream)) {
+      this.emit('connection-banned', stream)
+      throw new Error('Timed out')
+    }
 
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
     if (record.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
@@ -551,6 +602,10 @@ class BlindPeer extends ReadyResource {
   }
 
   async _ondeletecore(stream, { key }) {
+    if (await this._isBlocked(stream)) {
+      this.emit('connection-banned', stream)
+      throw new Error('Timed out')
+    }
     if (!this._isTrustedPeer(stream.remotePublicKey)) {
       this.emit('delete-blocked', stream, { key })
       throw new Error('Only trusted peers can delete cores')
@@ -597,6 +652,7 @@ class BlindPeer extends ReadyResource {
 
   async _close() {
     clearInterval(this.flushInterval)
+
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
     await this.flush()
