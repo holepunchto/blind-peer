@@ -889,7 +889,7 @@ test('invalid requests are emitted', async (t) => {
   }
 })
 
-test.solo('Prometheus metrics', async (t) => {
+test('Prometheus metrics', async (t) => {
   if (isBare) {
     // We'd need to add an import map to prom-client for this test to work on bare
     // but hyper-instrument already does that for us when we use it in bin.js
