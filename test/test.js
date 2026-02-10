@@ -889,7 +889,7 @@ test('invalid requests are emitted', async (t) => {
   }
 })
 
-test('Prometheus metrics', async (t) => {
+test.solo('Prometheus metrics', async (t) => {
   if (isBare) {
     // We'd need to add an import map to prom-client for this test to work on bare
     // but hyper-instrument already does that for us when we use it in bin.js
@@ -973,6 +973,28 @@ test('Prometheus metrics', async (t) => {
     )
     t.is(getMetricValue(metrics, 'blind_peer_cores'), nrCores, 'blind_peer_cores')
     t.is(getMetricValue(metrics, 'blind_peer_db_flushes') > 0, true, 'blind_peer_db_flushes')
+  }
+
+  const db = blindPeer.rocks
+  {
+    const batch = db.write()
+    const p = batch.put('hello', 'world')
+    await batch.flush()
+    batch.destroy()
+    await p
+    const metrics = await promClient.register.metrics()
+    t.ok(metrics.includes('blind_peer_rocks_write_batches 1'), 'blind_peer_rocks_write_batches 1')
+    t.ok(metrics.includes('blind_peer_rocks_puts 1'), 'blind_peer_rocks_puts 1')
+  }
+  {
+    const batch = db.read()
+    const p = batch.get('hello')
+    await batch.flush()
+    batch.destroy()
+    await p
+    const metrics = await promClient.register.metrics()
+    t.ok(metrics.includes('blind_peer_rocks_read_batches 1'), 'blind_peer_rocks_read_batches 1')
+    t.ok(metrics.includes('blind_peer_rocks_gets 1'), 'blind_peer_rocks_gets 1')
   }
 })
 
