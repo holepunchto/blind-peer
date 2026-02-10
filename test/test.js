@@ -918,6 +918,10 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
     t.ok(metrics.includes('blind_peer_announced_cores 0'), 'blind_peer_announced_cores')
     t.ok(metrics.includes('protomux_wakeup_topics_added 0'), 'protomux_wakeup_topics_added')
+    t.ok(metrics.includes('blind_peer_rocks_read_batches 0'), 'blind_peer_rocks_read_batches')
+    t.ok(metrics.includes('blind_peer_rocks_write_batches 0'), 'blind_peer_rocks_write_batches')
+    t.ok(metrics.includes('blind_peer_rocks_gets 0'), 'blind_peer_rocks_gets')
+    t.ok(metrics.includes('blind_peer_rocks_puts 0'), 'blind_peer_rocks_puts')
   }
 
   await blindPeer.listen()
