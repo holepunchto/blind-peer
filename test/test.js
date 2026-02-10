@@ -918,6 +918,10 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
     t.ok(metrics.includes('blind_peer_announced_cores 0'), 'blind_peer_announced_cores')
     t.ok(metrics.includes('protomux_wakeup_topics_added 0'), 'protomux_wakeup_topics_added')
+    t.ok(metrics.includes('blind_peer_rocks_read_batches 0'), 'blind_peer_rocks_read_batches')
+    t.ok(metrics.includes('blind_peer_rocks_write_batches 0'), 'blind_peer_rocks_write_batches')
+    t.ok(metrics.includes('blind_peer_rocks_gets 0'), 'blind_peer_rocks_gets')
+    t.ok(metrics.includes('blind_peer_rocks_puts 0'), 'blind_peer_rocks_puts')
   }
 
   await blindPeer.listen()
@@ -969,6 +973,28 @@ test('Prometheus metrics', async (t) => {
     )
     t.is(getMetricValue(metrics, 'blind_peer_cores'), nrCores, 'blind_peer_cores')
     t.is(getMetricValue(metrics, 'blind_peer_db_flushes') > 0, true, 'blind_peer_db_flushes')
+  }
+
+  const db = blindPeer.rocks
+  {
+    const batch = db.write()
+    const p = batch.put('hello', 'world')
+    await batch.flush()
+    batch.destroy()
+    await p
+    const metrics = await promClient.register.metrics()
+    t.ok(metrics.includes('blind_peer_rocks_write_batches 1'), 'blind_peer_rocks_write_batches 1')
+    t.ok(metrics.includes('blind_peer_rocks_puts 1'), 'blind_peer_rocks_puts 1')
+  }
+  {
+    const batch = db.read()
+    const p = batch.get('hello')
+    await batch.flush()
+    batch.destroy()
+    await p
+    const metrics = await promClient.register.metrics()
+    t.ok(metrics.includes('blind_peer_rocks_read_batches 1'), 'blind_peer_rocks_read_batches 1')
+    t.ok(metrics.includes('blind_peer_rocks_gets 1'), 'blind_peer_rocks_gets 1')
   }
 })
 

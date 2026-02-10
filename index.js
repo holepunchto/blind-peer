@@ -680,6 +680,41 @@ class BlindPeer extends ReadyResource {
         this.set(self.nrAnnouncedCores)
       }
     })
+
+    if (self.rocks.stats) {
+      new promClient.Gauge({
+        // eslint-disable-line no-new
+        name: 'blind_peer_rocks_read_batches',
+        help: 'The amount of read batches from RocksDB',
+        collect() {
+          this.set(self.rocks.stats.readBatches)
+        }
+      })
+      new promClient.Gauge({
+        // eslint-disable-line no-new
+        name: 'blind_peer_rocks_write_batches',
+        help: 'The amount of write batches to RocksDB',
+        collect() {
+          this.set(self.rocks.stats.writeBatches)
+        }
+      })
+      new promClient.Gauge({
+        // eslint-disable-line no-new
+        name: 'blind_peer_rocks_gets',
+        help: 'The amount of get ops from RocksDB',
+        collect() {
+          this.set(self.rocks.stats.gets)
+        }
+      })
+      new promClient.Gauge({
+        // eslint-disable-line no-new
+        name: 'blind_peer_rocks_puts',
+        help: 'The amount of put ops to RocksDB',
+        collect() {
+          this.set(self.rocks.stats.puts)
+        }
+      })
+    }
   }
 }
 
