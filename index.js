@@ -432,13 +432,13 @@ class BlindPeer extends ReadyResource {
 
     const self = this
     BlindPeerMuxer.pair(conn, function () {
+      self.emit('muxer-paired', conn) // Warning: no versioning guarantees on this event (might be removed at any time)
       new BlindPeerMuxer(conn, {
         async oncores(request) {
-          // the request's encoding is compatible with our AddCoresEncoding (sets all required fields and has no additional fields)
           try {
             await self._onaddcores(conn, request)
           } catch (e) {
-            console.error(e)
+            this.emit('muxer-error', e)
             throw e
           }
         }
@@ -581,6 +581,8 @@ class BlindPeer extends ReadyResource {
       request.announce = false
     }
 
+    this.emit('add-cores-received', stream, request)
+
     const discKeys = []
     const overview = new Map()
     for (const c of cores) {
@@ -610,7 +612,7 @@ class BlindPeer extends ReadyResource {
       // DEVNOTE: just the null check does not suffice for storageInfo, because we already try
       // loading some keys from other contexts, like when the system core of an autobase is
       // used as a referrer.
-      if (storageInfo === null || storageInfo.head === null || entry.announce) {
+      if (storageInfo === null ||  entry.announce || (storageInfo.head === null && entry.remoteLength > 0)) {
         // allow upgrading to announce: true
         // new core
         entry.needsActivation = true
@@ -654,7 +656,7 @@ class BlindPeer extends ReadyResource {
     }
     await Promise.all(activateProms)
 
-    this.emit('add-cores-done')
+    this.emit('add-cores-done', stream, request)
     return null
   }
 
