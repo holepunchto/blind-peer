@@ -430,7 +430,7 @@ class BlindPeer extends ReadyResource {
 
     const self = this
     BlindPeerMuxer.pair(conn, function () {
-      self.emit('muxer-paired', conn) // Warning: no versioning guarantees on this event (might be removed at any time)
+      self.emit('muxer-paired', conn)
       new BlindPeerMuxer(conn, {
         async oncores(request) {
           try {
@@ -608,7 +608,7 @@ class BlindPeer extends ReadyResource {
       const storageInfo = infos[i]
       const entry = overview.get(id)
 
-      // DEVNOTE: just the null check does not suffice for storageInfo, because we already try
+      // Note: just the null check does not suffice for storageInfo, because we already try
       // loading some keys from other contexts, like when the system core of an autobase is
       // used as a referrer.
       if (
@@ -616,8 +616,6 @@ class BlindPeer extends ReadyResource {
         entry.announce ||
         (storageInfo.head === null && entry.remoteLength > 0)
       ) {
-        // allow upgrading to announce: true
-        // new core
         entry.needsActivation = true
         recordsToAdd.push({
           key: entry.key,
@@ -638,7 +636,6 @@ class BlindPeer extends ReadyResource {
     for (const record of recordsToAdd) this.db.addCore(record)
     if (recordsToAdd.length > 0) await this.flush() // flush now as important data
 
-    // TODO: revisit this code (copy-pasted from add-core)
     if (referrer) {
       const muxer = stream.userData
       const core = this.store.get({ key: referrer })
@@ -654,7 +651,7 @@ class BlindPeer extends ReadyResource {
     for (const entry of overview.values()) {
       if (!entry.needsActivation) continue
       this.stats.coresAdded++
-      this.emit('add-core', entry, true, stream) // TODO: check if entry has correct signature (it's expecting the db record)
+      this.emit('add-core', entry, true, stream)
       activateProms.push(this._activateCore(stream, entry))
     }
     await Promise.all(activateProms)
