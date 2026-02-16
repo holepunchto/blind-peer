@@ -12,8 +12,6 @@ const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
-const { getEncoding: getMuxerEncoding } = require('blind-peer-muxer/spec/hyperschema')
-const AddCoresEncoding = getMuxerEncoding('@blind-peer/cores')
 
 const BlindPeerDB = require('./lib/db.js')
 
@@ -429,7 +427,6 @@ class BlindPeer extends ReadyResource {
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
-    rpc.respond('add-cores', AddCoresEncoding, this._onaddcores.bind(this, conn))
 
     const self = this
     BlindPeerMuxer.pair(conn, function () {
