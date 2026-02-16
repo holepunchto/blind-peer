@@ -360,7 +360,7 @@ test('repeated add-core requests do not result in db updates', async (t) => {
   await client2.addCore(core)
   t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
 
-  await client3.addCore(core, undefined, { priority: 1 })
+  await client3.addCore(core, { priority: 1 })
   t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
   await blindPeer.flush()
   const record3 = await blindPeer.db.getCoreRecord(core.key)
@@ -625,7 +625,7 @@ test('Untrusted peers cannot set announce: true', async (t) => {
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
-  await client.addCore(core, coreKey, { announce: true })
+  await client.addCore(core, { announce: true })
 
   // TODO: a flow for the client to figure out if it got downgraded
 
@@ -805,7 +805,7 @@ test.skip('Trusted peers can delete a core', async (t) => {
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
-  await client.addCore(core, coreKey, { announce: true })
+  await client.addCore(core, { announce: true })
 
   const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
@@ -918,7 +918,7 @@ test('client suspend/resume logic', async (t) => {
   {
     const coreAddedProm = once(blindPeer, 'add-core')
     coreAddedProm.catch(() => {})
-    await client.addCore(core, coreKey, { announce: false })
+    await client.addCore(core, { announce: false })
 
     const [record] = await coreAddedProm
     t.alike(record.key, coreKey, 'added the core')
@@ -960,7 +960,7 @@ test('client gc logic', async (t) => {
   {
     const coreAddedProm = once(blindPeer, 'add-core')
     coreAddedProm.catch(() => {})
-    await client.addCore(core, coreKey, { announce: false })
+    await client.addCore(core, { announce: false })
 
     const [record] = await coreAddedProm
     t.alike(record.key, coreKey, 'added the core')
