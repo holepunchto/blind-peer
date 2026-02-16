@@ -230,7 +230,8 @@ class BlindPeer extends ReadyResource {
       bytesGcd: 0,
       coresAdded: 0,
       activations: 0,
-      wakeups: 0
+      wakeups: 0,
+      addCoresRx: 0
     }
   }
 
@@ -438,7 +439,7 @@ class BlindPeer extends ReadyResource {
           try {
             await self._onaddcores(conn, request)
           } catch (e) {
-            this.emit('muxer-error', e)
+            this.emit('muxer-error', e, conn)
             throw e
           }
         }
@@ -569,6 +570,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onaddcores(stream, request) {
+    this.stats.addCoresRx++
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
     const { cores, referrer } = request
 
@@ -612,7 +614,11 @@ class BlindPeer extends ReadyResource {
       // DEVNOTE: just the null check does not suffice for storageInfo, because we already try
       // loading some keys from other contexts, like when the system core of an autobase is
       // used as a referrer.
-      if (storageInfo === null ||  entry.announce || (storageInfo.head === null && entry.remoteLength > 0)) {
+      if (
+        storageInfo === null ||
+        entry.announce ||
+        (storageInfo.head === null && entry.remoteLength > 0)
+      ) {
         // allow upgrading to announce: true
         // new core
         entry.needsActivation = true

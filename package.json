@@ -28,7 +28,7 @@
     "bare-events": "^2.8.2",
     "bare-process": "^4.2.2",
     "bare-prom-client": "^15.1.3",
-    "blind-peering": "holepunchto/blind-peering#fixed",
+    "blind-peering": "holepunchto/blind-peering#protomux-based",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "hyperdht": "^6.20.1",

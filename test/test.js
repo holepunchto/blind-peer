@@ -260,6 +260,36 @@ test('adding autobase cores only results in replication sessions if there are le
   }
 })
 
+test('Client stats correctness', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  {
+    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+    const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+    await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+
+    t.is(client.stats.addCore, 1, 'addCore stat')
+    t.is(client.stats.addCoresTx, 1, 'addCoresTx stat')
+    t.is(client.stats.addAutobase, 0, 'sanity check')
+  }
+
+  {
+    const { base, swarm, store } = await setupAutobaseHolder(t, bootstrap)
+    const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+    await Promise.all([once(blindPeer, 'add-cores-done'), client.addAutobase(base)])
+
+    t.is(client.stats.addCore, 0, 'sanity check')
+    t.is(client.stats.addCoresTx, 1, 'addCoresTx stat')
+    t.is(client.stats.addAutobase, 1, 'addAutobase stat')
+  }
+
+  t.is(blindPeer.stats.addCoresRx, 2, 'sanity check')
+})
+
 test('blind-peering respects max batch options', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
