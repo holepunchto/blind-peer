@@ -439,7 +439,7 @@ class BlindPeer extends ReadyResource {
           try {
             await self._onaddcores(conn, request)
           } catch (e) {
-            this.emit('muxer-error', e, conn)
+            self.emit('muxer-error', e, conn)
             throw e
           }
         }
