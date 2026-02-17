@@ -289,6 +289,8 @@ test('Client stats correctness', async (t) => {
   }
 
   t.is(blindPeer.stats.addCoresRx >= 2, true, 'sanity check')
+  t.is(blindPeer.stats.muxerPaired >= 0, true, 'sanity check')
+  t.is(blindPeer.stats.muxerError === 0, true, 'sanity check')
 })
 
 test('blind-peering respects max batch options', async (t) => {
@@ -1068,6 +1070,9 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
     t.ok(metrics.includes('blind_peer_announced_cores 0'), 'blind_peer_announced_cores')
     t.ok(metrics.includes('protomux_wakeup_topics_added 0'), 'protomux_wakeup_topics_added')
+    t.ok(metrics.includes('blind_peer_add_cores_rx 0'), 'blind_peer_add_cores_rx')
+    t.ok(metrics.includes('blind_peer_muxer_paired 0'), 'blind_peer_muxer_paired')
+    t.ok(metrics.includes('blind_peer_muxer_errors 0'), 'blind_peer_muxer_error')
   }
 
   await blindPeer.listen()

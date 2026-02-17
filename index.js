@@ -229,7 +229,9 @@ class BlindPeer extends ReadyResource {
       coresAdded: 0,
       activations: 0,
       wakeups: 0,
-      addCoresRx: 0
+      addCoresRx: 0,
+      muxerPaired: 0,
+      muxerErrors: 0
     }
   }
 
@@ -431,11 +433,13 @@ class BlindPeer extends ReadyResource {
     const self = this
     BlindPeerMuxer.pair(conn, function () {
       self.emit('muxer-paired', conn)
+      self.stats.muxerPaired++
       new BlindPeerMuxer(conn, {
         async oncores(request) {
           try {
             await self._onaddcores(conn, request)
           } catch (e) {
+            self.stats.muxerErrors++
             self.emit('muxer-error', e, conn)
             throw e
           }
@@ -788,6 +792,31 @@ class BlindPeer extends ReadyResource {
       help: 'The amount of announced cores',
       collect() {
         this.set(self.nrAnnouncedCores)
+      }
+    })
+
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_muxer_errors',
+      help: 'The amount of errors on the protomux muxer',
+      collect() {
+        this.set(self.stats.muxerErrors)
+      }
+    })
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_muxer_paired',
+      help: 'The amount of blind-peer-muxer sessions paired',
+      collect() {
+        this.set(self.stats.muxerPaired)
+      }
+    })
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_add_cores_rx',
+      help: 'The amount of add-cores requests received',
+      collect() {
+        this.set(self.stats.addCoresRx)
       }
     })
   }
