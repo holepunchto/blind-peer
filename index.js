@@ -5,6 +5,7 @@ const ReadyResource = require('ready-resource')
 const Hyperswarm = require('hyperswarm')
 const ProtomuxRPC = require('protomux-rpc')
 const c = require('compact-encoding')
+const BlindPeerMuxer = require('blind-peer-muxer')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const safetyCatch = require('safety-catch')
@@ -14,8 +15,7 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
-const { AddCoreEncoding } = require('blind-peer-encodings')
-const { DeleteCoreEncoding } = require('blind-peer-encodings')
+const { AddCoreEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -228,7 +228,10 @@ class BlindPeer extends ReadyResource {
       bytesGcd: 0,
       coresAdded: 0,
       activations: 0,
-      wakeups: 0
+      wakeups: 0,
+      addCoresRx: 0,
+      muxerPaired: 0,
+      muxerErrors: 0
     }
   }
 
@@ -426,6 +429,23 @@ class BlindPeer extends ReadyResource {
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
+
+    const self = this
+    BlindPeerMuxer.pair(conn, function () {
+      self.emit('muxer-paired', conn)
+      self.stats.muxerPaired++
+      new BlindPeerMuxer(conn, {
+        async oncores(request) {
+          try {
+            await self._onaddcores(conn, request)
+          } catch (e) {
+            self.stats.muxerErrors++
+            self.emit('muxer-error', e, conn)
+            throw e
+          }
+        }
+      })
+    })
   }
 
   async _activateCore(stream, record) {
@@ -548,6 +568,100 @@ class BlindPeer extends ReadyResource {
 
     const coreRecord = await this.db.getCoreRecord(record.key)
     return coreRecord
+  }
+
+  async _onaddcores(stream, request) {
+    this.stats.addCoresRx++
+    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
+    const { cores, referrer } = request
+
+    if (request.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
+      // Note: we can't use the original downgrade-announce event because that assumes a 'record' object
+      this.emit('add-cores-downgrade-announce', {
+        request,
+        remotePublicKey: stream.remotePublicKey
+      })
+      request.announce = false
+    }
+
+    this.emit('add-cores-received', stream, request)
+
+    const discKeys = []
+    const overview = new Map()
+    for (const c of cores) {
+      const discoveryKey = crypto.discoveryKey(c.key)
+      discKeys.push(discoveryKey)
+      const id = IdEnc.normalize(discoveryKey)
+      overview.set(id, {
+        key: c.key,
+        discoveryKey,
+        remoteLength: c.length,
+        announce: request.announce,
+        priority,
+        referrer,
+        ownLength: 0, // set later
+        ownContigLength: 0, // set later
+        needsActivation: false // changed later if needed
+      })
+    }
+
+    const recordsToAdd = []
+    const infos = await this.store.storage.getInfos(discKeys)
+    for (let i = 0; i < infos.length; i++) {
+      const id = IdEnc.normalize(discKeys[i])
+      const storageInfo = infos[i]
+      const entry = overview.get(id)
+
+      // Note: just the null check does not suffice for storageInfo, because we already try
+      // loading some keys from other contexts, like when the system core of an autobase is
+      // used as a referrer.
+      if (
+        storageInfo === null ||
+        entry.announce ||
+        (storageInfo.head === null && entry.remoteLength > 0)
+      ) {
+        entry.needsActivation = true
+        recordsToAdd.push({
+          key: entry.key,
+          priority: entry.priority,
+          announce: entry.announce,
+          referrer: entry.referrer
+        })
+      } else {
+        entry.ownLength = storageInfo.head?.length || 0
+        entry.ownContigLength = storageInfo.hints?.contiguousLength || 0
+        if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
+        if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
+      }
+    }
+
+    // Note: not race condition safe when called with the same cores at a similar time,
+    // but it's no problem if we do add the same core twice
+    for (const record of recordsToAdd) this.db.addCore(record)
+    if (recordsToAdd.length > 0) await this.flush() // flush now as important data
+
+    if (referrer) {
+      const muxer = stream.userData
+      const core = this.store.get({ key: referrer })
+      await core.ready()
+      const discoveryKey = core.discoveryKey
+      await core.close()
+      await this._onwakeup(discoveryKey, muxer)
+    }
+
+    for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
+
+    const activateProms = []
+    for (const entry of overview.values()) {
+      if (!entry.needsActivation) continue
+      this.stats.coresAdded++
+      this.emit('add-core', entry, true, stream)
+      activateProms.push(this._activateCore(stream, entry))
+    }
+    await Promise.all(activateProms)
+
+    this.emit('add-cores-done', stream, request)
+    return null
   }
 
   async _ondeletecore(stream, { key }) {
@@ -678,6 +792,31 @@ class BlindPeer extends ReadyResource {
       help: 'The amount of announced cores',
       collect() {
         this.set(self.nrAnnouncedCores)
+      }
+    })
+
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_muxer_errors',
+      help: 'The amount of errors on the protomux muxer',
+      collect() {
+        this.set(self.stats.muxerErrors)
+      }
+    })
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_muxer_paired',
+      help: 'The amount of blind-peer-muxer sessions paired',
+      collect() {
+        this.set(self.stats.muxerPaired)
+      }
+    })
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_add_cores_rx',
+      help: 'The amount of add-cores requests received',
+      collect() {
+        this.set(self.stats.addCoresRx)
       }
     })
   }
