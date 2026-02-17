@@ -290,7 +290,7 @@ test('Client stats correctness', async (t) => {
 
   t.is(blindPeer.stats.addCoresRx >= 2, true, 'sanity check')
   t.is(blindPeer.stats.muxerPaired >= 0, true, 'sanity check')
-  t.is(blindPeer.stats.muxerError === 0, true, 'sanity check')
+  t.is(blindPeer.stats.muxerErrors === 0, true, 'sanity check')
 })
 
 test('blind-peering respects max batch options', async (t) => {
