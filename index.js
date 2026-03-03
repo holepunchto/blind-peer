@@ -16,6 +16,8 @@ const IdEnc = require('hypercore-id-encoding')
 const BlindPeerDB = require('./lib/db.js')
 
 const { AddCoreEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
+const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
+const ProtomuxRpcClient = require('protomux-rpc-client')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -194,6 +196,7 @@ class BlindPeer extends ReadyResource {
       maxBytes = 100_000_000_000,
       enableGc = true,
       trustedPubKeys,
+      routerKeys,
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
@@ -223,6 +226,10 @@ class BlindPeer extends ReadyResource {
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
+
+    this.routerKeys = routerKeys || []
+    this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
+    this.pool = new ProtomuxRpcClientPool(this.routerKeys, this.rpcClient)
 
     this.stats = {
       bytesGcd: 0,
@@ -565,6 +572,11 @@ class BlindPeer extends ReadyResource {
     this.emit('add-core', record, true, stream)
 
     await this._activateCore(stream, record)
+
+    await this.pool.makeRequest('resolve-peers', { key: record.key }, {
+      requestEncoding: c.any(),
+      responseEncoding: c.any()
+    })
 
     const coreRecord = await this.db.getCoreRecord(record.key)
     return coreRecord
