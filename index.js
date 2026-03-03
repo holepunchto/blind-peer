@@ -487,7 +487,7 @@ class BlindPeer extends ReadyResource {
     if (!this.routerKeys.length) return
 
     const pool = new ProtomuxRpcClientPool(this.routerKeys, this.rpcClient)
-    await pool.makeRequest(
+    const peers = await pool.makeRequest(
       'resolve-peers',
       { key },
       {
@@ -495,6 +495,7 @@ class BlindPeer extends ReadyResource {
         responseEncoding: RouterResolvePeersResponse
       }
     )
+    this.emit('resolve-peers', peers)
   }
 
   async _announceCores() {
