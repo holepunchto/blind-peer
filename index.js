@@ -573,10 +573,12 @@ class BlindPeer extends ReadyResource {
 
     await this._activateCore(stream, record)
 
-    await this.pool.makeRequest('resolve-peers', { key: record.key }, {
-      requestEncoding: RouterResolvePeersRequest,
-      responseEncoding: RouterResolvePeersResponse
-    })
+    if (this.routerKeys.length) {
+      await this.pool.makeRequest('resolve-peers', { key: record.key }, {
+        requestEncoding: RouterResolvePeersRequest,
+        responseEncoding: RouterResolvePeersResponse
+      })
+    }
 
     const coreRecord = await this.db.getCoreRecord(record.key)
     return coreRecord
