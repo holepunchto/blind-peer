@@ -495,6 +495,8 @@ class BlindPeer extends ReadyResource {
     )
 
     this.emit('resolve-peers', peers)
+
+    return peers
   }
 
   async _announceCores() {
