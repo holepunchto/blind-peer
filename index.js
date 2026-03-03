@@ -495,8 +495,9 @@ class BlindPeer extends ReadyResource {
         responseEncoding: RouterResolvePeersResponse
       }
     )
-    this.emit('resolve-peers', peers)
     pool.destroy()
+
+    this.emit('resolve-peers', peers)
   }
 
   async _announceCores() {
