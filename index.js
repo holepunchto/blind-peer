@@ -496,6 +496,7 @@ class BlindPeer extends ReadyResource {
       }
     )
     this.emit('resolve-peers', peers)
+    pool.destroy()
   }
 
   async _announceCores() {
@@ -738,6 +739,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
+    await this.rpcClient.close()
     clearInterval(this.flushInterval)
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
