@@ -1253,21 +1253,31 @@ test('switch client mode depending on core lag', async (t) => {
   await once(blindPeer, 'core-downloaded')
 })
 
-test('add-core calls router to resolve peers', async (t) => {
+test.solo('add-core calls router to resolve peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  const { service } = await setupRouter(t, bootstrap, [blindPeer])
-  blindPeer.routerKeys.push(service.publicKey)
+
+  const swarmRouter = new Hyperswarm({ bootstrap })
+  const routerKey = swarmRouter.keyPair.publicKey
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { routerKeys: [routerKey] })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
+  await setupRouter(t, swarmRouter, [blindPeer])
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
+
   const prom = once(blindPeer, 'resolve-peers')
-
-  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  client.addCoreBackground(core)
-
+  client.addAutobaseBackground(indexer)
   const [res] = await prom
+
   const peerKey = res?.peers?.[0]?.key
   t.alike(peerKey, blindPeer.publicKey, 'correct blind peer key')
 })
@@ -1315,7 +1325,7 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
 async function setupBlindPeer(
   t,
   bootstrap,
-  { storage, maxBytes, enableGc, trustedPubKeys, replicationLagThreshold } = {}
+  { storage, maxBytes, enableGc, trustedPubKeys, routerKeys, replicationLagThreshold } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
 
@@ -1325,6 +1335,7 @@ async function setupBlindPeer(
     maxBytes,
     enableGc,
     trustedPubKeys,
+    routerKeys,
     wakeupGcTickTime: 100,
     replicationLagThreshold
   })
@@ -1360,19 +1371,11 @@ async function getTestnet(t) {
   return testnet
 }
 
-async function setupRouter(t, bootstrap, blindPeers) {
+async function setupRouter(t, swarm, blindPeers) {
   const storage = await tmpDir(t)
-  const swarm = new Hyperswarm({ bootstrap })
   const store = new Corestore(storage)
 
   const order = clientCounter++
-  swarm.on('connection', (c) => {
-    if (DEBUG) console.log('(CORE HOLDER) connection opened')
-    store.replicate(c)
-    c.on('error', (e) => {
-      if (DEBUG) console.warn(`Swarm error: ${e.stack}`)
-    })
-  })
 
   const router = new ProtomuxRPCRouter()
   const service = new BlindPeerRouter(store, swarm, router, {
@@ -1390,7 +1393,7 @@ async function setupRouter(t, bootstrap, blindPeers) {
 
   await service.ready()
 
-  return { swarm, store, router, service }
+  return { storage, store, swarm, router, service }
 }
 
 async function setupPeer(t, bootstrap) {

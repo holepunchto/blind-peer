@@ -480,8 +480,6 @@ class BlindPeer extends ReadyResource {
 
     core.replicate(stream)
     stream.on('close', () => core.close().catch(safetyCatch))
-
-    await this._resolvePeers(core.key)
   }
 
   async _resolvePeers(key) {
@@ -676,6 +674,8 @@ class BlindPeer extends ReadyResource {
       const discoveryKey = core.discoveryKey
       await core.close()
       await this._onwakeup(discoveryKey, muxer)
+
+      this._resolvePeers(referrer).catch(safetyCatch)
     }
 
     for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
