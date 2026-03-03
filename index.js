@@ -12,6 +12,8 @@ const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
+const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
+const ProtomuxRpcClient = require('protomux-rpc-client')
 
 const BlindPeerDB = require('./lib/db.js')
 
@@ -21,8 +23,6 @@ const {
   RouterResolvePeersRequest,
   RouterResolvePeersResponse
 } = require('blind-peer-encodings')
-const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
-const ProtomuxRpcClient = require('protomux-rpc-client')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -234,7 +234,6 @@ class BlindPeer extends ReadyResource {
 
     this.routerKeys = routerKeys || []
     this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
-    this.pool = new ProtomuxRpcClientPool(this.routerKeys, this.rpcClient)
 
     this.stats = {
       bytesGcd: 0,
@@ -480,6 +479,22 @@ class BlindPeer extends ReadyResource {
 
     core.replicate(stream)
     stream.on('close', () => core.close().catch(safetyCatch))
+
+    await this._resolvePeers(core.key)
+  }
+
+  async _resolvePeers(key) {
+    if (!this.routerKeys.length) return
+
+    const pool = new ProtomuxRpcClientPool(this.routerKeys, this.rpcClient)
+    await pool.makeRequest(
+      'resolve-peers',
+      { key },
+      {
+        requestEncoding: RouterResolvePeersRequest,
+        responseEncoding: RouterResolvePeersResponse
+      }
+    )
   }
 
   async _announceCores() {
@@ -577,17 +592,6 @@ class BlindPeer extends ReadyResource {
     this.emit('add-core', record, true, stream)
 
     await this._activateCore(stream, record)
-
-    if (this.routerKeys.length) {
-      await this.pool.makeRequest(
-        'resolve-peers',
-        { key: record.key },
-        {
-          requestEncoding: RouterResolvePeersRequest,
-          responseEncoding: RouterResolvePeersResponse
-        }
-      )
-    }
 
     const coreRecord = await this.db.getCoreRecord(record.key)
     return coreRecord
