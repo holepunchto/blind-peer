@@ -1253,7 +1253,7 @@ test('switch client mode depending on core lag', async (t) => {
   await once(blindPeer, 'core-downloaded')
 })
 
-test.solo('add-core calls router to resolve peers', async (t) => {
+test('add-core calls router to resolve peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
   const { service } = await setupRouter(t, bootstrap, [blindPeer])
