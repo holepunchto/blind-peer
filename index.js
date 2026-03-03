@@ -234,6 +234,7 @@ class BlindPeer extends ReadyResource {
 
     this.routerKeys = routerKeys || []
     this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
+    this.pool = new ProtomuxRpcClientPool(this.routerKeys, this.rpcClient)
 
     this.stats = {
       bytesGcd: 0,
@@ -486,8 +487,7 @@ class BlindPeer extends ReadyResource {
   async _resolvePeers(key) {
     if (!this.routerKeys.length) return
 
-    const pool = new ProtomuxRpcClientPool(this.routerKeys, this.rpcClient)
-    const peers = await pool.makeRequest(
+    const peers = await this.pool.makeRequest(
       'resolve-peers',
       { key },
       {
@@ -495,7 +495,6 @@ class BlindPeer extends ReadyResource {
         responseEncoding: RouterResolvePeersResponse
       }
     )
-    pool.destroy()
 
     this.emit('resolve-peers', peers)
   }
@@ -740,6 +739,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
+    await this.pool.destroy()
     await this.rpcClient.close()
     clearInterval(this.flushInterval)
     if (this.ownsWakeup) this.wakeup.destroy()
