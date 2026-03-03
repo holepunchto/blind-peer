@@ -6,7 +6,7 @@
   "dependencies": {
     "autobase": "^7.0.18",
     "b4a": "^1.6.7",
-    "blind-peer-encodings": "github:holepunchto/blind-peer-encodings#schema-router",
+    "blind-peer-encodings": "github:holepunchto/blind-peer-encodings#9a609854d2a791368ea443d750bc987c78c8b1a1",
     "blind-peer-muxer": "^1.0.0",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.4.4",
