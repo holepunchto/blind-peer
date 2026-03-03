@@ -15,7 +15,12 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
-const { AddCoreEncoding, DeleteCoreEncoding, RouterResolvePeersRequest, RouterResolvePeersResponse } = require('blind-peer-encodings')
+const {
+  AddCoreEncoding,
+  DeleteCoreEncoding,
+  RouterResolvePeersRequest,
+  RouterResolvePeersResponse
+} = require('blind-peer-encodings')
 const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
 const ProtomuxRpcClient = require('protomux-rpc-client')
 
@@ -574,10 +579,14 @@ class BlindPeer extends ReadyResource {
     await this._activateCore(stream, record)
 
     if (this.routerKeys.length) {
-      await this.pool.makeRequest('resolve-peers', { key: record.key }, {
-        requestEncoding: RouterResolvePeersRequest,
-        responseEncoding: RouterResolvePeersResponse
-      })
+      await this.pool.makeRequest(
+        'resolve-peers',
+        { key: record.key },
+        {
+          requestEncoding: RouterResolvePeersRequest,
+          responseEncoding: RouterResolvePeersResponse
+        }
+      )
     }
 
     const coreRecord = await this.db.getCoreRecord(record.key)
