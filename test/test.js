@@ -1268,7 +1268,7 @@ test('add autobase calls router to resolve peers', async (t) => {
 
   await setupRouter(t, swarmRouter, [blindPeer])
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 300))
 
   const {
     swarm: indexerSwarm,
@@ -1282,7 +1282,7 @@ test('add autobase calls router to resolve peers', async (t) => {
   client.addAutobaseBackground(indexer)
   const [res] = await prom
 
-  const peerKey = res?.result?.peers?.[0]?.key
+  const peerKey = res.result.peers[0].key
   t.alike(peerKey, blindPeer.publicKey, 'correct blind peer key')
 })
 
