@@ -233,7 +233,7 @@ class BlindPeer extends ReadyResource {
     this.replicationLagThreshold = replicationLagThreshold
 
     this.routerKey = routerKey || null
-    this.pool = null
+    this.routerPool = null
 
     this.stats = {
       bytesGcd: 0,
@@ -295,7 +295,7 @@ class BlindPeer extends ReadyResource {
 
     if (this.routerKey) {
       const rpcClient = new ProtomuxRpcClient(this.swarm.dht)
-      this.pool = new ProtomuxRpcClientPool([this.routerKey], rpcClient)
+      this.routerPool = new ProtomuxRpcClientPool([this.routerKey], rpcClient)
     }
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
@@ -487,9 +487,9 @@ class BlindPeer extends ReadyResource {
   }
 
   async _resolvePeers(key) {
-    if (!this.pool) return
+    if (!this.routerPool) return
 
-    const result = await this.pool.makeRequest(
+    const result = await this.routerPool.makeRequest(
       'resolve-peers',
       { key },
       {
@@ -750,9 +750,9 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
-    if (this.pool) {
-      await this.pool.destroy()
-      await this.pool.statelessRpc.close()
+    if (this.routerPool) {
+      await this.routerPool.destroy()
+      await this.routerPool.statelessRpc.close()
     }
     clearInterval(this.flushInterval)
     if (this.ownsWakeup) this.wakeup.destroy()

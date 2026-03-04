@@ -1268,12 +1268,13 @@ test('add autobase calls router to resolve peers', async (t) => {
 
   await setupRouter(t, swarmRouter, [blindPeer])
 
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
   const {
     swarm: indexerSwarm,
     base: indexer,
     store: indexerStore
   } = await setupAutobaseHolder(t, bootstrap)
-  await indexerSwarm.flush()
 
   const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
 
