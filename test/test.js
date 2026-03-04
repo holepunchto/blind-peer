@@ -1257,9 +1257,10 @@ test('add autobase calls router to resolve peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const swarmRouter = new Hyperswarm({ bootstrap })
+  // a hack to get router key assuming that router public key === swarm public key
   const routerKey = swarmRouter.keyPair.publicKey
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { routerKeys: [routerKey] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { routerKey })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -1325,7 +1326,7 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
 async function setupBlindPeer(
   t,
   bootstrap,
-  { storage, maxBytes, enableGc, trustedPubKeys, routerKeys, replicationLagThreshold } = {}
+  { storage, maxBytes, enableGc, trustedPubKeys, routerKey, replicationLagThreshold } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
 
@@ -1335,7 +1336,7 @@ async function setupBlindPeer(
     maxBytes,
     enableGc,
     trustedPubKeys,
-    routerKeys,
+    routerKey,
     wakeupGcTickTime: 100,
     replicationLagThreshold
   })

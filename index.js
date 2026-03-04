@@ -201,7 +201,7 @@ class BlindPeer extends ReadyResource {
       maxBytes = 100_000_000_000,
       enableGc = true,
       trustedPubKeys,
-      routerKeys,
+      routerKey,
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
@@ -232,9 +232,12 @@ class BlindPeer extends ReadyResource {
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
 
-    this.routerKeys = routerKeys || []
-    this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
-    this.pool = new ProtomuxRpcClientPool(this.routerKeys, this.rpcClient)
+    this.routerKey = routerKey
+    this.rpcClient = this.routerKey && this.swarm ? new ProtomuxRpcClient(this.swarm.dht) : null
+    this.pool =
+      this.routerKey && this.rpcClient
+        ? new ProtomuxRpcClientPool([this.routerKey], this.rpcClient)
+        : null
 
     this.stats = {
       bytesGcd: 0,
@@ -291,6 +294,11 @@ class BlindPeer extends ReadyResource {
         swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
       }
       this.swarm = new Hyperswarm(swarmOpts)
+
+      if (this.routerKey) {
+        this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
+        this.pool = new ProtomuxRpcClientPool([this.routerKey], this.rpcClient)
+      }
     }
     this.swarm.on('connection', this._onconnection.bind(this))
 
@@ -483,7 +491,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _resolvePeers(key) {
-    if (!this.routerKeys.length) return
+    if (!this.pool) return
 
     const peers = await this.pool.makeRequest(
       'resolve-peers',
@@ -677,6 +685,7 @@ class BlindPeer extends ReadyResource {
       await core.close()
       await this._onwakeup(discoveryKey, muxer)
 
+      // TODO: will process the result in V2
       this._resolvePeers(referrer).catch(safetyCatch)
     }
 
@@ -741,8 +750,8 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
-    await this.pool.destroy()
-    await this.rpcClient.close()
+    await this.pool?.destroy()
+    await this.rpcClient?.close()
     clearInterval(this.flushInterval)
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
