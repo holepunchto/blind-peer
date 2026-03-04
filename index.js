@@ -15,6 +15,9 @@ const IdEnc = require('hypercore-id-encoding')
 
 const BlindPeerDB = require('./lib/db.js')
 
+// Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
+Hypercore.enable(Hypercore.SMALL_WANTS)
+
 const { AddCoreEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
