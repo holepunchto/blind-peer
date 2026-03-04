@@ -1257,7 +1257,9 @@ test('add autobase calls router to resolve peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const swarmRouter = new Hyperswarm({ bootstrap })
-  // a hack to get router key assuming that router public key === swarm public key
+  // in the first run, router needs blind peer keys, and blind peer needs router key,
+  // so we need to create swarm and get router key before creating blind peer
+  // note that this assumes router key is the same as swarm public key
   const routerKey = swarmRouter.keyPair.publicKey
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { routerKey })
