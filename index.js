@@ -686,6 +686,7 @@ class BlindPeer extends ReadyResource {
       await this._onwakeup(discoveryKey, muxer)
 
       // TODO: will process the result in V2
+      // TODO: handle no referrer
       this._resolvePeers(referrer).catch(safetyCatch)
     }
 
