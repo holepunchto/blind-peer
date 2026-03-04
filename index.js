@@ -232,12 +232,9 @@ class BlindPeer extends ReadyResource {
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
 
-    this.routerKey = routerKey
-    this.rpcClient = this.routerKey && this.swarm ? new ProtomuxRpcClient(this.swarm.dht) : null
-    this.pool =
-      this.routerKey && this.rpcClient
-        ? new ProtomuxRpcClientPool([this.routerKey], this.rpcClient)
-        : null
+    this.routerKey = routerKey || null
+    this.rpcClient = null
+    this.pool = null
 
     this.stats = {
       bytesGcd: 0,
@@ -294,13 +291,13 @@ class BlindPeer extends ReadyResource {
         swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
       }
       this.swarm = new Hyperswarm(swarmOpts)
-
-      if (this.routerKey) {
-        this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
-        this.pool = new ProtomuxRpcClientPool([this.routerKey], this.rpcClient)
-      }
     }
     this.swarm.on('connection', this._onconnection.bind(this))
+
+    if (this.routerKey) {
+      this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
+      this.pool = new ProtomuxRpcClientPool([this.routerKey], this.rpcClient)
+    }
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -502,7 +499,7 @@ class BlindPeer extends ReadyResource {
       }
     )
 
-    this.emit('resolve-peers', peers)
+    this.emit('resolve-peers', { key, peers })
 
     return peers
   }
@@ -687,7 +684,10 @@ class BlindPeer extends ReadyResource {
 
       // TODO: will process the result in V2
       // TODO: handle no referrer
-      this._resolvePeers(referrer).catch(safetyCatch)
+      this._resolvePeers(referrer).catch((err) => {
+        safetyCatch(err)
+        this.emit('resolve-peers-error', { key: referrer, error: err })
+      })
     }
 
     for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
