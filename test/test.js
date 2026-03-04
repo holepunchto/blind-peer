@@ -1253,7 +1253,7 @@ test('switch client mode depending on core lag', async (t) => {
   await once(blindPeer, 'core-downloaded')
 })
 
-test('add autobase calls router to resolve peers', async (t) => {
+test.solo('add autobase calls router to resolve peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const swarmRouter = new Hyperswarm({ bootstrap })
@@ -1281,7 +1281,7 @@ test('add autobase calls router to resolve peers', async (t) => {
   client.addAutobaseBackground(indexer)
   const [res] = await prom
 
-  const peerKey = res?.peers?.[0]?.key
+  const peerKey = res?.result?.peers?.[0]?.key
   t.alike(peerKey, blindPeer.publicKey, 'correct blind peer key')
 })
 

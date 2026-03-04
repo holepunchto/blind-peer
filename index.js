@@ -489,7 +489,7 @@ class BlindPeer extends ReadyResource {
   async _resolvePeers(key) {
     if (!this.pool) return
 
-    const peers = await this.pool.makeRequest(
+    const result = await this.pool.makeRequest(
       'resolve-peers',
       { key },
       {
@@ -498,9 +498,9 @@ class BlindPeer extends ReadyResource {
       }
     )
 
-    this.emit('resolve-peers', { key, peers })
+    this.emit('resolve-peers', { key, result })
 
-    return peers
+    return result
   }
 
   async _announceCores() {
