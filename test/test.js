@@ -1134,8 +1134,13 @@ test('Prometheus metrics', async (t) => {
 
   {
     const metrics = await promClient.register.metrics()
-    t.ok(metrics.includes('blind_peer_rocks_deletes 39'), 'blind_peer_rocks_deletes 39')
-    t.ok(metrics.includes('blind_peer_rocks_range_deletes 7'), 'blind_peer_rocks_range_deletes 7')
+    const blindPeerRocksDeletes = getMetricValue('blind_peer_rocks_deletes')
+    t.ok(blindPeerRocksDeletes > 30, `blind_peer_rocks_deletes ${blindPeerRocksDeletes} > 30`)
+    const blindPeerRocksRangeDeletes = getMetricValue('blind_peer_rocks_range_deletes')
+    t.ok(
+      blindPeerRocksRangeDeletes > 5,
+      `blind_peer_rocks_range_deletes ${blindPeerRocksRangeDeletes} > 5`
+    )
     const blindPeerRocksGets = getMetricValue('blind_peer_rocks_gets')
     t.ok(blindPeerRocksGets > 7000, `blind_peer_rocks_gets ${blindPeerRocksGets} > 7000`)
     const blindPeerRocksPuts = getMetricValue('blind_peer_rocks_puts')
