@@ -1132,23 +1132,28 @@ test.solo('Prometheus metrics', async (t) => {
     t.is(getMetricValue(metrics, 'blind_peer_db_flushes') > 0, true, 'blind_peer_db_flushes')
   }
 
-  const metrics = await promClient.register.metrics()
-  t.ok(metrics.includes('blind_peer_rocks_deletes 39'), 'blind_peer_rocks_deletes 39')
-  t.ok(metrics.includes('blind_peer_rocks_range_deletes 7'), 'blind_peer_rocks_range_deletes 7')
-  const blindPeerRocksGets = getMetricValue(metrics, 'blind_peer_rocks_gets')
-  t.ok(blindPeerRocksGets > 7000, `blind_peer_rocks_gets ${blindPeerRocksGets} > 7000`)
-  const blindPeerRocksPuts = getMetricValue(metrics, 'blind_peer_rocks_puts')
-  t.ok(blindPeerRocksPuts > 10000, `blind_peer_rocks_puts ${blindPeerRocksPuts} > 10000`)
-  const blindPeerRocksReadBatches = getMetricValue(metrics, 'blind_peer_rocks_read_batches')
-  t.ok(
-    blindPeerRocksReadBatches > 7000,
-    `blind_peer_rocks_read_batches ${blindPeerRocksReadBatches} > 7000`
-  )
-  const blindPeerRocksWriteBatches = getMetricValue(metrics, 'blind_peer_rocks_write_batches')
-  t.ok(
-    blindPeerRocksWriteBatches > 400,
-    `blind_peer_rocks_write_batches ${blindPeerRocksWriteBatches} > 400`
-  )
+  {
+    const metrics = await promClient.register.metrics()
+    t.ok(metrics.includes('blind_peer_rocks_deletes 39'), 'blind_peer_rocks_deletes 39')
+    t.ok(metrics.includes('blind_peer_rocks_range_deletes 7'), 'blind_peer_rocks_range_deletes 7')
+    const blindPeerRocksGets = getMetricValue('blind_peer_rocks_gets')
+    t.ok(blindPeerRocksGets > 7000, `blind_peer_rocks_gets ${blindPeerRocksGets} > 7000`)
+    const blindPeerRocksPuts = getMetricValue('blind_peer_rocks_puts')
+    t.ok(blindPeerRocksPuts > 10000, `blind_peer_rocks_puts ${blindPeerRocksPuts} > 10000`)
+    const blindPeerRocksReadBatches = getMetricValue('blind_peer_rocks_read_batches')
+    t.ok(
+      blindPeerRocksReadBatches > 7000,
+      `blind_peer_rocks_read_batches ${blindPeerRocksReadBatches} > 7000`
+    )
+    const blindPeerRocksWriteBatches = getMetricValue('blind_peer_rocks_write_batches')
+    t.ok(
+      blindPeerRocksWriteBatches > 400,
+      `blind_peer_rocks_write_batches ${blindPeerRocksWriteBatches} > 400`
+    )
+    function getMetricValue(name) {
+      return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0]) // hack
+    }
+  }
 })
 
 test('wakeup', async (t) => {
@@ -1274,10 +1279,6 @@ test('switch client mode depending on core lag', async (t) => {
 
   await once(blindPeer, 'core-downloaded')
 })
-
-function getMetricValue(metrics, name) {
-  return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0])
-}
 
 async function setupCoreHolder(t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
