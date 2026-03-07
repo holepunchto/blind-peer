@@ -1041,7 +1041,7 @@ test('invalid requests are emitted', async (t) => {
   }
 })
 
-test('Prometheus metrics', async (t) => {
+test.solo('Prometheus metrics', async (t) => {
   if (isBare) {
     // We'd need to add an import map to prom-client for this test to work on bare
     // but hyper-instrument already does that for us when we use it in bin.js
@@ -1070,10 +1070,12 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
     t.ok(metrics.includes('blind_peer_announced_cores 0'), 'blind_peer_announced_cores')
     t.ok(metrics.includes('protomux_wakeup_topics_added 0'), 'protomux_wakeup_topics_added')
-    t.ok(metrics.includes('blind_peer_rocks_read_batches 0'), 'blind_peer_rocks_read_batches')
-    t.ok(metrics.includes('blind_peer_rocks_write_batches 0'), 'blind_peer_rocks_write_batches')
-    t.ok(metrics.includes('blind_peer_rocks_gets 0'), 'blind_peer_rocks_gets')
-    t.ok(metrics.includes('blind_peer_rocks_puts 0'), 'blind_peer_rocks_puts')
+    t.ok(metrics.includes('blind_peer_rocks_gets 8'), 'blind_peer_rocks_gets')
+    t.ok(metrics.includes('blind_peer_rocks_puts 4'), 'blind_peer_rocks_puts')
+    t.ok(metrics.includes('blind_peer_rocks_deletes 0'), 'blind_peer_rocks_deletes')
+    t.ok(metrics.includes('blind_peer_rocks_range_deletes 0'), 'blind_peer_rocks_range_deletes')
+    t.ok(metrics.includes('blind_peer_rocks_read_batches 8'), 'blind_peer_rocks_read_batches')
+    t.ok(metrics.includes('blind_peer_rocks_write_batches 3'), 'blind_peer_rocks_write_batches')
     t.ok(metrics.includes('blind_peer_add_cores_rx 0'), 'blind_peer_add_cores_rx')
     t.ok(metrics.includes('blind_peer_muxer_paired 0'), 'blind_peer_muxer_paired')
     t.ok(metrics.includes('blind_peer_muxer_errors 0'), 'blind_peer_muxer_error')
@@ -1130,27 +1132,23 @@ test('Prometheus metrics', async (t) => {
     t.is(getMetricValue(metrics, 'blind_peer_db_flushes') > 0, true, 'blind_peer_db_flushes')
   }
 
-  const db = blindPeer.rocks
-  {
-    const batch = db.write()
-    const p = batch.put('hello', 'world')
-    await batch.flush()
-    batch.destroy()
-    await p
-    const metrics = await promClient.register.metrics()
-    t.ok(metrics.includes('blind_peer_rocks_write_batches 1'), 'blind_peer_rocks_write_batches 1')
-    t.ok(metrics.includes('blind_peer_rocks_puts 1'), 'blind_peer_rocks_puts 1')
-  }
-  {
-    const batch = db.read()
-    const p = batch.get('hello')
-    await batch.flush()
-    batch.destroy()
-    await p
-    const metrics = await promClient.register.metrics()
-    t.ok(metrics.includes('blind_peer_rocks_read_batches 1'), 'blind_peer_rocks_read_batches 1')
-    t.ok(metrics.includes('blind_peer_rocks_gets 1'), 'blind_peer_rocks_gets 1')
-  }
+  const metrics = await promClient.register.metrics()
+  t.ok(metrics.includes('blind_peer_rocks_deletes 39'), 'blind_peer_rocks_deletes 39')
+  t.ok(metrics.includes('blind_peer_rocks_range_deletes 7'), 'blind_peer_rocks_range_deletes 7')
+  const blindPeerRocksGets = getMetricValue(metrics, 'blind_peer_rocks_gets')
+  t.ok(blindPeerRocksGets > 7000, `blind_peer_rocks_gets ${blindPeerRocksGets} > 7000`)
+  const blindPeerRocksPuts = getMetricValue(metrics, 'blind_peer_rocks_puts')
+  t.ok(blindPeerRocksPuts > 10000, `blind_peer_rocks_puts ${blindPeerRocksPuts} > 10000`)
+  const blindPeerRocksReadBatches = getMetricValue(metrics, 'blind_peer_rocks_read_batches')
+  t.ok(
+    blindPeerRocksReadBatches > 7000,
+    `blind_peer_rocks_read_batches ${blindPeerRocksReadBatches} > 7000`
+  )
+  const blindPeerRocksWriteBatches = getMetricValue(metrics, 'blind_peer_rocks_write_batches')
+  t.ok(
+    blindPeerRocksWriteBatches > 400,
+    `blind_peer_rocks_write_batches ${blindPeerRocksWriteBatches} > 400`
+  )
 })
 
 test('wakeup', async (t) => {
@@ -1276,6 +1274,10 @@ test('switch client mode depending on core lag', async (t) => {
 
   await once(blindPeer, 'core-downloaded')
 })
+
+function getMetricValue(metrics, name) {
+  return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0])
+}
 
 async function setupCoreHolder(t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
