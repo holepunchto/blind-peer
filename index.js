@@ -794,6 +794,7 @@ class BlindPeer extends ReadyResource {
         this.set(self.nrAnnouncedCores)
       }
     })
+
     new promClient.Gauge({
       // eslint-disable-line no-new
       name: 'blind_peer_muxer_errors',
