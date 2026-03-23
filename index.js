@@ -202,6 +202,7 @@ class BlindPeer extends ReadyResource {
       enableGc = true,
       trustedPubKeys,
       routerKey,
+      routerPoolOpts,
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
@@ -233,6 +234,7 @@ class BlindPeer extends ReadyResource {
     this.replicationLagThreshold = replicationLagThreshold
 
     this.routerKey = routerKey || null
+    this.routerPoolOpts = routerPoolOpts || {}
     this.routerPool = null
 
     this.stats = {
@@ -295,7 +297,7 @@ class BlindPeer extends ReadyResource {
 
     if (this.routerKey) {
       const rpcClient = new ProtomuxRpcClient(this.swarm.dht)
-      this.routerPool = new ProtomuxRpcClientPool([this.routerKey], rpcClient)
+      this.routerPool = new ProtomuxRpcClientPool([this.routerKey], rpcClient, this.routerPoolOpts)
     }
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously

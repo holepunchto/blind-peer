@@ -14,6 +14,7 @@ const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
 const ProtomuxRPCRouter = require('protomux-rpc-router')
 const BlindPeerRouter = require('blind-peer-router')
+const crypto = require('hypercore-crypto')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -1286,6 +1287,34 @@ test('add autobase calls router to resolve peers', async (t) => {
   t.alike(peerKey, blindPeer.publicKey, 'correct blind peer key')
 })
 
+test.solo('resolve-peers-error emitted when router is unreachable', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const routerKey = crypto.keyPair().publicKey // random key, not from any router
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    routerKey,
+    routerPoolOpts: { totalTimeout: 1000, rpcTimeout: 500, retries: 1 }
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+
+  const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
+
+  const prom = once(blindPeer, 'resolve-peers-error')
+  client.addAutobaseBackground(indexer)
+  const [res] = await prom
+
+  t.alike(res.key, indexer.local.key, 'referrer is correct')
+  t.ok(res.error, 'error is correct')
+})
+
 async function setupCoreHolder(t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
 
@@ -1329,7 +1358,15 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
 async function setupBlindPeer(
   t,
   bootstrap,
-  { storage, maxBytes, enableGc, trustedPubKeys, routerKey, replicationLagThreshold } = {}
+  {
+    storage,
+    maxBytes,
+    enableGc,
+    trustedPubKeys,
+    routerKey,
+    routerPoolOpts,
+    replicationLagThreshold
+  } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
 
@@ -1340,6 +1377,7 @@ async function setupBlindPeer(
     enableGc,
     trustedPubKeys,
     routerKey,
+    routerPoolOpts,
     wakeupGcTickTime: 100,
     replicationLagThreshold
   })
