@@ -1287,7 +1287,7 @@ test('add autobase calls router to resolve peers', async (t) => {
   t.alike(peerKey, blindPeer.publicKey, 'correct blind peer key')
 })
 
-test.solo('resolve-peers-error emitted when router is unreachable', async (t) => {
+test('resolve-peers-error emitted when router is unreachable', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const routerKey = crypto.keyPair().publicKey // random key, not from any router
