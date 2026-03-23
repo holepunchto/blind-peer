@@ -1313,6 +1313,11 @@ test('resolve-peers-error emitted when router is unreachable', async (t) => {
 
   t.alike(res.key, indexer.local.key, 'referrer is correct')
   t.ok(res.error, 'error is correct')
+  t.is(
+    res.error.message,
+    'TOO_MANY_RETRIES: Too many failed attempts to reach a server',
+    'error message is correct'
+  )
 })
 
 async function setupCoreHolder(t, bootstrap) {
