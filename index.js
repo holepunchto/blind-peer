@@ -14,15 +14,15 @@ const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
 const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
 const ProtomuxRpcClient = require('protomux-rpc-client')
-
-const BlindPeerDB = require('./lib/db.js')
-
 const {
   AddCoreEncoding,
   DeleteCoreEncoding,
   RouterResolvePeersRequest,
   RouterResolvePeersResponse
 } = require('blind-peer-encodings')
+
+const BlindPeerDB = require('./lib/db.js')
+
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
 
