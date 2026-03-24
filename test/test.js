@@ -12,6 +12,9 @@ const Hyperswarm = require('hyperswarm')
 const promClient = require('bare-prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
+const ProtomuxRPCRouter = require('protomux-rpc-router')
+const BlindPeerRouter = require('blind-peer-router')
+const crypto = require('hypercore-crypto')
 const BlindPeer = require('..')
 
 const DEBUG = false
@@ -1285,6 +1288,72 @@ test('switch client mode depending on core lag', async (t) => {
   await once(blindPeer, 'core-downloaded')
 })
 
+test('add autobase calls router to resolve peers', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const swarmRouter = new Hyperswarm({ bootstrap })
+  // in the first run, router needs blind peer keys, and blind peer needs router key,
+  // so we need to create swarm and get router key before creating blind peer
+  // note that this assumes router key is the same as swarm public key
+  const routerKey = swarmRouter.keyPair.publicKey
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { routerKey })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  await setupRouter(t, swarmRouter, [blindPeer])
+
+  await new Promise((resolve) => setTimeout(resolve, 300))
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+
+  const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
+
+  const prom = once(blindPeer, 'resolve-peers')
+  client.addAutobaseBackground(indexer)
+  const [res] = await prom
+
+  const peerKey = res.result.peers[0].key
+  t.alike(peerKey, blindPeer.publicKey, 'correct blind peer key')
+})
+
+test('resolve-peers-error emitted when router is unreachable', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const routerKey = crypto.keyPair().publicKey // random key, not from any router
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    routerKey,
+    routerPoolOpts: { totalTimeout: 1000, rpcTimeout: 500, retries: 1 }
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+
+  const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
+
+  const prom = once(blindPeer, 'resolve-peers-error')
+  client.addAutobaseBackground(indexer)
+  const [res] = await prom
+
+  t.alike(res.key, indexer.local.key, 'referrer is correct')
+  t.ok(res.error, 'error is correct')
+  t.is(
+    res.error.message,
+    'TOO_MANY_RETRIES: Too many failed attempts to reach a server',
+    'error message is correct'
+  )
+})
+
 async function setupCoreHolder(t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
 
@@ -1328,7 +1397,15 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
 async function setupBlindPeer(
   t,
   bootstrap,
-  { storage, maxBytes, enableGc, trustedPubKeys, replicationLagThreshold } = {}
+  {
+    storage,
+    maxBytes,
+    enableGc,
+    trustedPubKeys,
+    routerKey,
+    routerPoolOpts,
+    replicationLagThreshold
+  } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
 
@@ -1338,6 +1415,8 @@ async function setupBlindPeer(
     maxBytes,
     enableGc,
     trustedPubKeys,
+    routerKey,
+    routerPoolOpts,
     wakeupGcTickTime: 100,
     replicationLagThreshold
   })
@@ -1371,6 +1450,31 @@ async function getTestnet(t) {
   )
 
   return testnet
+}
+
+async function setupRouter(t, swarm, blindPeers) {
+  const storage = await tmpDir(t)
+  const store = new Corestore(storage)
+
+  const order = clientCounter++
+
+  const router = new ProtomuxRPCRouter()
+  const service = new BlindPeerRouter(store, swarm, router, {
+    blindPeers: blindPeers.map((item) => ({ key: item.publicKey }))
+  })
+
+  t.teardown(
+    async () => {
+      await service.close()
+      await swarm.destroy()
+      await store.close()
+    },
+    { order }
+  )
+
+  await service.ready()
+
+  return { storage, store, swarm, router, service }
 }
 
 async function setupPeer(t, bootstrap) {

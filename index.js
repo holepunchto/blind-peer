@@ -12,13 +12,19 @@ const safetyCatch = require('safety-catch')
 const Wakeup = require('protomux-wakeup')
 const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
+const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
+const ProtomuxRpcClient = require('protomux-rpc-client')
+const {
+  AddCoreEncoding,
+  DeleteCoreEncoding,
+  RouterResolvePeersRequest,
+  RouterResolvePeersResponse
+} = require('blind-peer-encodings')
 
 const BlindPeerDB = require('./lib/db.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
-
-const { AddCoreEncoding, DeleteCoreEncoding } = require('blind-peer-encodings')
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -197,6 +203,8 @@ class BlindPeer extends ReadyResource {
       maxBytes = 100_000_000_000,
       enableGc = true,
       trustedPubKeys,
+      routerKey,
+      routerPoolOpts,
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
@@ -226,6 +234,10 @@ class BlindPeer extends ReadyResource {
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
+
+    this.routerKey = routerKey || null
+    this.routerPoolOpts = routerPoolOpts || {}
+    this.routerPool = null
 
     this.stats = {
       bytesGcd: 0,
@@ -284,6 +296,11 @@ class BlindPeer extends ReadyResource {
       this.swarm = new Hyperswarm(swarmOpts)
     }
     this.swarm.on('connection', this._onconnection.bind(this))
+
+    if (this.routerKey) {
+      const rpcClient = new ProtomuxRpcClient(this.swarm.dht)
+      this.routerPool = new ProtomuxRpcClientPool([this.routerKey], rpcClient, this.routerPoolOpts)
+    }
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -473,6 +490,23 @@ class BlindPeer extends ReadyResource {
     stream.on('close', () => core.close().catch(safetyCatch))
   }
 
+  async _resolvePeers(key) {
+    if (!this.routerPool) return
+
+    const result = await this.routerPool.makeRequest(
+      'resolve-peers',
+      { key },
+      {
+        requestEncoding: RouterResolvePeersRequest,
+        responseEncoding: RouterResolvePeersResponse
+      }
+    )
+
+    this.emit('resolve-peers', { key, result })
+
+    return result
+  }
+
   async _announceCores() {
     for await (const record of this.db.createAnnouncingCoresStream()) {
       if (this.closing) return
@@ -650,6 +684,13 @@ class BlindPeer extends ReadyResource {
       const discoveryKey = core.discoveryKey
       await core.close()
       await this._onwakeup(discoveryKey, muxer)
+
+      // TODO: will process the result in V2
+      // TODO: handle no referrer
+      this._resolvePeers(referrer).catch((err) => {
+        safetyCatch(err)
+        this.emit('resolve-peers-error', { key: referrer, error: err })
+      })
     }
 
     for (const r of recordsToAdd) this.emit('add-new-core', r, true, stream)
@@ -713,6 +754,10 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
+    if (this.routerPool) {
+      await this.routerPool.destroy()
+      await this.routerPool.statelessRpc.close()
+    }
     clearInterval(this.flushInterval)
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
