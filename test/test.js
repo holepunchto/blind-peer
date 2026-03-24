@@ -16,6 +16,7 @@ const ProtomuxRPCRouter = require('protomux-rpc-router')
 const BlindPeerRouter = require('blind-peer-router')
 const crypto = require('hypercore-crypto')
 const BlindPeer = require('..')
+const { loadAutobee } = require('./helpers')
 
 const DEBUG = false
 let clientCounter = 0 // For clean teardown order
@@ -261,6 +262,113 @@ test('adding autobase cores only results in replication sessions if there are le
 
     await Promise.all([once(blindPeer, 'add-cores-done'), client.addAutobase(indexer)])
     t.is(blindPeer.stats.activations, 7, 'not activated again, since it was already added')
+  }
+})
+
+test('client can use a blind-peer to add an autobase', async (t) => {
+  const tFirstAdd = t.test()
+  tFirstAdd.plan(2)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const {
+    swarm: indexerSwarm,
+    auto: indexer,
+    store: indexerStore
+  } = await setupAutobeeHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  const autos = []
+  for (let i = 0; i < 2; i++) {
+    const { swarm, auto, store } = await setupAutobeeHolder(t, bootstrap, indexer.key)
+    await swarm.flush()
+
+    await indexer.append(encode({ addWriter: auto.local.id }))
+
+    await once(auto, 'writable')
+    autos.push({ auto, swarm, store })
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  await indexer.append(encode({ some: 'thing' }))
+  for (const { auto } of autos) {
+    await auto.append(encode({ other: 'thing' }))
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 1000)) // Give time to stabilise the signed lengths
+  t.is(indexer.writers.active.size, 3, '3 active writers (sanity check)')
+
+  const nrCoresInAutobee = 3
+
+  // A first writer adds the autobase
+  {
+    const expectedAddedKeys = new Set([
+      indexer.local.key.toString('hex'),
+      ...views(indexer).map((v) => b4a.toString(v.core.key, 'hex'))
+    ])
+
+    function views(auto) {
+      return [auto._workingBee, auto.system.bee]
+    }
+
+    t.is(expectedAddedKeys.size, nrCoresInAutobee, 'sanity check')
+
+    let nrAdded = 0
+    const addedKeys = new Set()
+    const onaddcore = (record) => {
+      nrAdded++
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+      if (addedKeys.size > expectedAddedKeys.size) {
+        t.fail('more keys added than expected')
+      }
+      if (addedKeys.size === expectedAddedKeys.size) {
+        if (DEBUG) {
+          console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        }
+        tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
+        tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
+      }
+    }
+    blindPeer.on('add-core', onaddcore)
+
+    const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
+    await client.addAutobee(indexer)
+    await tFirstAdd
+
+    // Give some time to sync
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    blindPeer.off('add-core', onaddcore)
+  }
+
+  // Another writer adds the autobase as well.
+  // Only adds local - as not indexer
+  t.not(autos[0].auto.isIndexer)
+
+  {
+    let nrAdded = 0
+    const addedKeys = new Set()
+    const onaddcore = (record) => {
+      nrAdded++
+      if (DEBUG) console.log('added core', nrAdded, 'of', expectedAddedKeys.size)
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+    }
+    blindPeer.on('add-core', onaddcore)
+    const requestProcessed = once(blindPeer, 'add-cores-done')
+
+    const client = new Client(autos[0].swarm.dht, autos[0].store, { keys: [blindPeer.publicKey] })
+    await client.addAutobee(autos[0].auto)
+    await requestProcessed
+
+    t.is(addedKeys.size, 1, 'local key added only')
+  }
+
+  function encode(val) {
+    return b4a.from(JSON.stringify(val))
   }
 })
 
@@ -1499,6 +1607,14 @@ async function setupPeer(t, bootstrap) {
   )
 
   return { swarm, store }
+}
+
+async function setupAutobeeHolder(t, bootstrap, key = null) {
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const { wakeup, auto } = await loadAutobee(store, key)
+  swarm.join(auto.discoveryKey)
+
+  return { swarm, store, auto, wakeup }
 }
 
 async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {

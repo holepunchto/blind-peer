@@ -28,6 +28,7 @@
     "scope-lock": "^1.2.4"
   },
   "devDependencies": {
+    "autobee": "github:holepunchto/autobee",
     "bare-events": "^2.8.2",
     "bare-process": "^4.2.2",
     "bare-prom-client": "^15.1.3",
