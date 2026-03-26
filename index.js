@@ -22,6 +22,7 @@ const {
 } = require('blind-peer-encodings')
 
 const BlindPeerDB = require('./lib/db.js')
+const TopKWindow = require('./lib/top-k.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
@@ -248,6 +249,9 @@ class BlindPeer extends ReadyResource {
       muxerPaired: 0,
       muxerErrors: 0
     }
+
+    this._topKByPeer = new TopKWindow(6, 10_000, 5) // top-5 over 60s
+    this._topKByReferrer = new TopKWindow(6, 10_000, 5) // top-5 over 60s
   }
 
   get encryptionPublicKey() {
@@ -609,8 +613,12 @@ class BlindPeer extends ReadyResource {
 
   async _onaddcores(stream, request) {
     this.stats.addCoresRx++
-    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
+
     const { cores, referrer } = request
+    this._topKByReferrer.hit(referrer)
+    this._topKByPeer.hit(IdEnc.encode(stream.remotePublicKey))
+
+    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
 
     if (request.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
       // Note: we can't use the original downgrade-announce event because that assumes a 'record' object
@@ -865,6 +873,20 @@ class BlindPeer extends ReadyResource {
       help: 'The amount of add-cores requests received',
       collect() {
         this.set(self.stats.addCoresRx)
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_add_cores_top5_by_remote_key',
+      help: 'The total number of requests from the top 5 peers in the last minute',
+      collect() {
+        this.set(self._topKByPeer.topKSum())
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_add_cores_top5_by_referrer',
+      help: 'The total number of requests from the top 5 referrers in the last minute',
+      collect() {
+        this.set(self._topKByReferrer.topKSum())
       }
     })
     if (self.rocks.stats) {
