@@ -984,6 +984,8 @@ test('client destroys pending timeouts on close', async (t) => {
   await client.addAutobase(base)
   client.close()
 
+  await base.close()
+
   t.pass('unless the test run hangs for a really long time, this test passed')
 })
 
