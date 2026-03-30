@@ -1,6 +1,3 @@
-const { isBare } = require('which-runtime')
-if (isBare) require('bare-process/global')
-
 const test = require('brittle')
 const setupTestnet = require('hyperdht/testnet')
 const Corestore = require('corestore')
@@ -8,6 +5,7 @@ const tmpDir = require('test-tmp')
 const { once } = require('events')
 const b4a = require('b4a')
 const Client = require('blind-peering')
+const BlindPeerMuxer = require('blind-peer-muxer')
 const Hyperswarm = require('hyperswarm')
 const promClient = require('bare-prom-client')
 const Autobase = require('autobase')
@@ -16,6 +14,7 @@ const ProtomuxRPCRouter = require('protomux-rpc-router')
 const BlindPeerRouter = require('blind-peer-router')
 const crypto = require('hypercore-crypto')
 const BlindPeer = require('..')
+const TopKWindow = require('../lib/top-k.js')
 
 const DEBUG = false
 let clientCounter = 0 // For clean teardown order
@@ -1045,13 +1044,6 @@ test('invalid requests are emitted', async (t) => {
 })
 
 test('Prometheus metrics', async (t) => {
-  if (isBare) {
-    // We'd need to add an import map to prom-client for this test to work on bare
-    // but hyper-instrument already does that for us when we use it in bin.js
-    // so we simply do not run this test on bare
-    t.pass('prometheus metrics test is skipped on bare')
-    return
-  }
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
@@ -1162,6 +1154,102 @@ test('Prometheus metrics', async (t) => {
       return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0]) // hack
     }
   }
+})
+
+test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
+  const topK = new TopKWindow(2, 50, 2)
+  await topK.ready()
+  t.teardown(async () => {
+    await topK.close()
+  })
+
+  topK.hit('a')
+  topK.hit('a')
+  topK.hit('b')
+  await new Promise((resolve) => setTimeout(resolve, 51))
+
+  topK.hit('c')
+  topK.hit('c')
+  topK.hit('c')
+  topK.hit('d')
+  await new Promise((resolve) => setTimeout(resolve, 51))
+
+  t.alike(topK.topK, [
+    { key: 'c', count: 3 },
+    { key: 'a', count: 2 }
+  ])
+  t.is(topK.topKSum(), 5, 'sums the cached top-k counts')
+
+  await new Promise((resolve) => setTimeout(resolve, 51))
+
+  t.alike(topK.topK, [
+    { key: 'c', count: 3 },
+    { key: 'd', count: 1 }
+  ])
+  t.is(topK.topKSum(), 4, 'drops counts from the oldest bucket after rotation')
+
+  await new Promise((resolve) => setTimeout(resolve, 51))
+
+  t.alike(topK.topK, [])
+  t.is(topK.topKSum(), 0, 'expires the full rolling window')
+})
+
+test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const topK = { bucketCount: 6, bucketTime: 100, k: 5 }
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { topK })
+  await blindPeer.swarm.flush()
+  blindPeer.registerMetrics(promClient)
+  t.teardown(() => {
+    promClient.register.clear()
+  })
+
+  // we create 6 peers, with the 1st one send 1 request, 2nd one send 2 request ...
+  const nrPeers = 6
+  // with that the sum of top 5 request will be sum of 1+2+3+4+5+6 or (6*5)/2
+  const totalRequests = (nrPeers * (nrPeers + 1)) / 2
+  // with that the sum of top 5 request will be sum of 2+3+4+5+6 or totalRequest - 1
+  const top5Requests = totalRequests - 1
+
+  const allPromises = []
+  for (let i = 0; i < nrPeers; i++) {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ name: `top-k-core-${i}` })
+    await core.ready()
+
+    // `blind-peering` dedups repeated addCore calls per blind peer, so use
+    // the raw muxer here to exercise repeated add-cores traffic.
+    const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+    for (let j = 0; j <= i; j++) {
+      allPromises.push(
+        muxer.addCores({
+          referrer: core.key,
+          priority: 0,
+          announce: false,
+          cores: [{ key: core.key, length: core.length }]
+        })
+      )
+    }
+  }
+
+  // wait for bucket to rotate to calculate top-k
+  await new Promise((resolve) => setTimeout(resolve, topK.bucketTime))
+  // wait to ensure all addCores request finished
+  await Promise.all(allPromises)
+
+  const metrics = await promClient.register.metrics()
+  const getMetricValue = (name) => {
+    return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0])
+  }
+
+  t.is(getMetricValue('blind_peer_add_cores_rx'), totalRequests, 'tracked add-cores requests')
+  t.is(
+    getMetricValue('blind_peer_add_cores_top5_by_remote_key'),
+    top5Requests,
+    'top-5 remote peers'
+  )
+  t.is(getMetricValue('blind_peer_add_cores_top5_by_referrer'), top5Requests, 'top-5 referrers')
 })
 
 test('wakeup', async (t) => {
@@ -1404,7 +1492,8 @@ async function setupBlindPeer(
     trustedPubKeys,
     routerKey,
     routerPoolOpts,
-    replicationLagThreshold
+    replicationLagThreshold,
+    topK
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -1418,7 +1507,8 @@ async function setupBlindPeer(
     routerKey,
     routerPoolOpts,
     wakeupGcTickTime: 100,
-    replicationLagThreshold
+    replicationLagThreshold,
+    topK
   })
 
   const order = clientCounter++
@@ -1499,6 +1589,25 @@ async function setupPeer(t, bootstrap) {
   )
 
   return { swarm, store }
+}
+
+async function setupMuxer(t, swarm, store, publicKey) {
+  const stream = swarm.dht.connect(publicKey)
+  store.replicate(stream)
+
+  const muxer = new BlindPeerMuxer(stream)
+  const order = clientCounter++
+  t.teardown(
+    async () => {
+      muxer.close()
+      stream.destroy()
+    },
+    { order }
+  )
+
+  await muxer.channel.fullyOpened()
+
+  return muxer
 }
 
 async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {

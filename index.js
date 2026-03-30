@@ -209,10 +209,13 @@ class BlindPeer extends ReadyResource {
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
-      replicationLagThreshold = 100
+      replicationLagThreshold = 100,
+      topK = {}
     } = {}
   ) {
     super()
+
+    const { bucketCount = 6, bucketTime = 10_000, k = 5 } = topK
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks, { active: false })
@@ -250,8 +253,8 @@ class BlindPeer extends ReadyResource {
       muxerErrors: 0
     }
 
-    this._topKByPeer = new TopKWindow(6, 10_000, 5) // top-5 over 60s
-    this._topKByReferrer = new TopKWindow(6, 10_000, 5) // top-5 over 60s
+    this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k)
+    this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k)
   }
 
   get encryptionPublicKey() {
@@ -305,6 +308,9 @@ class BlindPeer extends ReadyResource {
       const rpcClient = new ProtomuxRpcClient(this.swarm.dht)
       this.routerPool = new ProtomuxRpcClientPool([this.routerKey], rpcClient, this.routerPoolOpts)
     }
+
+    await this.topKByPeer.ready()
+    await this.topKByReferrer.ready()
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -615,8 +621,10 @@ class BlindPeer extends ReadyResource {
     this.stats.addCoresRx++
 
     const { cores, referrer } = request
-    this._topKByReferrer.hit(referrer)
-    this._topKByPeer.hit(IdEnc.encode(stream.remotePublicKey))
+    if (referrer) {
+      this.topKByReferrer.hit(IdEnc.normalize(referrer))
+    }
+    this.topKByPeer.hit(IdEnc.normalize(stream.remotePublicKey))
 
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
 
@@ -767,6 +775,8 @@ class BlindPeer extends ReadyResource {
       await this.routerPool.statelessRpc.close()
     }
     clearInterval(this.flushInterval)
+    await this.topKByPeer.close()
+    await this.topKByReferrer.close()
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
     await this.flush()
@@ -879,14 +889,14 @@ class BlindPeer extends ReadyResource {
       name: 'blind_peer_add_cores_top5_by_remote_key',
       help: 'The total number of requests from the top 5 peers in the last minute',
       collect() {
-        this.set(self._topKByPeer.topKSum())
+        this.set(self.topKByPeer.topKSum())
       }
     })
     new promClient.Gauge({
       name: 'blind_peer_add_cores_top5_by_referrer',
       help: 'The total number of requests from the top 5 referrers in the last minute',
       collect() {
-        this.set(self._topKByReferrer.topKSum())
+        this.set(self.topKByReferrer.topKSum())
       }
     })
     if (self.rocks.stats) {
