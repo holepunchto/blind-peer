@@ -22,6 +22,7 @@ const {
 } = require('blind-peer-encodings')
 
 const BlindPeerDB = require('./lib/db.js')
+const TopKWindow = require('./lib/top-k.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
@@ -208,10 +209,13 @@ class BlindPeer extends ReadyResource {
       port,
       announcingInterval = 100,
       wakeupGcTickTime = null,
-      replicationLagThreshold = 100
+      replicationLagThreshold = 100,
+      topK = {}
     } = {}
   ) {
     super()
+
+    const { bucketCount = 6, bucketTime = 10_000, k = 5 } = topK
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks, { active: false })
@@ -248,6 +252,9 @@ class BlindPeer extends ReadyResource {
       muxerPaired: 0,
       muxerErrors: 0
     }
+
+    this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k)
+    this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k)
   }
 
   get encryptionPublicKey() {
@@ -301,6 +308,9 @@ class BlindPeer extends ReadyResource {
       const rpcClient = new ProtomuxRpcClient(this.swarm.dht)
       this.routerPool = new ProtomuxRpcClientPool([this.routerKey], rpcClient, this.routerPoolOpts)
     }
+
+    await this.topKByPeer.ready()
+    await this.topKByReferrer.ready()
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -609,8 +619,14 @@ class BlindPeer extends ReadyResource {
 
   async _onaddcores(stream, request) {
     this.stats.addCoresRx++
-    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
+
     const { cores, referrer } = request
+    if (referrer) {
+      this.topKByReferrer.hit(IdEnc.normalize(referrer))
+    }
+    this.topKByPeer.hit(IdEnc.normalize(stream.remotePublicKey))
+
+    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
 
     if (request.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
       // Note: we can't use the original downgrade-announce event because that assumes a 'record' object
@@ -759,6 +775,8 @@ class BlindPeer extends ReadyResource {
       await this.routerPool.statelessRpc.close()
     }
     clearInterval(this.flushInterval)
+    await this.topKByPeer.close()
+    await this.topKByReferrer.close()
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
     await this.flush()
@@ -865,6 +883,20 @@ class BlindPeer extends ReadyResource {
       help: 'The amount of add-cores requests received',
       collect() {
         this.set(self.stats.addCoresRx)
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_add_cores_top5_by_remote_key',
+      help: 'The total number of requests from the top 5 peers in the last minute',
+      collect() {
+        this.set(self.topKByPeer.topKSum())
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_add_cores_top5_by_referrer',
+      help: 'The total number of requests from the top 5 referrers in the last minute',
+      collect() {
+        this.set(self.topKByReferrer.topKSum())
       }
     })
     if (self.rocks.stats) {
