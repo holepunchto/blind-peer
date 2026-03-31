@@ -164,6 +164,9 @@ test('client can use a blind-peer to add an autobase', async (t) => {
   }
 })
 
+// TODO: needs some more thought (behaviour is +- undefined: second batch only gets sent if a new writer added
+// and there are no guarantees whether that happens or not. There's also different behaviour
+// when we're already connected to the blind peer or not, but that we can control in the test)
 test.skip('Client sends a second batch with writers that get activated later', async (t) => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(2)
@@ -197,20 +200,30 @@ test.skip('Client sends a second batch with writers that get activated later', a
   }
 
   await new Promise((resolve) => setTimeout(resolve, 1000)) // Give time to stabilise the signed lengths
-  // await Promise.all(bases.map(({ base }) => base.close())) // To avoid length updates due to acks etc.
+  await Promise.all(bases.map(({ base }) => base.close())) // To avoid length updates due to acks etc.
 
   const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
-  /* t.teardown(async () => await client.close())
 
   await indexer.close()
   {
     const { base } = await loadAutobase(indexerStore, null)
     indexer = base
-  } */
+  }
+
+  const tReqs = t.test('requests recieved')
+  tReqs.plan(2)
+  let first = true
+  blindPeer.on('add-cores-done', () => {
+    if (first) {
+      tReqs.pass('processed first request')
+      first = false
+    } else {
+      tReqs.pass('Processed second request')
+    }
+  })
 
   await client.addAutobase(indexer)
-
-  await new Promise((resolve) => setTimeout(resolve, 10000))
+  await tReqs
 })
 
 test('adding autobase cores only results in replication sessions if there are length differences', async (t) => {
@@ -949,6 +962,8 @@ test('client suspend/resume logic', async (t) => {
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
+  const { base } = await setupAutobaseHolder(t, bootstrap)
+  await base.ready()
 
   {
     const coreAddedProm = once(blindPeer, 'add-core')
@@ -957,6 +972,17 @@ test('client suspend/resume logic', async (t) => {
 
     const [record] = await coreAddedProm
     t.alike(record.key, coreKey, 'added the core')
+  }
+  await once(blindPeer, 'add-cores-done') // finish request
+
+  {
+    const coreAddedProm = once(blindPeer, 'add-cores-done')
+    coreAddedProm.catch(() => {})
+    await client.addAutobase(base, { announce: false })
+
+    const [, req] = await coreAddedProm
+    t.alike(req.referrer, base.key, 'sanity check')
+    t.is(req.cores.length > 3, true, 'includes views/writers')
   }
 
   const getSuspendeds = () => [...client.blindPeers.values()].map((v) => v.suspended)
@@ -969,7 +995,21 @@ test('client suspend/resume logic', async (t) => {
   t.alike(getSuspendeds(), [true], 'clients suspended')
   t.is(client.suspended, true, 'suspended')
 
+  const coresAddedProm = once(blindPeer, 'add-cores-received')
+  const baseAddedProm = once(blindPeer, 'add-cores-done')
+
+  const tResume = t.test('resume')
+  tResume.plan(2)
+  blindPeer.on('add-cores-done', (_, req) => {
+    if (!req.referrer) {
+      tResume.pass('core resent after resume')
+    } else {
+      tResume.is(req.cores.length > 3, true, 'autobase re-sends views/writers on resume')
+    }
+  })
   await client.resume()
+
+  await tResume
 
   t.alike(getSuspendeds(), [false], 'clients resumed')
   t.is(client.suspended, false, 'resumed')
@@ -1217,7 +1257,7 @@ test('Prometheus metrics', async (t) => {
   }
 })
 
-test.solo('wakeup', async (t) => {
+test('wakeup', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)

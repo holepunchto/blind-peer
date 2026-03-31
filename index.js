@@ -434,7 +434,6 @@ class BlindPeer extends ReadyResource {
   }
 
   _onconnection(conn) {
-    console.log('ON CONNECTION BLIND PEER')
     if (this.closing) {
       conn.destroy()
       return
