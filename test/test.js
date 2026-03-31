@@ -1194,8 +1194,8 @@ test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
   t.is(topK.topKSum(), 0, 'expires the full rolling window')
 })
 
-test('TopKWindow emits spike events for rolling totals at or above the threshold on alert steps', async (t) => {
-  const topK = new TopKWindow(2, 50, 2, 4, 2)
+test('TopKWindow emits spike events during rotation only for entries that stay in top-k', async (t) => {
+  const topK = new TopKWindow(1, 50, 2, 4)
   await topK.ready()
   t.teardown(async () => {
     await topK.close()
@@ -1208,31 +1208,33 @@ test('TopKWindow emits spike events for rolling totals at or above the threshold
 
   topK.hit('a')
   topK.hit('a')
+  topK.hit('a')
+  topK.hit('a')
+  topK.hit('a')
+  topK.hit('a')
 
-  // rotate bucket so we don’t only count the current one
+  topK.hit('b')
+  topK.hit('b')
+  topK.hit('b')
+  topK.hit('b')
+  topK.hit('b')
+
+  topK.hit('c')
+  topK.hit('c')
+  topK.hit('c')
+  topK.hit('c')
+
+  t.alike(spikes, [], 'does not emit until rotation recalculates the rankings')
+
   await new Promise((resolve) => setTimeout(resolve, 51))
 
-  topK.hit('a')
-  t.alike(spikes, [], 'does not emit below the threshold')
-
-  topK.hit('a')
-  t.alike(
-    spikes,
-    [{ key: 'a', count: 4 }],
-    'emits at the threshold when it lands on a configured step'
-  )
-
-  topK.hit('a')
-  t.alike(spikes, [{ key: 'a', count: 4 }], 'does not emit between configured steps')
-
-  topK.hit('a')
   t.alike(
     spikes,
     [
-      { key: 'a', count: 4 },
-      { key: 'a', count: 6 }
+      { key: 'a', count: 6 },
+      { key: 'b', count: 5 }
     ],
-    'emits again at the next configured step'
+    'emits only the top-k threshold crossings and skips lower-ranked entries'
   )
 })
 

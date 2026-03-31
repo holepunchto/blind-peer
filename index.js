@@ -255,12 +255,12 @@ class BlindPeer extends ReadyResource {
       bucketCount = 6,
       bucketTime = 10_000,
       k = 5,
-      spikeThreshold = 100,
-      spikeStep = 10
+      peerThreshold = 100,
+      referrerThreshold = 100
     } = topK
 
-    this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k, spikeThreshold, spikeStep)
-    this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k, spikeThreshold, spikeStep)
+    this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k, peerThreshold)
+    this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k, referrerThreshold)
   }
 
   get encryptionPublicKey() {
