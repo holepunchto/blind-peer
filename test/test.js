@@ -1194,6 +1194,48 @@ test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
   t.is(topK.topKSum(), 0, 'expires the full rolling window')
 })
 
+test('TopKWindow emits spike events for rolling totals at or above the threshold on alert steps', async (t) => {
+  const topK = new TopKWindow(2, 50, 2, 4, 2)
+  await topK.ready()
+  t.teardown(async () => {
+    await topK.close()
+  })
+
+  const spikes = []
+  topK.on('spike', (key, count) => {
+    spikes.push({ key, count })
+  })
+
+  topK.hit('a')
+  topK.hit('a')
+
+  // rotate bucket so we don’t only count the current one
+  await new Promise((resolve) => setTimeout(resolve, 51))
+
+  topK.hit('a')
+  t.alike(spikes, [], 'does not emit below the threshold')
+
+  topK.hit('a')
+  t.alike(
+    spikes,
+    [{ key: 'a', count: 4 }],
+    'emits at the threshold when it lands on a configured step'
+  )
+
+  topK.hit('a')
+  t.alike(spikes, [{ key: 'a', count: 4 }], 'does not emit between configured steps')
+
+  topK.hit('a')
+  t.alike(
+    spikes,
+    [
+      { key: 'a', count: 4 },
+      { key: 'a', count: 6 }
+    ],
+    'emits again at the next configured step'
+  )
+})
+
 test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const topK = { bucketCount: 6, bucketTime: 100, k: 5 }
