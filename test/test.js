@@ -1166,13 +1166,13 @@ test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
   topK.hit('a')
   topK.hit('a')
   topK.hit('b')
-  await new Promise((resolve) => setTimeout(resolve, 51))
+  await once(topK, 'rotated')
 
   topK.hit('c')
   topK.hit('c')
   topK.hit('c')
   topK.hit('d')
-  await new Promise((resolve) => setTimeout(resolve, 51))
+  await once(topK, 'rotated')
 
   t.alike(topK.topK, [
     { key: 'c', count: 3 },
@@ -1180,7 +1180,7 @@ test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
   ])
   t.is(topK.topKSum(), 5, 'sums the cached top-k counts')
 
-  await new Promise((resolve) => setTimeout(resolve, 51))
+  await once(topK, 'rotated')
 
   t.alike(topK.topK, [
     { key: 'c', count: 3 },
@@ -1188,10 +1188,54 @@ test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
   ])
   t.is(topK.topKSum(), 4, 'drops counts from the oldest bucket after rotation')
 
-  await new Promise((resolve) => setTimeout(resolve, 51))
+  await once(topK, 'rotated')
 
   t.alike(topK.topK, [])
   t.is(topK.topKSum(), 0, 'expires the full rolling window')
+})
+
+test('TopKWindow emits spike events during rotation only for entries that stay in top-k', async (t) => {
+  const topK = new TopKWindow(1, 50, 2, 4)
+  await topK.ready()
+  t.teardown(async () => {
+    await topK.close()
+  })
+
+  const spikes = []
+  topK.on('spike', (key, count) => {
+    spikes.push({ key, count })
+  })
+
+  topK.hit('a')
+  topK.hit('a')
+  topK.hit('a')
+  topK.hit('a')
+  topK.hit('a')
+  topK.hit('a')
+
+  topK.hit('b')
+  topK.hit('b')
+  topK.hit('b')
+  topK.hit('b')
+  topK.hit('b')
+
+  topK.hit('c')
+  topK.hit('c')
+  topK.hit('c')
+  topK.hit('c')
+
+  t.alike(spikes, [], 'does not emit until rotation recalculates the rankings')
+
+  await once(topK, 'rotated')
+
+  t.alike(
+    spikes,
+    [
+      { key: 'a', count: 6 },
+      { key: 'b', count: 5 }
+    ],
+    'emits only the top-k threshold crossings and skips lower-ranked entries'
+  )
 })
 
 test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
@@ -1211,7 +1255,7 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   // with that the sum of top 5 request will be sum of 2+3+4+5+6 or totalRequest - 1
   const top5Requests = totalRequests - 1
 
-  const allPromises = []
+  const muxers = []
   for (let i = 0; i < nrPeers; i++) {
     const { swarm, store } = await setupPeer(t, bootstrap)
     const core = store.get({ name: `top-k-core-${i}` })
@@ -1220,8 +1264,21 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
     // `blind-peering` dedups repeated addCore calls per blind peer, so use
     // the raw muxer here to exercise repeated add-cores traffic.
     const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+    muxers.push({ muxer, core })
+  }
 
+  // wait for both of the top-k to rotated before schedule addCores,
+  // to prevent them from scheduled into different rotate cycle
+  await Promise.all([
+    once(blindPeer.topKByPeer, 'rotated'),
+    once(blindPeer.topKByReferrer, 'rotated')
+  ])
+
+  const allPromises = []
+
+  for (let i = 0; i < nrPeers; i++) {
     for (let j = 0; j <= i; j++) {
+      const { muxer, core } = muxers[i]
       allPromises.push(
         muxer.addCores({
           referrer: core.key,
@@ -1233,8 +1290,9 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
     }
   }
 
-  // wait for bucket to rotate to calculate top-k
-  await new Promise((resolve) => setTimeout(resolve, topK.bucketTime))
+  // wait for all the add cores to finish and the topK got rotated
+  allPromises.push(once(blindPeer.topKByPeer, 'rotated'), once(blindPeer.topKByReferrer, 'rotated'))
+
   // wait to ensure all addCores request finished
   await Promise.all(allPromises)
 

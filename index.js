@@ -215,8 +215,6 @@ class BlindPeer extends ReadyResource {
   ) {
     super()
 
-    const { bucketCount = 6, bucketTime = 10_000, k = 5 } = topK
-
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
@@ -253,8 +251,16 @@ class BlindPeer extends ReadyResource {
       muxerErrors: 0
     }
 
-    this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k)
-    this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k)
+    const {
+      bucketCount = 6,
+      bucketTime = 10_000,
+      k = 5,
+      peerThreshold = 100,
+      referrerThreshold = 100
+    } = topK
+
+    this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k, peerThreshold)
+    this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k, referrerThreshold)
   }
 
   get encryptionPublicKey() {
