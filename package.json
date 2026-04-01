@@ -35,6 +35,7 @@
     "blind-peering": "holepunchto/blind-peering#send-separate-writer-batch",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
+    "lunte": "^1.6.0",
     "prettier": "^3.6.2",
     "prettier-config-holepunch": "^2.0.0",
     "protomux-rpc-router": "^1.2.0",
@@ -48,7 +49,7 @@
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npm run format:check && brittle test/*.js",
+    "test": "npm run format:check && lunte &&  brittle test/*.js",
     "test:bare": "bare test/test.js"
   },
   "repository": {

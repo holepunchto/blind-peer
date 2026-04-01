@@ -103,7 +103,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
   await new Promise((resolve) => setTimeout(resolve, 1000)) // Give time to stabilise the signed lengths
   t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
 
-  nrCoresInAutobase = 6 // could change if autobase internals change
+  const nrCoresInAutobase = 6 // could change if autobase internals change
 
   // A first writer adds the autobase
   {
@@ -150,7 +150,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     const addedKeys = new Set()
     const onaddcore = (record) => {
       nrAdded++
-      if (DEBUG) console.log('added core', nrAdded, 'of', expectedAddedKeys.size)
+      if (DEBUG) console.log('added core', nrAdded)
       addedKeys.add(b4a.toString(record.key, 'hex'))
     }
     blindPeer.on('add-core', onaddcore)
@@ -994,9 +994,6 @@ test('client suspend/resume logic', async (t) => {
 
   t.alike(getSuspendeds(), [true], 'clients suspended')
   t.is(client.suspended, true, 'suspended')
-
-  const coresAddedProm = once(blindPeer, 'add-cores-received')
-  const baseAddedProm = once(blindPeer, 'add-cores-done')
 
   const tResume = t.test('resume')
   tResume.plan(2)
