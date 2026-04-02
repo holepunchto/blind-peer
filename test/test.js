@@ -164,68 +164,6 @@ test('client can use a blind-peer to add an autobase', async (t) => {
   }
 })
 
-// TODO: needs some more thought (behaviour is +- undefined: second batch only gets sent if a new writer added
-// and there are no guarantees whether that happens or not. There's also different behaviour
-// when we're already connected to the blind peer or not, but that we can control in the test)
-test.skip('Client sends a second batch with writers that get activated later', async (t) => {
-  const tFirstAdd = t.test()
-  tFirstAdd.plan(2)
-
-  const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
-
-  const { swarm: indexerSwarm, base, store: indexerStore } = await setupAutobaseHolder(t, bootstrap)
-  await indexerSwarm.flush()
-  let indexer = base
-
-  const bases = []
-  for (let i = 0; i < 2; i++) {
-    const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
-    await swarm.flush()
-    await Promise.all([
-      once(base, 'is-indexer'),
-      indexer.append({ add: b4a.toString(base.local.key, 'hex') })
-    ])
-
-    await base.append({ some: 'thing' })
-    bases.push({ base, swarm, store })
-  }
-
-  await indexer.append({ some: 'thing' })
-  for (const { base } of bases) {
-    await base.append({ other: 'thing' })
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 1000)) // Give time to stabilise the signed lengths
-  await Promise.all(bases.map(({ base }) => base.close())) // To avoid length updates due to acks etc.
-
-  const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
-
-  await indexer.close()
-  {
-    const { base } = await loadAutobase(indexerStore, null)
-    indexer = base
-  }
-
-  const tReqs = t.test('requests recieved')
-  tReqs.plan(2)
-  let first = true
-  blindPeer.on('add-cores-done', () => {
-    if (first) {
-      tReqs.pass('processed first request')
-      first = false
-    } else {
-      tReqs.pass('Processed second request')
-    }
-  })
-
-  await client.addAutobase(indexer)
-  await tReqs
-})
-
 test('adding autobase cores only results in replication sessions if there are length differences', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
