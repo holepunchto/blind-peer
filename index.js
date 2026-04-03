@@ -24,6 +24,8 @@ const {
   RouterResolvePeersRequest,
   RouterResolvePeersResponse
 } = require('blind-peer-encodings')
+const blindPush = require('blind-push')
+const { ForwardPushRequest } = require('blind-push/encodings')
 
 const BlindPeerDB = require('./lib/db.js')
 const TopKWindow = require('./lib/top-k.js')
@@ -218,6 +220,8 @@ class BlindPeer extends ReadyResource {
       routerPoolOpts,
       ipBanListKeys = [],
       banTimeout = 16_000,
+      pushGatewayKeys,
+      pushGatewayPoolOpts,
       port,
       bootstrap = null,
       announcingInterval = 100,
@@ -257,10 +261,13 @@ class BlindPeer extends ReadyResource {
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
 
+    this.rpcClient = null
     this.routerKey = routerKey || null
     this.routerPoolOpts = routerPoolOpts || {}
     this.routerPool = null
     this.adminRouter = adminRouter
+    this.pushGatewayKeys = pushGatewayKeys || []
+    this.pushGatewayPoolOpts = pushGatewayPoolOpts || {}
 
     this.stats = {
       bytesGcd: 0,
@@ -268,6 +275,9 @@ class BlindPeer extends ReadyResource {
       activations: 0,
       wakeups: 0,
       addCoresRx: 0,
+      notificationsRx: 0,
+      notificationsSent: 0,
+      notificationErrors: 0,
       muxerPaired: 0,
       muxerErrors: 0
     }
@@ -365,9 +375,20 @@ class BlindPeer extends ReadyResource {
       })
     )
 
+    this.rpcClient = new ProtomuxRpcClient(this.swarm.dht)
     if (this.routerKey) {
-      const rpcClient = new ProtomuxRpcClient(this.swarm.dht)
-      this.routerPool = new ProtomuxRpcClientPool([this.routerKey], rpcClient, this.routerPoolOpts)
+      this.routerPool = new ProtomuxRpcClientPool(
+        [this.routerKey],
+        this.rpcClient,
+        this.routerPoolOpts
+      )
+    }
+    if (this.pushGatewayKeys.length) {
+      this.gatewayPool = new ProtomuxRpcClientPool(
+        this.pushGatewayKeys,
+        this.rpcClient,
+        this.pushGatewayPoolOpts
+      )
     }
 
     await this.topKByPeer.ready()
@@ -535,6 +556,15 @@ class BlindPeer extends ReadyResource {
           } catch (e) {
             self.stats.muxerErrors++
             self.emit('muxer-error', e, conn)
+            throw e
+          }
+        },
+        async onnotification(request) {
+          try {
+            await self._onnotification(conn, request)
+          } catch (e) {
+            self.stats.notificationErrors++
+            self.emit('notification-error', e, conn)
             throw e
           }
         }
@@ -878,10 +908,47 @@ class BlindPeer extends ReadyResource {
     return true
   }
 
+  async _onnotification(stream, request) {
+    this.stats.notificationsRx++
+
+    if (!this.gatewayPool) {
+      return null
+    }
+
+    const core = this.store.get({ key: request.block.key })
+
+    await core.ready()
+
+    const payload = await blindPush.createNotification(core, {
+      roomKey: request.destination.key,
+      roomDiscoveryKey: request.destination.discoveryKey,
+      index: request.block.index,
+      version: request.version,
+      extra: request.extra
+    })
+
+    await this.gatewayPool.makeRequest(
+      'forward-push',
+      { payload },
+      {
+        requestEncoding: ForwardPushRequest,
+        responseEncoding: c.none
+      }
+    )
+
+    this.stats.notificationsSent++
+    this.emit('notification-sent', request, payload, stream)
+  }
+
   async _close() {
     if (this.routerPool) {
       await this.routerPool.destroy()
-      await this.routerPool.statelessRpc.close()
+    }
+    if (this.gatewayPool) {
+      await this.gatewayPool.destroy()
+    }
+    if (this.rpcClient) {
+      await this.rpcClient.close()
     }
     if (this.adminRouter) await this.adminRouter.close()
     clearInterval(this.flushInterval)
