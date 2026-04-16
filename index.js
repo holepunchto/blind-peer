@@ -174,15 +174,15 @@ class WakeupHandler {
     }
 
     try {
-      const latest = await this.db
-        .find('@blind-peer/cores-by-referrer', query)
-        .toArray()
-        .filter((r) => r.wakeup)
+      const latest = await this.db.find('@blind-peer/cores-by-referrer', query).toArray()
 
       if (peer.removed) return
-      session.announce(peer, latest)
+      session.announce(
+        peer,
+        latest.filter((r) => r.wakeup)
+      )
     } catch {
-      // do nothingf
+      // do nothing
     }
   }
 
