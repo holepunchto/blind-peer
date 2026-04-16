@@ -107,7 +107,7 @@ class CoreTracker {
   }
 
   announceToReferrer() {
-    if (!this.record || !this.record.referrer) return
+    if (!this.record || !this.record.referrer || !this.record.wakeup) return
     if (!this.referrerDiscoveryKey) {
       this.referrerDiscoveryKey = crypto.discoveryKey(this.record.referrer)
     }
@@ -174,11 +174,14 @@ class WakeupHandler {
     }
 
     try {
-      const latest = await this.db.find('@blind-peer/cores-by-referrer', query).toArray()
+      const latest = await this.db.find('@blind-peer/cores-by-referrer', query)
+        .toArray()
+        .filter(r => r.wakeup)
+
       if (peer.removed) return
       session.announce(peer, latest)
     } catch {
-      // do nothing
+      // do nothingf
     }
   }
 
@@ -626,7 +629,7 @@ class BlindPeer extends ReadyResource {
   async _onaddcores(stream, request) {
     this.stats.addCoresRx++
 
-    const { cores, referrer } = request
+    const { cores, noWakeup, referrer } = request
     if (referrer) {
       this.topKByReferrer.hit(IdEnc.normalize(referrer))
     }
@@ -658,6 +661,7 @@ class BlindPeer extends ReadyResource {
         announce: request.announce,
         priority,
         referrer,
+        wakeup: !noWakeup,
         ownLength: 0, // set later
         ownContigLength: 0, // set later
         needsActivation: false // changed later if needed
@@ -684,7 +688,8 @@ class BlindPeer extends ReadyResource {
           key: entry.key,
           priority: entry.priority,
           announce: entry.announce,
-          referrer: entry.referrer
+          referrer: entry.referrer,
+          wakeup: entry.wakeup
         })
       } else {
         entry.ownLength = storageInfo.head?.length || 0
