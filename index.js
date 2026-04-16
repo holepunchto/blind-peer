@@ -630,7 +630,7 @@ class BlindPeer extends ReadyResource {
   async _onaddcores(stream, request) {
     this.stats.addCoresRx++
 
-    const { cores, noWakeup, referrer } = request
+    const { cores, referrer } = request
     if (referrer) {
       this.topKByReferrer.hit(IdEnc.normalize(referrer))
     }
@@ -662,7 +662,7 @@ class BlindPeer extends ReadyResource {
         announce: request.announce,
         priority,
         referrer,
-        wakeup: !noWakeup,
+        wakeup: c.wakeup,
         ownLength: 0, // set later
         ownContigLength: 0, // set later
         needsActivation: false // changed later if needed
