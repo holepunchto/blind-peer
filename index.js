@@ -261,6 +261,7 @@ class BlindPeer extends ReadyResource {
 
     this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k, peerThreshold)
     this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k, referrerThreshold)
+    this.topKByIp = new TopKWindow(bucketCount, bucketTime, k, null) // we do not want to expose the ip spike
   }
 
   get encryptionPublicKey() {
@@ -317,6 +318,7 @@ class BlindPeer extends ReadyResource {
 
     await this.topKByPeer.ready()
     await this.topKByReferrer.ready()
+    await this.topKByIp.ready()
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -631,6 +633,7 @@ class BlindPeer extends ReadyResource {
       this.topKByReferrer.hit(IdEnc.normalize(referrer))
     }
     this.topKByPeer.hit(IdEnc.normalize(stream.remotePublicKey))
+    this.topKByIp.hit(stream.rawStream.remoteHost)
 
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
 
@@ -783,6 +786,7 @@ class BlindPeer extends ReadyResource {
     clearInterval(this.flushInterval)
     await this.topKByPeer.close()
     await this.topKByReferrer.close()
+    await this.topKByIp.close()
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
     await this.flush()
@@ -903,6 +907,13 @@ class BlindPeer extends ReadyResource {
       help: 'The total number of requests from the top 5 referrers in the last minute',
       collect() {
         this.set(self.topKByReferrer.topKSum())
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_add_cores_top5_by_remote_ip',
+      help: 'The total number of requests from the top 5 remote IPs in the last minute',
+      collect() {
+        this.set(self.topKByIp.topKSum())
       }
     })
     if (self.rocks.stats) {

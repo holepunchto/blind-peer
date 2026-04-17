@@ -21,3 +21,17 @@ jobs:
       - run: npm test
       - run: npm -g install bare
       - run: npm run test:bare
+  test-netns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Use Node.js lts/*
+        uses: actions/setup-node@v3
+      - run: npm install
+      - name: Setup network namespaces
+        run: sudo test-netns/scripts/setup.sh
+      - name: Run netns tests
+        run: sudo npm run test:netns
+      - name: Teardown network namespaces
+        if: always()
+        run: sudo test-netns/scripts/teardown.sh
