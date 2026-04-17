@@ -633,9 +633,7 @@ class BlindPeer extends ReadyResource {
       this.topKByReferrer.hit(IdEnc.normalize(referrer))
     }
     this.topKByPeer.hit(IdEnc.normalize(stream.remotePublicKey))
-    if (stream.rawStream?.remoteHost) {
-      this.topKByIp.hit(stream.rawStream.remoteHost)
-    }
+    this.topKByIp.hit(stream.rawStream.remoteHost)
 
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
 

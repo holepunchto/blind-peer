@@ -30,10 +30,6 @@ test('Prometheus top-k metrics reflect add-cores traffic by remote IP across nam
   const totalRequests = (nrPeers * (nrPeers + 1)) / 2
   // with k=3 and requests [1,2,3,4], top-3 sum is 2+3+4 or totalRequests - 1
   const top3Requests = totalRequests - 1
-  const expectedTopK = []
-  for (let i = nrPeers - 1; i >= nrPeers - topK.k; i--) {
-    expectedTopK.push({ key: `10.200.1.${i + 2}`, count: i + 1 })
-  }
 
   // wait for top-k to rotate before scheduling addCores,
   // to prevent requests from being split across rotate cycles
@@ -64,7 +60,11 @@ test('Prometheus top-k metrics reflect add-cores traffic by remote IP across nam
   t.is(blindPeer.topKByIp.spikeThreshold, null, 'remote IP top-k does not emit spike alerts')
   t.alike(
     blindPeer.topKByIp.topK,
-    expectedTopK,
+    [
+      { key: '10.200.1.5', count: 4 },
+      { key: '10.200.1.4', count: 3 },
+      { key: '10.200.1.3', count: 2 }
+    ],
     'cached IP top-k entries are the highest three namespace request volumes'
   )
   t.is(blindPeer.topKByIp.topKSum(), top3Requests, 'top-k IP sum reflects the top 3 namespaces')
