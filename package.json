@@ -49,6 +49,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run format:check && lunte &&  brittle test/*.js",
+    "test:netns": "brittle test-netns/*.test.js",
     "test:bare": "bare test/test.js"
   },
   "repository": {
