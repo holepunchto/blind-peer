@@ -1372,7 +1372,8 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   // to prevent them from scheduled into different rotate cycle
   await Promise.all([
     once(blindPeer.topKByPeer, 'rotated'),
-    once(blindPeer.topKByReferrer, 'rotated')
+    once(blindPeer.topKByReferrer, 'rotated'),
+    once(blindPeer.topKByIp, 'rotated')
   ])
 
   const allPromises = []
@@ -1392,7 +1393,11 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   }
 
   // wait for all the add cores to finish and the topK got rotated
-  allPromises.push(once(blindPeer.topKByPeer, 'rotated'), once(blindPeer.topKByReferrer, 'rotated'))
+  allPromises.push(
+    once(blindPeer.topKByPeer, 'rotated'),
+    once(blindPeer.topKByReferrer, 'rotated'),
+    once(blindPeer.topKByIp, 'rotated')
+  )
 
   // wait to ensure all addCores request finished
   await Promise.all(allPromises)
@@ -1403,12 +1408,15 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   }
 
   t.is(getMetricValue('blind_peer_add_cores_rx'), totalRequests, 'tracked add-cores requests')
+  t.is(blindPeer.topKByIp.spikeThreshold, null, 'remote IP top-k does not emit spike alerts')
   t.is(
     getMetricValue('blind_peer_add_cores_top5_by_remote_key'),
     top5Requests,
     'top-5 remote peers'
   )
   t.is(getMetricValue('blind_peer_add_cores_top5_by_referrer'), top5Requests, 'top-5 referrers')
+  // since we're doing simple testing where all requests come from one IP, this is just a sanity check
+  t.is(getMetricValue('blind_peer_add_cores_top5_by_remote_ip'), totalRequests, 'top-5 remote IPs')
 })
 
 test('wakeup', async (t) => {
