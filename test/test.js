@@ -1342,7 +1342,7 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
     'top-5 remote peers'
   )
   t.is(getMetricValue('blind_peer_add_cores_top5_by_referrer'), top5Requests, 'top-5 referrers')
-  // as we're do simple testing, all request come from 1 IP, this is sanity check only
+  // since we're doing simple testing where all requests come from one IP, this is just a sanity check
   t.is(getMetricValue('blind_peer_add_cores_top5_by_remote_ip'), totalRequests, 'top-5 remote IPs')
 })
 

@@ -35,6 +35,7 @@
     "blind-peering": "^2.0.1",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
+    "graceful-goodbye": "^1.3.3",
     "lunte": "^1.6.0",
     "prettier": "^3.6.2",
     "prettier-config-holepunch": "^2.0.0",

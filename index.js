@@ -288,10 +288,6 @@ class BlindPeer extends ReadyResource {
     return this.trustedPubKeys.has(IdEnc.normalize(key))
   }
 
-  _getRemoteIp(stream) {
-    return (stream.rawStream && stream.rawStream.remoteHost) || null
-  }
-
   async _open() {
     await this.store.ready()
 
@@ -637,9 +633,8 @@ class BlindPeer extends ReadyResource {
       this.topKByReferrer.hit(IdEnc.normalize(referrer))
     }
     this.topKByPeer.hit(IdEnc.normalize(stream.remotePublicKey))
-    const remoteIp = this._getRemoteIp(stream)
-    if (remoteIp) {
-      this.topKByIp.hit(remoteIp)
+    if (stream.rawStream?.remoteHost) {
+      this.topKByIp.hit(stream.rawStream.remoteHost)
     }
 
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
