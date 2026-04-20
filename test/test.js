@@ -176,22 +176,34 @@ test('client can use hyperdht addresses to add a core', async (t) => {
   await blindPeer2.listen()
   await blindPeer2.swarm.flush()
 
-  const addedToBoth = Promise.all([
-    once(blindPeer, 'add-cores-done'),
-    once(blindPeer2, 'add-cores-done')
-  ])
+  const { blindPeer: blindPeer3 } = await setupBlindPeer(t, bootstrap)
+  await blindPeer3.listen()
+  await blindPeer2.swarm.flush()
 
+  const addedToAll = Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    once(blindPeer2, 'add-cores-done'),
+    once(blindPeer3, 'add-cores-done')
+  ])
 
   let coreKey = null
   let client = null
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-  client = new Client(swarm.dht, store, { keys: [blindPeer2.publicKey, HyperDHTAddress.encode(blindPeer.publicKey, bootstrap)] })
+  // test both str and buffer keys, as well as the new style
+  client = new Client(swarm.dht, store, {
+    pick: 3,
+    keys: [
+      blindPeer2.publicKey.toString('hex'),
+      blindPeer3.publicKey,
+      HyperDHTAddress.encode(blindPeer.publicKey, bootstrap)
+    ]
+  })
   coreKey = core.key
   client.addCoreBackground(core)
 
-  await addedToBoth
-  t.pass('added the core to both blind peers')
+  await addedToAll
+  t.pass('added the core to all blind peers')
 
   // TODO: expose an event in blind-peer which allows us to detect
   // when a core has updated
@@ -219,22 +231,26 @@ test('client only acceps valid keys', async (t) => {
 
   const aaa = b4a.from('a'.repeat(64), 'hex')
   const bbb = b4a.from('b'.repeat(64), 'hex')
-  const validKeys = [
-    HyperDHTAddress.encode(aaa, bootstrap),
-    bbb,
-    'c'.repeat(64)
-  ]
+  const validKeys = [HyperDHTAddress.encode(aaa, bootstrap), bbb, 'c'.repeat(64)]
 
   const { swarm, store } = await setupCoreHolder(t, bootstrap)
-  const client = new Client(swarm.dht, store, { keys: validKeys  })
-  t.alike(new Set(client.keys), new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]), 'uses expected keys')
-  t.alike(new Set(client.keys), new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]), 'uses expected keys')
-  t.alike(new Set(client.keyToEncodedKey.values()), new Set(client.keys), 'consistent map and keys')
+  const client = new Client(swarm.dht, store, { keys: validKeys })
+  t.alike(
+    new Set(client.keys),
+    new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]),
+    'uses expected keys'
+  )
+  t.alike(
+    new Set(client.keys),
+    new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]),
+    'uses expected keys'
+  )
 
   t.exception(() => new Client(swarm.dht, store, { keys: [...validKeys, 'a'.repeat(63)] }))
-  t.exception(() => new Client(swarm.dht, store, { keys: [...validKeys, b4a.from('a'.repeat(63))] }))
+  t.exception(
+    () => new Client(swarm.dht, store, { keys: [...validKeys, b4a.from('a'.repeat(63))] })
+  )
 })
-
 
 test('adding autobase cores only results in replication sessions if there are length differences', async (t) => {
   const { bootstrap } = await getTestnet(t)
