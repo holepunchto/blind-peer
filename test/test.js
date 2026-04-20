@@ -1435,30 +1435,6 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   t.is(getMetricValue('blind_peer_add_cores_top5_by_remote_ip'), totalRequests, 'top-5 remote IPs')
 })
 
-async function setupPeer(t, bootstrap) {
-  const storage = await tmpDir(t)
-  const swarm = new Hyperswarm({ bootstrap })
-  const store = new Corestore(storage)
-
-  const order = clientCounter++
-  swarm.on('connection', (c) => {
-    if (DEBUG) console.log('(CORE HOLDER) connection opened')
-    store.replicate(c)
-    c.on('error', (e) => {
-      if (DEBUG) console.warn(`Swarm error: ${e.stack}`)
-    })
-  })
-  t.teardown(
-    async () => {
-      await swarm.destroy()
-      await store.close()
-    },
-    { order }
-  )
-
-  return { swarm, store }
-}
-
 test('wakeup', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -1704,9 +1680,7 @@ async function setupBlindPeer(
     routerKey,
     routerPoolOpts,
     replicationLagThreshold,
-    topK,
-    banIpListKeys,
-    banTimeout
+    topK
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -1719,8 +1693,6 @@ async function setupBlindPeer(
     trustedPubKeys,
     routerKey,
     routerPoolOpts,
-    banIpListKeys,
-    banTimeout,
     wakeupGcTickTime: 100,
     replicationLagThreshold,
     topK
@@ -1780,6 +1752,30 @@ async function setupRouter(t, swarm, blindPeers) {
   await service.ready()
 
   return { storage, store, swarm, router, service }
+}
+
+async function setupPeer(t, bootstrap) {
+  const storage = await tmpDir(t)
+  const swarm = new Hyperswarm({ bootstrap })
+  const store = new Corestore(storage)
+
+  const order = clientCounter++
+  swarm.on('connection', (c) => {
+    if (DEBUG) console.log('(CORE HOLDER) connection opened')
+    store.replicate(c)
+    c.on('error', (e) => {
+      if (DEBUG) console.warn(`Swarm error: ${e.stack}`)
+    })
+  })
+  t.teardown(
+    async () => {
+      await swarm.destroy()
+      await store.close()
+    },
+    { order }
+  )
+
+  return { swarm, store }
 }
 
 async function setupMuxer(t, swarm, store, publicKey) {

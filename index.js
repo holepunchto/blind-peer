@@ -208,7 +208,7 @@ class BlindPeer extends ReadyResource {
       trustedPubKeys,
       routerKey,
       routerPoolOpts,
-      banIpListKeys = [],
+      ipBanListKeys = [],
       banTimeout = 16_000,
       port,
       announcingInterval = 100,
@@ -222,7 +222,7 @@ class BlindPeer extends ReadyResource {
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
     this.store = store || new Corestore(this.rocks, { active: false })
     this.swarm = swarm || null
-    this.banIpLists = banIpListKeys.map((key) => new IpBanList(this.store, { key }))
+    this.ipBanLists = ipBanListKeys.map((key) => new IpBanList(this.store, { key }))
     this.banTimeout = banTimeout
 
     this._port = port || 0
@@ -318,9 +318,9 @@ class BlindPeer extends ReadyResource {
     }
     this.swarm.on('connection', this._onconnection.bind(this))
 
-    await Promise.all(this.banIpLists.map((banIpList) => banIpList.ready()))
+    await Promise.all(this.ipBanLists.map((banIpList) => banIpList.ready()))
     await Promise.all(
-      this.banIpLists.map((banIpList) =>
+      this.ipBanLists.map((banIpList) =>
         this.swarm.join(banIpList.discoveryKey, { server: false, client: true })
       )
     )
@@ -502,7 +502,7 @@ class BlindPeer extends ReadyResource {
 
   async _isBlocked(conn) {
     const checks = await Promise.allSettled(
-      this.banIpLists.map((banIpList) => banIpList.isBanned(conn.rawStream.remoteHost))
+      this.ipBanLists.map((banIpList) => banIpList.isBanned(conn.rawStream.remoteHost))
     )
     return checks.some((check) => check.status === 'fulfilled' && check.value)
   }
