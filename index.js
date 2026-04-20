@@ -318,11 +318,11 @@ class BlindPeer extends ReadyResource {
     }
     this.swarm.on('connection', this._onconnection.bind(this))
 
-    await Promise.all(this.ipBanLists.map((banIpList) => banIpList.ready()))
     await Promise.all(
-      this.ipBanLists.map((banIpList) =>
+      this.ipBanLists.map(async (banIpList) => {
+        await banIpList.ready()
         this.swarm.join(banIpList.discoveryKey, { server: false, client: true })
-      )
+      })
     )
 
     if (this.routerKey) {
@@ -504,6 +504,9 @@ class BlindPeer extends ReadyResource {
     const checks = await Promise.allSettled(
       this.ipBanLists.map((banIpList) => banIpList.isBanned(conn.rawStream.remoteHost))
     )
+    // current behavior:
+    // if banIpList.isBanned throws, treat as not banned
+    // bans can run in parallel across lists, but only the original banner can unban
     return checks.some((check) => check.status === 'fulfilled' && check.value)
   }
 
