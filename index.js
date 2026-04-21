@@ -210,7 +210,8 @@ class BlindPeer extends ReadyResource {
       announcingInterval = 100,
       wakeupGcTickTime = null,
       replicationLagThreshold = 100,
-      topK = {}
+      topK = {},
+      enableDedup = false
     } = {}
   ) {
     super()
@@ -240,6 +241,8 @@ class BlindPeer extends ReadyResource {
     this.routerKey = routerKey || null
     this.routerPoolOpts = routerPoolOpts || {}
     this.routerPool = null
+
+    this.dedups = enableDedup ? new Set() : null
 
     this.stats = {
       bytesGcd: 0,
@@ -626,6 +629,21 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onaddcores(stream, request) {
+    if (this.dedups) {
+      const dedupId = request.referrer
+        ? IdEnc.normalize(stream.remotePublicKey) + IdEnc.normalize(request.referrer)
+        : null
+      if (dedupId && this.dedups.has(dedupId)) return
+
+      if (dedupId) {
+        this.dedups.add(dedupId)
+        setTimeout(() => {
+          if (this.closing) return
+          this.dedups.delete(dedupId)
+        }, 30_000).unref()
+      }
+    }
+
     this.stats.addCoresRx++
 
     const { cores, referrer } = request
