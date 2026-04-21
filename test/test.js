@@ -13,6 +13,8 @@ const IdEnc = require('hypercore-id-encoding')
 const ProtomuxRPCRouter = require('protomux-rpc-router')
 const BlindPeerRouter = require('blind-peer-router')
 const crypto = require('hypercore-crypto')
+const HyperDHTAddress = require('hyperdht-address')
+
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
@@ -161,6 +163,93 @@ test('client can use a blind-peer to add an autobase', async (t) => {
 
     t.is(addedKeys.size, 0, 'no keys were added in the second run')
   }
+})
+
+test('client can use hyperdht addresses to add a core', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { blindPeer: blindPeer2 } = await setupBlindPeer(t, bootstrap)
+  await blindPeer2.listen()
+  await blindPeer2.swarm.flush()
+
+  const { blindPeer: blindPeer3 } = await setupBlindPeer(t, bootstrap)
+  await blindPeer3.listen()
+  await blindPeer2.swarm.flush()
+
+  const addedToAll = Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    once(blindPeer2, 'add-cores-done'),
+    once(blindPeer3, 'add-cores-done')
+  ])
+
+  let coreKey = null
+  let client = null
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  // test both str and buffer keys, as well as the new style
+  client = new Client(swarm.dht, store, {
+    pick: 3,
+    keys: [
+      blindPeer2.publicKey.toString('hex'),
+      blindPeer3.publicKey,
+      HyperDHTAddress.encode(blindPeer.publicKey, bootstrap)
+    ]
+  })
+  coreKey = core.key
+  client.addCoreBackground(core)
+
+  await addedToAll
+  t.pass('added the core to all blind peers')
+
+  // TODO: expose an event in blind-peer which allows us to detect
+  // when a core has updated
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await client.close()
+  await swarm.destroy() // So the core holder stops announcing the core
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    // TODO: revert to flushing when swarm.flush issue solved
+    // await swarm.flush()
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const block = await core.get(1)
+    t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
+  }
+})
+
+test('client only acceps valid keys', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const aaa = b4a.from('a'.repeat(64), 'hex')
+  const bbb = b4a.from('b'.repeat(64), 'hex')
+  const validKeys = [HyperDHTAddress.encode(aaa, bootstrap), bbb, 'c'.repeat(64)]
+
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: validKeys })
+  t.alike(
+    new Set(client.keys),
+    new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]),
+    'uses expected keys'
+  )
+  t.alike(
+    new Set(client.keys),
+    new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]),
+    'uses expected keys'
+  )
+
+  t.exception(() => new Client(swarm.dht, store, { keys: [...validKeys, 'a'.repeat(63)] }))
+  t.exception(
+    () => new Client(swarm.dht, store, { keys: [...validKeys, b4a.from('a'.repeat(63))] })
+  )
 })
 
 test('adding autobase cores only results in replication sessions if there are length differences', async (t) => {
