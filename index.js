@@ -500,14 +500,16 @@ class BlindPeer extends ReadyResource {
     })
   }
 
-  async _isBlocked(conn) {
-    const checks = await Promise.allSettled(
-      this.ipBanLists.map((banIpList) => banIpList.isBanned(conn.rawStream.remoteHost))
-    )
+  _isBlocked(conn) {
     // current behavior:
-    // if banIpList.isBanned throws, treat as not banned
+    // as we do simple check ban
     // bans can run in parallel across lists, but only the original banner can unban
-    return checks.some((check) => check.status === 'fulfilled' && check.value)
+    for (const ipBanList of this.ipBanLists) {
+      if (ipBanList.isBanned(conn.rawStream.remoteHost)) {
+        return true
+      }
+    }
+    return false
   }
 
   async _timeoutThenThrow() {
@@ -628,7 +630,7 @@ class BlindPeer extends ReadyResource {
 
   async _onaddcore(stream, record) {
     if (!this.opened) await this.ready()
-    if (await this._isBlocked(stream)) {
+    if (this._isBlocked(stream)) {
       this.emit('connection-banned', stream)
       await this._timeoutThenThrow()
     }
@@ -672,7 +674,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onaddcores(stream, request) {
-    if (await this._isBlocked(stream)) {
+    if (this._isBlocked(stream)) {
       this.emit('connection-banned', stream)
       throw new Error('Timed out')
     }
@@ -784,7 +786,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _ondeletecore(stream, { key }) {
-    if (await this._isBlocked(stream)) {
+    if (this._isBlocked(stream)) {
       this.emit('connection-banned', stream)
       await this._timeoutThenThrow()
     }

@@ -17,7 +17,7 @@
     "hyperdht": "^6.29.0",
     "hyperschema": "^1.10.3",
     "hyperswarm": "^4.13.1",
-    "ip-ban-list": "^0.2.0",
+    "ip-ban-list": "^0.3.0",
     "protomux-rpc": "^1.7.1",
     "protomux-rpc-client": "^2.1.0",
     "protomux-rpc-client-pool": "^2.1.0",
