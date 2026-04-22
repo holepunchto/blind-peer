@@ -1,15 +1,19 @@
 ## test-netns (Linux-only, advanced)
 
-This suite verifies remote-IP top-k accounting using Linux network namespaces.
+This suite verifies remote-IP top-k accounting and IP ban-list behavior using
+Linux network namespaces.
 It only runs on Linux and requires root privileges to create namespaces and to
 execute clients inside them.
 
 ### What this tests
 
-- `blind_peer_add_cores_top5_by_remote_ip`: verifies that remote IPs are tracked
-  independently, using four isolated namespaces with distinct IPs.
-- Top-k accounting: with namespace request counts `1, 2, 3, 4` and `k = 3`, the
-  top-k sum should be `2 + 3 + 4 = 9`.
+- `test-netns/top-k-ip.test.js`: `blind_peer_add_cores_top5_by_remote_ip`:
+  verifies that remote IPs are tracked independently, using four isolated
+  namespaces with distinct IPs. Top-k accounting: with namespace request counts
+  `1, 2, 3, 4` and `k = 3`, the top-k sum should be `2 + 3 + 4 = 9`.
+- `test-netns/ip-ban-list.test.js`: verifies `banIpListKeys` behavior with
+  multiple ban-list feeds, ensuring different namespace IPs can be banned while
+  non-banned namespace IPs still complete requests.
 
 ### How it works
 
