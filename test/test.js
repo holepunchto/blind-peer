@@ -7,14 +7,16 @@ const b4a = require('b4a')
 const Client = require('blind-peering')
 const BlindPeerMuxer = require('blind-peer-muxer')
 const Hyperswarm = require('hyperswarm')
+const HyperDHT = require('hyperdht')
 const promClient = require('bare-prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
+const ProtomuxRPC = require('protomux-rpc')
 const ProtomuxRPCRouter = require('protomux-rpc-router')
 const BlindPeerRouter = require('blind-peer-router')
 const crypto = require('hypercore-crypto')
 const HyperDHTAddress = require('hyperdht-address')
-
+const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodings')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
@@ -1629,6 +1631,81 @@ test('resolve-peers-error emitted when router is unreachable', async (t) => {
   )
 })
 
+test('trusted peers can query top-k over admin RPC', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const adminKeyPair = crypto.keyPair()
+  const referrer = store.get({ name: 'referrer' })
+  await referrer.ready()
+  await referrer.append('referrer block')
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    topK: {
+      bucketCount: 2,
+      bucketTime: 50,
+      k: 5
+    },
+    trustedPubKeys: [adminKeyPair.publicKey]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    client.addCore(core, { referrer: referrer.key })
+  ])
+  await Promise.all([
+    once(blindPeer.topKByPeer, 'rotated'),
+    once(blindPeer.topKByReferrer, 'rotated'),
+    once(blindPeer.topKByIp, 'rotated')
+  ])
+
+  const adminClient = await setupAdminClient(t, {
+    bootstrap,
+    serverPublicKey: blindPeer.publicKey,
+    keyPair: adminKeyPair
+  })
+  const response = await adminClient.request('query-top-k', null, AdminQueryTopKEncoding)
+
+  t.alike(response.peerPublicKey, blindPeer.topKByPeer.topK)
+  t.alike(response.referrer, blindPeer.topKByReferrer.topK)
+  t.alike(response.ip, blindPeer.topKByIp.topK)
+})
+
+test('untrusted peers cannot query top-k over admin RPC', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const nonAdminKeyPair = crypto.keyPair()
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [IdEnc.decode('a'.repeat(64))]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const adminClient = await setupAdminClient(t, {
+    bootstrap,
+    serverPublicKey: blindPeer.publicKey,
+    keyPair: nonAdminKeyPair
+  })
+
+  try {
+    await adminClient.request('query-top-k', null, AdminQueryTopKEncoding)
+    t.fail('expected query-top-k to reject an untrusted peer')
+  } catch (e) {
+    t.is(
+      e.cause.message,
+      'Only trusted peers can query top-k',
+      'query-top-k rejects untrusted admin RPC requests'
+    )
+  }
+})
+
 async function setupCoreHolder(t, bootstrap) {
   const { swarm, store } = await setupPeer(t, bootstrap)
 
@@ -1686,6 +1763,7 @@ async function setupBlindPeer(
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
+  const adminRouter = new ProtomuxRPCRouter()
   const peer = new BlindPeer(storage, {
     swarm,
     maxBytes,
@@ -1695,7 +1773,8 @@ async function setupBlindPeer(
     routerPoolOpts,
     wakeupGcTickTime: 100,
     replicationLagThreshold,
-    topK
+    topK,
+    adminRouter
   })
 
   const order = clientCounter++
@@ -1715,6 +1794,24 @@ async function setupBlindPeer(
   }
 
   return { blindPeer: peer, storage }
+}
+
+async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
+  const dht = new HyperDHT({ bootstrap, keyPair })
+  t.teardown(() => dht.destroy(), { order: 4000 })
+
+  const stream = dht.connect(serverPublicKey)
+  stream.on('error', () => {})
+  await stream.opened
+
+  const rpc = new ProtomuxRPC(stream, {
+    id: ADMIN_CHANNEL_ID,
+    valueEncoding: null
+  })
+
+  await rpc.fullyOpened()
+
+  return rpc
 }
 
 async function getTestnet(t) {
@@ -1785,7 +1882,7 @@ async function setupMuxer(t, swarm, store, publicKey) {
   const muxer = new BlindPeerMuxer(stream)
   const order = clientCounter++
   t.teardown(
-    async () => {
+    () => {
       muxer.close()
       stream.destroy()
     },
