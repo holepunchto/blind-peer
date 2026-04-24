@@ -1678,7 +1678,7 @@ test('trusted peers can query top-k over admin RPC', async (t) => {
   t.alike(response.ip, blindPeer.topKByIp.topK)
 })
 
-test('non-trusted peers cannot query top-k over admin RPC', async (t) => {
+test('untrusted peers cannot query top-k over admin RPC', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const nonAdminKeyPair = crypto.keyPair()
 
@@ -1694,9 +1694,16 @@ test('non-trusted peers cannot query top-k over admin RPC', async (t) => {
     keyPair: nonAdminKeyPair
   })
 
-  await t.exception(async () => {
+  try {
     await adminClient.request('query-top-k', null, AdminQueryTopKEncoding)
-  }, 'non-trusted admin RPC query-top-k request rejects')
+    t.fail('expected query-top-k to reject an untrusted peer')
+  } catch (e) {
+    t.is(
+      e.cause.message,
+      'Only trusted peers can query top-k',
+      'query-top-k rejects untrusted admin RPC requests'
+    )
+  }
 })
 
 async function setupCoreHolder(t, bootstrap) {
