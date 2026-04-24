@@ -15,6 +15,8 @@ const IdEnc = require('hypercore-id-encoding')
 const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
 const ProtomuxRpcClient = require('protomux-rpc-client')
 const {
+  ADMIN_CHANNEL_ID,
+  AdminQueryTopKEncoding,
   AddCoreEncoding,
   DeleteCoreEncoding,
   RouterResolvePeersRequest,
@@ -210,7 +212,8 @@ class BlindPeer extends ReadyResource {
       announcingInterval = 100,
       wakeupGcTickTime = null,
       replicationLagThreshold = 100,
-      topK = {}
+      topK = {},
+      adminRouter = null
     } = {}
   ) {
     super()
@@ -240,6 +243,7 @@ class BlindPeer extends ReadyResource {
     this.routerKey = routerKey || null
     this.routerPoolOpts = routerPoolOpts || {}
     this.routerPool = null
+    this.adminRouter = adminRouter
 
     this.stats = {
       bytesGcd: 0,
@@ -262,6 +266,23 @@ class BlindPeer extends ReadyResource {
     this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k, peerThreshold)
     this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k, referrerThreshold)
     this.topKByIp = new TopKWindow(bucketCount, bucketTime, k, null) // we do not want to expose the ip spike
+
+    if (this.adminRouter) {
+      this.adminRouter.use({
+        onrequest: (ctx, next) => {
+          if (!this._isTrustedPeer(ctx.connection.remotePublicKey)) {
+            throw new Error('Only trusted peers can query top-k')
+          }
+
+          return next()
+        }
+      })
+      this.adminRouter.method(
+        'query-top-k',
+        AdminQueryTopKEncoding,
+        this._onadminquerytopk.bind(this)
+      )
+    }
   }
 
   get encryptionPublicKey() {
@@ -286,6 +307,15 @@ class BlindPeer extends ReadyResource {
 
   _isTrustedPeer(key) {
     return this.trustedPubKeys.has(IdEnc.normalize(key))
+  }
+
+  _onadminquerytopk() {
+    return {
+      version: 1,
+      ip: this.topKByIp.topK,
+      referrer: this.topKByReferrer.topK,
+      peerPublicKey: this.topKByPeer.topK
+    }
   }
 
   async _open() {
@@ -319,6 +349,7 @@ class BlindPeer extends ReadyResource {
     await this.topKByPeer.ready()
     await this.topKByReferrer.ready()
     await this.topKByIp.ready()
+    if (this.adminRouter) await this.adminRouter.ready()
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -467,6 +498,7 @@ class BlindPeer extends ReadyResource {
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
+    if (this.adminRouter) this.adminRouter.handleConnection(conn, ADMIN_CHANNEL_ID)
 
     const self = this
     BlindPeerMuxer.pair(conn, function () {
@@ -783,6 +815,7 @@ class BlindPeer extends ReadyResource {
       await this.routerPool.destroy()
       await this.routerPool.statelessRpc.close()
     }
+    if (this.adminRouter) await this.adminRouter.close()
     clearInterval(this.flushInterval)
     await this.topKByPeer.close()
     await this.topKByReferrer.close()

@@ -6,7 +6,7 @@
   "dependencies": {
     "autobase": "^7.0.18",
     "b4a": "^1.6.7",
-    "blind-peer-encodings": "file:../blind-peer-encodings",
+    "blind-peer-encodings": "^3.3.0",
     "blind-peer-muxer": "^1.0.0",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.4.4",
@@ -73,9 +73,5 @@
       "bare": "bare-prom-client",
       "default": "prom-client"
     }
-  },
-  "exports": {
-    ".": "./index.js",
-    "./admin-rpc": "./lib/admin-rpc.js"
   }
 }

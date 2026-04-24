@@ -18,7 +18,6 @@ const crypto = require('hypercore-crypto')
 const HyperDHTAddress = require('hyperdht-address')
 const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodings')
 const BlindPeer = require('..')
-const BlindPeerAdminRpc = require('../lib/admin-rpc.js')
 const TopKWindow = require('../lib/top-k.js')
 
 const DEBUG = false
@@ -1632,7 +1631,7 @@ test('resolve-peers-error emitted when router is unreachable', async (t) => {
   )
 })
 
-test('admin keys can query top-k over admin RPC', async (t) => {
+test('trusted peers can query top-k over admin RPC', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -1646,9 +1645,9 @@ test('admin keys can query top-k over admin RPC', async (t) => {
       bucketCount: 2,
       bucketTime: 50,
       k: 5
-    }
+    },
+    trustedPubKeys: [adminKeyPair.publicKey]
   })
-  await setupAdminRpc(t, blindPeer, { adminKeys: [adminKeyPair.publicKey] })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -1674,17 +1673,18 @@ test('admin keys can query top-k over admin RPC', async (t) => {
   })
   const response = await adminClient.request('query-top-k', null, AdminQueryTopKEncoding)
 
-  t.alike(response.key, blindPeer.topKByPeer.topK)
+  t.alike(response.peerPublicKey, blindPeer.topKByPeer.topK)
   t.alike(response.referrer, blindPeer.topKByReferrer.topK)
   t.alike(response.ip, blindPeer.topKByIp.topK)
 })
 
-test('non-admin peers cannot query top-k over admin RPC', async (t) => {
+test('non-trusted peers cannot query top-k over admin RPC', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const nonAdminKeyPair = crypto.keyPair()
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await setupAdminRpc(t, blindPeer, { adminKeys: [IdEnc.decode('a'.repeat(64))] })
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [IdEnc.decode('a'.repeat(64))]
+  })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
@@ -1696,7 +1696,7 @@ test('non-admin peers cannot query top-k over admin RPC', async (t) => {
 
   await t.exception(async () => {
     await adminClient.request('query-top-k', null, AdminQueryTopKEncoding)
-  }, 'non-admin admin RPC query-top-k request rejects')
+  }, 'non-trusted admin RPC query-top-k request rejects')
 })
 
 async function setupCoreHolder(t, bootstrap) {
@@ -1756,6 +1756,7 @@ async function setupBlindPeer(
   if (!storage) storage = await tmpDir(t)
 
   const swarm = new Hyperswarm({ bootstrap })
+  const adminRouter = new ProtomuxRPCRouter()
   const peer = new BlindPeer(storage, {
     swarm,
     maxBytes,
@@ -1765,7 +1766,8 @@ async function setupBlindPeer(
     routerPoolOpts,
     wakeupGcTickTime: 100,
     replicationLagThreshold,
-    topK
+    topK,
+    adminRouter
   })
 
   const order = clientCounter++
@@ -1785,22 +1787,6 @@ async function setupBlindPeer(
   }
 
   return { blindPeer: peer, storage }
-}
-
-async function setupAdminRpc(t, blindPeer, { adminKeys = [] } = {}) {
-  const adminRpcRouter = new ProtomuxRPCRouter()
-  const adminRpc = new BlindPeerAdminRpc(blindPeer.swarm, adminRpcRouter, adminKeys, {
-    ip: blindPeer.topKByIp,
-    referrer: blindPeer.topKByReferrer,
-    key: blindPeer.topKByPeer
-  })
-
-  const order = clientCounter++
-  t.teardown(() => adminRpc.close(), { order })
-
-  await adminRpc.ready()
-
-  return adminRpc
 }
 
 async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
