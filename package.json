@@ -8,7 +8,7 @@
     "b4a": "^1.6.7",
     "blind-peer-encodings": "^3.3.0",
     "blind-peer-muxer": "^1.0.0",
-    "compact-encoding": "^2.16.0",
+    "compact-encoding": "^3.0.0",
     "corestore": "^7.4.4",
     "hypercore": "^11.26.0",
     "hypercore-crypto": "^3.5.0",
