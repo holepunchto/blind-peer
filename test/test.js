@@ -1762,10 +1762,9 @@ async function setupBlindPeer(
 ) {
   if (!storage) storage = await tmpDir(t)
 
-  const swarm = new Hyperswarm({ bootstrap })
   const adminRouter = new ProtomuxRPCRouter()
   const peer = new BlindPeer(storage, {
-    swarm,
+    bootstrap,
     maxBytes,
     enableGc,
     trustedPubKeys,
@@ -1781,7 +1780,6 @@ async function setupBlindPeer(
   t.teardown(
     async () => {
       await peer.close()
-      await swarm.destroy()
     },
     { order }
   )
