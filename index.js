@@ -213,6 +213,7 @@ class BlindPeer extends ReadyResource {
       ipBanListKeys = [],
       banTimeout = 16_000,
       port,
+      bootstrap = null,
       announcingInterval = 100,
       wakeupGcTickTime = null,
       replicationLagThreshold = 100,
@@ -230,6 +231,7 @@ class BlindPeer extends ReadyResource {
     this.banTimeout = banTimeout
 
     this._port = port || 0
+    this.bootstrap = bootstrap
     this.announcingInterval = announcingInterval
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
@@ -341,7 +343,7 @@ class BlindPeer extends ReadyResource {
     this.store.watch(this._oncoreopen.bind(this))
 
     if (this.swarm === null) {
-      const swarmOpts = { keyPair: this.db.swarmingKeyPair }
+      const swarmOpts = { keyPair: this.db.swarmingKeyPair, bootstrap: this.bootstrap }
       if (this._port) {
         swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
       }
