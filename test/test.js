@@ -585,7 +585,7 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
-test.solo('re-adding a partially gc-d core does not reactivate it', async (t) => {
+test('re-adding a partially gc-d core does not reactivate it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc: true, maxBytes: 1 })
@@ -628,6 +628,45 @@ test.solo('re-adding a partially gc-d core does not reactivate it', async (t) =>
   await core.append('New block')
   await Promise.all([once(blindPeer, 'add-cores-done'), newClient.addCore(core)])
   t.is(blindPeer.stats.activations, 2, 'new block make core activate again')
+})
+
+test.solo('regression on dedup on blind-peering.addCore dedup', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc: true, maxBytes: 1 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const seedClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), seedClient.addCore(core)])
+
+  t.is(blindPeer.stats.activations, 1, 'sanity check: initial add activated core')
+
+  const mirroredCore = blindPeer.store.get({ key: core.key })
+  await mirroredCore.ready()
+
+  // wait for mirrored core on blind-peer to finished download
+  await new Promise((resolve) => {
+    mirroredCore.on('download', () => {
+      if (mirroredCore.length === core.length) {
+        resolve()
+      }
+    })
+  })
+
+  await seedClient.close()
+
+  const newClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => await newClient.close(), { order: 0 })
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), newClient.addCore(core)])
+  t.is(blindPeer.stats.activations, 1, 'unchanged core does not activate again')
+
+  await core.append('New block')
+  await Promise.all([once(blindPeer, 'add-cores-done'), newClient.addCore(core)])
+  t.is(blindPeer.stats.activations, 2, 'new block should make core activate again')
 })
 
 test('can gc core that is not currently active', async (t) => {
