@@ -748,8 +748,6 @@ class BlindPeer extends ReadyResource {
         announce: request.announce,
         priority,
         referrer,
-        ownLength: 0, // set later
-        ownContigLength: 0, // set later
         needsActivation: false // changed later if needed
       })
     }
@@ -777,10 +775,19 @@ class BlindPeer extends ReadyResource {
           referrer: entry.referrer
         })
       } else {
-        entry.ownLength = storageInfo.head?.length || 0
-        entry.ownContigLength = storageInfo.hints?.contiguousLength || 0
-        if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
-        if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
+        const ownLength = storageInfo.head?.length || 0
+        if (ownLength !== entry.remoteLength) {
+          entry.needsActivation = true
+        } else {
+          const record = await this.db.getCoreRecord(entry.key)
+          const blocksCleared = record ? record.blocksCleared : 0
+          if (blocksCleared < entry.remoteLength) {
+            const core = this.store.get({ key: entry.key })
+            await core.ready()
+
+            entry.needsActivation = !(await core.has(blocksCleared, entry.remoteLength))
+          }
+        }
       }
     }
 

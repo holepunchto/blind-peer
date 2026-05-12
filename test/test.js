@@ -585,6 +585,51 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
+test.solo('re-adding a partially gc-d core does not reactivate it', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc: true, maxBytes: 1 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const seedClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), seedClient.addCore(core)])
+
+  t.is(blindPeer.stats.activations, 1, 'sanity check: initial add activated core')
+
+  const mirroredCore = blindPeer.store.get({ key: core.key })
+  await mirroredCore.ready()
+
+  await new Promise((resolve) => {
+    mirroredCore.on('download', () => {
+      if (mirroredCore.length === core.length) {
+        resolve()
+      }
+    })
+  })
+
+  await seedClient.close()
+
+  // flush to trigger gc
+  await blindPeer.flush()
+
+  const record = await blindPeer.db.getCoreRecord(core.key)
+  t.is(record.bytesAllocated, 0, 'sanity check: core data was gc-d')
+  t.is(record.blocksCleared, core.length, 'sanity check: all current blocks were cleared')
+
+  const newClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => await newClient.close(), { order: 0 })
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), newClient.addCore(core)])
+  t.is(blindPeer.stats.activations, 1, 'unchanged gc-d core was not activated again')
+
+  await core.append('New block')
+  await Promise.all([once(blindPeer, 'add-cores-done'), newClient.addCore(core)])
+  t.is(blindPeer.stats.activations, 2, 'new block make core activate again')
+})
+
 test('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
