@@ -785,7 +785,10 @@ class BlindPeer extends ReadyResource {
             const core = this.store.get({ key: entry.key })
             await core.ready()
 
-            entry.needsActivation = !(await core.has(blocksCleared, entry.remoteLength))
+            entry.needsActivation = core.core.bitfield.hasUnset(
+              blocksCleared,
+              entry.remoteLength - blocksCleared
+            )
           }
         }
       }

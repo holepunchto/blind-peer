@@ -585,16 +585,16 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
-test('re-adding a partially gc-d core does not reactivate it', async (t) => {
+test.solo('re-adding a partially gc-d core does not reactivate it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc: true, maxBytes: 1 })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const { core, swarm: seedSwarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const seedClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  const seedClient = new Client(seedSwarm.dht, store, { keys: [blindPeer.publicKey] })
   await Promise.all([once(blindPeer, 'add-cores-done'), seedClient.addCore(core)])
 
   t.is(blindPeer.stats.activations, 1, 'sanity check: initial add activated core')
@@ -611,6 +611,7 @@ test('re-adding a partially gc-d core does not reactivate it', async (t) => {
   })
 
   await seedClient.close()
+  await seedSwarm.destroy()
 
   // flush to trigger gc
   await blindPeer.flush()
@@ -619,18 +620,33 @@ test('re-adding a partially gc-d core does not reactivate it', async (t) => {
   t.is(record.bytesAllocated, 0, 'sanity check: core data was gc-d')
   t.is(record.blocksCleared, core.length, 'sanity check: all current blocks were cleared')
 
-  const newClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  t.teardown(async () => await newClient.close(), { order: 0 })
+  {
+    const dht = new HyperDHT({ bootstrap })
+    const client = new Client(dht, store, { keys: [blindPeer.publicKey] })
+    t.teardown(async () => await client.close(), { order: 0 })
 
-  await Promise.all([once(blindPeer, 'add-cores-done'), newClient.addCore(core)])
-  t.is(blindPeer.stats.activations, 1, 'unchanged gc-d core was not activated again')
+    await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+    t.is(blindPeer.stats.activations, 1, 'unchanged gc-d core was not activated again')
 
-  await core.append('New block')
-  await Promise.all([once(blindPeer, 'add-cores-done'), newClient.addCore(core)])
-  t.is(blindPeer.stats.activations, 2, 'new block make core activate again')
+    await client.close()
+    await dht.destroy()
+  }
+
+  {
+    const dht = new HyperDHT({ bootstrap })
+    const client = new Client(dht, store, { keys: [blindPeer.publicKey] })
+    t.teardown(async () => await client.close(), { order: 0 })
+
+    await core.append('New block')
+    await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+    t.is(blindPeer.stats.activations, 2, 'new block make core activate again')
+
+    await client.close()
+    await dht.destroy()
+  }
 })
 
-test.solo('regression on dedup on blind-peering.addCore dedup', async (t) => {
+test('regression on dedup on blind-peering.addCore dedup', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc: true, maxBytes: 1 })
