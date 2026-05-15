@@ -55,6 +55,8 @@ class CoreTracker {
   }
 
   _onupdate() {
+    if (this.blindPeer.closing) return
+
     this.updated = true
     if (!this.record) return
 
@@ -65,6 +67,8 @@ class CoreTracker {
   }
 
   _onactive() {
+    if (this.blindPeer.closing) return
+
     this.activated = true
 
     if (this.record) {
@@ -626,6 +630,7 @@ class BlindPeer extends ReadyResource {
     let activeSession = null
 
     core.on('append', () => {
+      if (this.closing) return
       const replicationLag = core.length - core.contiguousLength
       if (!activeSession.isClient && replicationLag > this.replicationLagThreshold) {
         activeSession.refresh({ server: true, client: true })
@@ -635,6 +640,7 @@ class BlindPeer extends ReadyResource {
       this.emit('core-append', core)
     })
     core.on('download', () => {
+      if (this.closing) return
       const replicationLag = core.length - core.contiguousLength
       if (replicationLag === 0) {
         if (activeSession.isClient) {
