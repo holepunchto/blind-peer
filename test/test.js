@@ -687,6 +687,63 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
   }
 })
 
+test.solo('announced blind peers replicate core updates between each other', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { blindPeer: blindPeer1 } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
+  })
+  await blindPeer1.listen()
+
+  const { blindPeer: blindPeer2 } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
+  })
+  await blindPeer2.listen()
+
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer1.publicKey, blindPeer2.publicKey]
+  })
+
+  await Promise.all([
+    once(blindPeer1, 'add-cores-done'),
+    once(blindPeer2, 'add-cores-done'),
+    client.addCore(core, { announce: true, pick: 2 })
+  ])
+
+  const blindPeerCore1 = blindPeer1.store.get({ key: core.key })
+  const blindPeerCore2 = blindPeer2.store.get({ key: core.key })
+  await Promise.all([blindPeerCore1.ready(), blindPeerCore2.ready()])
+
+  // wait a while for core to get replicated
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
+  t.is(blindPeerCore1.length, core.length, 'first blind peer has the latest core length')
+  t.is(blindPeerCore2.length, core.length, 'second blind peer has the latest core length')
+
+  await client.close()
+  await swarm.destroy()
+
+  const dht = new HyperDHT({ bootstrap })
+  t.teardown(async () => {
+    await dht.destroy()
+  })
+
+  const client2 = new Client(dht, store, { keys: [blindPeer1.publicKey] })
+  t.teardown(async () => {
+    await client2.close()
+  })
+  await core.append('Block 2')
+  await client2.addCore(core, { announce: false })
+
+  // wait a while for core to get replicated
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
+  t.is(blindPeerCore1.length, core.length, 'first blind peer has the latest core length')
+  t.is(blindPeerCore2.length, core.length, 'second blind peer has the latest core length')
+})
+
 test('Untrusted peers cannot set announce: true', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
