@@ -98,9 +98,7 @@ class CoreTracker {
   }
 
   async refresh() {
-    if (this.destroyed || this.record)
-
-    await this.core.ready()
+    if (this.destroyed || this.record) await this.core.ready()
     if (this.destroyed) return
 
     this.id = this.core.id
