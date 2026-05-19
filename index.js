@@ -98,6 +98,8 @@ class CoreTracker {
   }
 
   async refresh() {
+    if (this.destroyed || this.record)
+
     await this.core.ready()
     if (this.destroyed) return
 
