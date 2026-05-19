@@ -108,7 +108,7 @@ class CoreTracker {
     if (this.destroyed || this.record || !record) return
 
     this.record = record
-    this.core.download({ start: this.record.blocksCleared, end: -1 })
+    this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
 
     if (this.updated) this._onupdate()
     if (this.activated) this._onactive()
