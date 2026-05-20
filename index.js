@@ -144,6 +144,7 @@ class CoreTracker {
   destroy() {
     if (this.destroyed) return
     this.destroyed = true
+    this.downloadRange.destroy()
   }
 }
 
