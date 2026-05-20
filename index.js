@@ -100,6 +100,7 @@ class CoreTracker {
   async refresh() {
     if (this.destroyed || this.record) return
     await this.core.ready()
+    if (this.destroyed) return
 
     this.id = this.core.id
     this.channel = 'hypercore/alpha##' + b4a.toString(this.core.discoveryKey, 'hex')
