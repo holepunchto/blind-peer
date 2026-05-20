@@ -439,7 +439,7 @@ class BlindPeer extends ReadyResource {
 
       try {
         const tracker = this.activeReplication.get(id)
-        if (!tracker.record) await tracker.refresh()
+        await tracker.refresh()
         const coreBytesCleared = tracker.gc()
         bytesCleared += coreBytesCleared
       } finally {
@@ -576,7 +576,7 @@ class BlindPeer extends ReadyResource {
     await core.ready()
 
     const tracker = this.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
-    if (tracker && !tracker.record) await tracker.refresh()
+    if (tracker) await tracker.refresh()
 
     if (record.announce) {
       await this._announceCore(core.key)
