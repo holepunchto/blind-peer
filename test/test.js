@@ -1103,6 +1103,51 @@ test('client destroys pending timeouts on close', async (t) => {
   t.pass('unless the test run hangs for a really long time, this test passed')
 })
 
+test.solo('client addCore dedups repeated adds but only when needed', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  // We need corestore: false mode to trigger the edge case where neither side activated the core
+  // and it needs re-activation
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 1, 'one add')
+  t.is(client.stats.addCoresTx, 1, 'one tx')
+  t.is(blindPeer.stats.addCoresRx, 1, 'one rx')
+  t.is(blindPeer.stats.activations, 1, 'one activation')
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 1, 'dedups active add')
+  t.is(client.stats.addCoresTx, 1, 'no duplicate tx')
+  t.is(blindPeer.stats.addCoresRx, 1, 'no duplicate rx')
+  t.is(blindPeer.stats.activations, 1, 'no duplicate activation')
+
+  // simulate reconnect
+  await client.suspend()
+  await client.resume()
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 2, 're-adds after reconnect')
+  t.is(client.stats.addCoresTx, 2, 'reconnect tx')
+  t.is(blindPeer.stats.addCoresRx, 2, 'reconnect rx')
+  t.is(blindPeer.stats.activations, 1, 'activation unchanged')
+
+  await core.append('additional block')
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 3, 'adds changed core')
+  t.is(client.stats.addCoresTx, 3, 'changed core tx')
+  t.is(blindPeer.stats.addCoresRx, 3, 'changed core rx')
+  t.is(blindPeer.stats.activations, 2, 'new activation')
+})
+
 test('invalid requests are emitted', async (t) => {
   t.plan(3)
 
@@ -1706,8 +1751,8 @@ test('untrusted peers cannot query top-k over admin RPC', async (t) => {
   }
 })
 
-async function setupCoreHolder(t, bootstrap) {
-  const { swarm, store } = await setupPeer(t, bootstrap)
+async function setupCoreHolder(t, bootstrap, { active }) {
+  const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
   const core = store.get({ name: 'core' })
   await core.append('Block 0')
@@ -1849,10 +1894,10 @@ async function setupRouter(t, swarm, blindPeers) {
   return { storage, store, swarm, router, service }
 }
 
-async function setupPeer(t, bootstrap) {
+async function setupPeer(t, bootstrap, { active }) {
   const storage = await tmpDir(t)
   const swarm = new Hyperswarm({ bootstrap })
-  const store = new Corestore(storage)
+  const store = new Corestore(storage, { active })
 
   const order = clientCounter++
   swarm.on('connection', (c) => {
