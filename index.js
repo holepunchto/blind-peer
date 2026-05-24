@@ -266,7 +266,8 @@ class BlindPeer extends ReadyResource {
       wakeups: 0,
       addCoresRx: 0,
       muxerPaired: 0,
-      muxerErrors: 0
+      muxerErrors: 0,
+      histograms: {}
     }
 
     const {
@@ -490,8 +491,14 @@ class BlindPeer extends ReadyResource {
   }
 
   async flush() {
+    const flushWaitEnd = this.stats.histograms['blind_peer_flush_wait_seconds']?.startTimer()
+
     // not allowed to throw
-    if (!(await this.lock.lock())) return
+    if (!(await this.lock.lock().finally(() => flushWaitEnd?.()))) {
+      return
+    }
+
+    const flushEnd = this.stats.histograms['blind_peer_flush_duration_seconds']?.startTimer()
     try {
       if (this.enableGc && this.needsGc()) await this._gc()
       if (this.db.updated()) await this.db.flush()
@@ -500,6 +507,7 @@ class BlindPeer extends ReadyResource {
       safetyCatch(e)
     } finally {
       this.lock.unlock()
+      flushEnd?.()
     }
   }
 
@@ -1064,6 +1072,15 @@ class BlindPeer extends ReadyResource {
         }
       })
     }
+
+    this.stats.histograms['blind_peer_flush_duration_seconds'] = new promClient.Histogram({
+      name: 'blind_peer_flush_duration_seconds',
+      help: 'Time spent flushing blind-peer state'
+    })
+    this.stats.histograms['blind_peer_flush_wait_seconds'] = new promClient.Histogram({
+      name: 'blind_peer_flush_wait_seconds',
+      help: 'Time spent waiting for the blind-peer flush lock'
+    })
   }
 }
 

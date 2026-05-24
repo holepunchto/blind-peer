@@ -1162,7 +1162,7 @@ test('invalid requests are emitted', async (t) => {
   }
 })
 
-test('Prometheus metrics', async (t) => {
+test.solo('Prometheus metrics', async (t) => {
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
@@ -1230,10 +1230,18 @@ test('Prometheus metrics', async (t) => {
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
 
-  {
-    const getMetricValue = (text, name) => {
-      return parseInt(text.split(name)[3]) // hack
+  const getMetricValue = (text, name) => {
+    const line = text
+      .split('\n')
+      .filter((line) => !line.startsWith('#')) // remove comment lines
+      .find((line) => line.includes(name))
+    if (!line) {
+      throw new Error(`no line matched: ${name}`)
     }
+    return parseFloat(line.split(' ')[1])
+  }
+
+  {
     const metrics = await promClient.register.metrics()
     t.is(getMetricValue(metrics, 'blind_peer_bytes_gcd'), bytesCleared, 'blind_peer_bytes_gcd')
     t.is(getMetricValue(metrics, 'blind_peer_cores_added'), nrCores, 'blind_peer_cores_added')
@@ -1244,6 +1252,18 @@ test('Prometheus metrics', async (t) => {
     )
     t.is(getMetricValue(metrics, 'blind_peer_cores'), nrCores, 'blind_peer_cores')
     t.is(getMetricValue(metrics, 'blind_peer_db_flushes') > 0, true, 'blind_peer_db_flushes')
+  }
+
+  {
+    const metrics = await promClient.register.metrics()
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_wait_seconds_count') > 0)
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_wait_seconds_sum') > 0)
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_wait_seconds_bucket{le="0.05"}') > 0)
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_wait_seconds_bucket{le="+Inf"}') > 0)
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_duration_seconds_count') > 0)
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_duration_seconds_sum') > 0)
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_duration_seconds_bucket{le="0.05"}') > 0)
+    t.ok(getMetricValue(metrics, 'blind_peer_flush_duration_seconds_bucket{le="+Inf"}') > 0)
   }
 
   {
