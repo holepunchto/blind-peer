@@ -1751,7 +1751,7 @@ test('untrusted peers cannot query top-k over admin RPC', async (t) => {
   }
 })
 
-async function setupCoreHolder(t, bootstrap, { active }) {
+async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
   const core = store.get({ name: 'core' })
@@ -1894,7 +1894,7 @@ async function setupRouter(t, swarm, blindPeers) {
   return { storage, store, swarm, router, service }
 }
 
-async function setupPeer(t, bootstrap, { active }) {
+async function setupPeer(t, bootstrap, { active } = {}) {
   const storage = await tmpDir(t)
   const swarm = new Hyperswarm({ bootstrap })
   const store = new Corestore(storage, { active })
