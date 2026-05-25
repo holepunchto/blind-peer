@@ -1751,6 +1751,22 @@ test('untrusted peers cannot query top-k over admin RPC', async (t) => {
   }
 })
 
+test('corestore replication defaults passive, but can be set active', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap)
+    await blindPeer.ready()
+    t.is(blindPeer.store.active, false, 'default passive corestore')
+  }
+
+  {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, { activeCorestore: true })
+    await blindPeer.ready()
+    t.is(blindPeer.store.active, true, 'can set active corestore')
+  }
+})
+
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
@@ -1802,7 +1818,8 @@ async function setupBlindPeer(
     routerKey,
     routerPoolOpts,
     replicationLagThreshold,
-    topK
+    topK,
+    activeCorestore
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -1818,7 +1835,8 @@ async function setupBlindPeer(
     wakeupGcTickTime: 100,
     replicationLagThreshold,
     topK,
-    adminRouter
+    adminRouter,
+    activeCorestore
   })
 
   const order = clientCounter++

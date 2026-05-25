@@ -224,13 +224,14 @@ class BlindPeer extends ReadyResource {
       wakeupGcTickTime = null,
       replicationLagThreshold = 100,
       topK = {},
-      adminRouter = null
+      adminRouter = null,
+      activeCorestore = false
     } = {}
   ) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
-    this.store = store || new Corestore(this.rocks, { active: false })
+    this.store = store || new Corestore(this.rocks, { active: activeCorestore })
     this.swarm = swarm || null
     const ipBanNs = this.store.namespace('ip-ban-lists')
     this.ipBanLists = ipBanListKeys.map((key) => new IpBanList(ipBanNs, { key }))
