@@ -1103,7 +1103,7 @@ test('client destroys pending timeouts on close', async (t) => {
   t.pass('unless the test run hangs for a really long time, this test passed')
 })
 
-test.solo('client addCore dedups repeated adds but only when needed', async (t) => {
+test('client addCore dedups repeated adds but only when needed', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
   // We need corestore: false mode to trigger the edge case where neither side activated the core
