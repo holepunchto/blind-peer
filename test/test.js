@@ -1238,6 +1238,7 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_add_cores_rx 0'), 'blind_peer_add_cores_rx')
     t.ok(metrics.includes('blind_peer_muxer_paired 0'), 'blind_peer_muxer_paired')
     t.ok(metrics.includes('blind_peer_muxer_errors 0'), 'blind_peer_muxer_error')
+    t.ok(metrics.includes('blind_peer_corestore_active 0'), 'blind_peer_corestore_active')
   }
 
   await blindPeer.listen()

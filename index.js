@@ -1066,6 +1066,14 @@ class BlindPeer extends ReadyResource {
           this.set(self.rocks.stats.writeBatches)
         }
       })
+
+      new promClient.Gauge({
+        name: 'blind_peer_corestore_active',
+        help: 'Whether the corestore is active (1) or passive (0)',
+        collect() {
+          this.set(self.store.active ? 1 : 0)
+        }
+      })
     }
   }
 }
