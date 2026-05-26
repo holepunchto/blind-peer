@@ -224,13 +224,14 @@ class BlindPeer extends ReadyResource {
       wakeupGcTickTime = null,
       replicationLagThreshold = 100,
       topK = {},
-      adminRouter = null
+      adminRouter = null,
+      activeCorestore = false
     } = {}
   ) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
-    this.store = store || new Corestore(this.rocks, { active: false })
+    this.store = store || new Corestore(this.rocks, { active: activeCorestore })
     this.swarm = swarm || null
     const ipBanNs = this.store.namespace('ip-ban-lists')
     this.ipBanLists = ipBanListKeys.map((key) => new IpBanList(ipBanNs, { key }))
@@ -1063,6 +1064,14 @@ class BlindPeer extends ReadyResource {
         help: 'The amount of write batches to RocksDB',
         collect() {
           this.set(self.rocks.stats.writeBatches)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_corestore_active',
+        help: 'Whether the corestore is active (1) or passive (0)',
+        collect() {
+          this.set(self.store.active ? 1 : 0)
         }
       })
     }
