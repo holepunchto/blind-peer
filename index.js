@@ -512,6 +512,11 @@ class BlindPeer extends ReadyResource {
       return
     }
 
+    // explicitly replicate ban-list bees, as replication from other blind-peers may use an active:false store
+    for (const banList of this.ipBanLists) {
+      banList.bee.replicate(conn)
+    }
+
     if (this.ownsStore) this.store.replicate(conn)
     if (this.ownsWakeup) this.wakeup.addStream(conn)
 
