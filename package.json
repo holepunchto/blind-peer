@@ -6,8 +6,8 @@
   "dependencies": {
     "autobase": "^7.0.18",
     "b4a": "^1.6.7",
-    "blind-peer-encodings": "^3.2.0",
-    "blind-peer-muxer": "^1.0.0",
+    "blind-peer-encodings": "github:holepunchto/blind-peer-encodings#no-wakeup",
+    "blind-peer-muxer": "github:holepunchto/blind-peer-muxer#no-wakeup",
     "compact-encoding": "^2.16.0",
     "corestore": "^7.4.4",
     "hypercore": "^11.26.0",
