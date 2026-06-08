@@ -18,7 +18,7 @@ const crypto = require('hypercore-crypto')
 const HyperDHTAddress = require('hyperdht-address')
 const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodings')
 const blindPush = require('blind-push')
-const BlindPushGateway = require('../../blind-push-gateway')
+const BlindPushGateway = require('blind-push-gateway')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
@@ -88,10 +88,10 @@ test('client can ask a blind-peer to create and forward a push notification', as
   })
 
   await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
-
-  const sent = once(blindPeer, 'notification-sent')
-  await client.sendNotification(core)
-  await sent
+  await Promise.all([
+    once(blindPeer, 'notification-sent'),
+    client.sendNotification(core, { extra: b4a.from('extra') })
+  ])
 
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
 
@@ -106,7 +106,7 @@ test('client can ask a blind-peer to create and forward a push notification', as
   )
   t.ok(result, 'forwarded payload can be verified')
   t.is(result.version, 0, 'notification version defaults to 0')
-  t.is(result.extra, null, 'notification extra defaults to null')
+  t.alike(result.extra, b4a.from('extra'), 'notification extra')
   t.alike(result.result.key, core.key, 'verified payload targets the sender core')
   t.is(result.result.block.index, core.length - 1, 'verified payload contains the latest block')
   t.is(blindPeer.stats.notificationsRx, 1, 'blind-peer notification rx stat')

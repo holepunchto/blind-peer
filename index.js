@@ -929,7 +929,7 @@ class BlindPeer extends ReadyResource {
 
     await this.gatewayPool.makeRequest(
       'forward-push',
-      { payload },
+      { payload, appId: request.appId },
       {
         requestEncoding: ForwardPushRequest,
         responseEncoding: c.none
@@ -947,9 +947,7 @@ class BlindPeer extends ReadyResource {
     if (this.gatewayPool) {
       await this.gatewayPool.destroy()
     }
-    if (this.rpcClient) {
-      await this.rpcClient.close()
-    }
+    await this.rpcClient.close()
     if (this.adminRouter) await this.adminRouter.close()
     clearInterval(this.flushInterval)
     await this.topKByPeer.close()
