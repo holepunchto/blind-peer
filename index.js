@@ -14,7 +14,11 @@ const ScopeLock = require('scope-lock')
 const IdEnc = require('hypercore-id-encoding')
 const ProtomuxRpcClientPool = require('protomux-rpc-client-pool')
 const ProtomuxRpcClient = require('protomux-rpc-client')
+const rrp = require('resolve-reject-promise')
+const IpBanList = require('ip-ban-list')
 const {
+  ADMIN_CHANNEL_ID,
+  AdminQueryTopKEncoding,
   AddCoreEncoding,
   DeleteCoreEncoding,
   RouterResolvePeersRequest,
@@ -51,6 +55,8 @@ class CoreTracker {
   }
 
   _onupdate() {
+    if (this.blindPeer.closing) return
+
     this.updated = true
     if (!this.record) return
 
@@ -61,6 +67,8 @@ class CoreTracker {
   }
 
   _onactive() {
+    if (this.blindPeer.closing) return
+
     this.activated = true
 
     if (this.record) {
@@ -90,6 +98,7 @@ class CoreTracker {
   }
 
   async refresh() {
+    if (this.destroyed || this.record) return
     await this.core.ready()
     if (this.destroyed) return
 
@@ -100,7 +109,7 @@ class CoreTracker {
     if (this.destroyed || this.record || !record) return
 
     this.record = record
-    this.core.download({ start: this.record.blocksCleared, end: -1 })
+    this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
 
     if (this.updated) this._onupdate()
     if (this.activated) this._onactive()
@@ -136,6 +145,7 @@ class CoreTracker {
   destroy() {
     if (this.destroyed) return
     this.destroyed = true
+    this.downloadRange.destroy()
   }
 }
 
@@ -210,19 +220,29 @@ class BlindPeer extends ReadyResource {
       trustedPubKeys,
       routerKey,
       routerPoolOpts,
+      ipBanListKeys = [],
+      banTimeout = 16_000,
       port,
+      bootstrap = null,
       announcingInterval = 100,
       wakeupGcTickTime = null,
       replicationLagThreshold = 100,
-      topK = {}
+      topK = {},
+      adminRouter = null,
+      activeCorestore = false
     } = {}
   ) {
     super()
 
     this.rocks = typeof rocks === 'string' ? new RocksDB(rocks) : rocks
-    this.store = store || new Corestore(this.rocks, { active: false })
+    this.store = store || new Corestore(this.rocks, { active: activeCorestore })
     this.swarm = swarm || null
+    const ipBanNs = this.store.namespace('ip-ban-lists')
+    this.ipBanLists = ipBanListKeys.map((key) => new IpBanList(ipBanNs, { key }))
+    this.banTimeout = banTimeout
+
     this._port = port || 0
+    this.bootstrap = bootstrap
     this.announcingInterval = announcingInterval
     this.trustedPubKeys = new Set()
     for (const k of trustedPubKeys || []) this.addTrustedPubKey(k)
@@ -244,6 +264,7 @@ class BlindPeer extends ReadyResource {
     this.routerKey = routerKey || null
     this.routerPoolOpts = routerPoolOpts || {}
     this.routerPool = null
+    this.adminRouter = adminRouter
 
     this.stats = {
       bytesGcd: 0,
@@ -265,6 +286,24 @@ class BlindPeer extends ReadyResource {
 
     this.topKByPeer = new TopKWindow(bucketCount, bucketTime, k, peerThreshold)
     this.topKByReferrer = new TopKWindow(bucketCount, bucketTime, k, referrerThreshold)
+    this.topKByIp = new TopKWindow(bucketCount, bucketTime, k, null) // we do not want to expose the ip spike
+
+    if (this.adminRouter) {
+      this.adminRouter.use({
+        onrequest: (ctx, next) => {
+          if (!this._isTrustedPeer(ctx.connection.remotePublicKey)) {
+            throw new Error('Only trusted peers can query top-k')
+          }
+
+          return next()
+        }
+      })
+      this.adminRouter.method(
+        'query-top-k',
+        AdminQueryTopKEncoding,
+        this._onadminquerytopk.bind(this)
+      )
+    }
   }
 
   get encryptionPublicKey() {
@@ -291,6 +330,15 @@ class BlindPeer extends ReadyResource {
     return this.trustedPubKeys.has(IdEnc.normalize(key))
   }
 
+  _onadminquerytopk() {
+    return {
+      version: 1,
+      ip: this.topKByIp.topK,
+      referrer: this.topKByReferrer.topK,
+      peerPublicKey: this.topKByPeer.topK
+    }
+  }
+
   async _open() {
     await this.store.ready()
 
@@ -306,13 +354,20 @@ class BlindPeer extends ReadyResource {
     this.store.watch(this._oncoreopen.bind(this))
 
     if (this.swarm === null) {
-      const swarmOpts = { keyPair: this.db.swarmingKeyPair }
+      const swarmOpts = { keyPair: this.db.swarmingKeyPair, bootstrap: this.bootstrap }
       if (this._port) {
         swarmOpts.port = typeof this._port === 'number' ? [this._port, this._port + 64] : this._port
       }
       this.swarm = new Hyperswarm(swarmOpts)
     }
     this.swarm.on('connection', this._onconnection.bind(this))
+
+    await Promise.all(
+      this.ipBanLists.map(async (banIpList) => {
+        await banIpList.ready()
+        this.swarm.join(banIpList.discoveryKey, { server: false, client: true })
+      })
+    )
 
     if (this.routerKey) {
       const rpcClient = new ProtomuxRpcClient(this.swarm.dht)
@@ -321,6 +376,8 @@ class BlindPeer extends ReadyResource {
 
     await this.topKByPeer.ready()
     await this.topKByReferrer.ready()
+    await this.topKByIp.ready()
+    if (this.adminRouter) await this.adminRouter.ready()
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -389,7 +446,7 @@ class BlindPeer extends ReadyResource {
 
       try {
         const tracker = this.activeReplication.get(id)
-        if (!tracker.record) await tracker.refresh()
+        await tracker.refresh()
         const coreBytesCleared = tracker.gc()
         bytesCleared += coreBytesCleared
       } finally {
@@ -469,6 +526,7 @@ class BlindPeer extends ReadyResource {
 
     rpc.respond('add-core', AddCoreEncoding, this._onaddcore.bind(this, conn))
     rpc.respond('delete-core', DeleteCoreEncoding, this._ondeletecore.bind(this, conn))
+    if (this.adminRouter) this.adminRouter.handleConnection(conn, ADMIN_CHANNEL_ID)
 
     const self = this
     BlindPeerMuxer.pair(conn, function () {
@@ -488,6 +546,36 @@ class BlindPeer extends ReadyResource {
     })
   }
 
+  _isBlocked(conn) {
+    // current behavior:
+    // as we do simple check ban
+    // bans can run in parallel across lists, but only the original banner can unban
+    for (const ipBanList of this.ipBanLists) {
+      if (ipBanList.isBanned(conn.rawStream.remoteHost)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  async _timeoutThenThrow() {
+    const { promise, resolve } = rrp()
+
+    const done = () => {
+      clearTimeout(timer)
+      this.off('close', done)
+      resolve()
+    }
+
+    const timer = setTimeout(done, this.banTimeout)
+    timer.unref()
+
+    this.on('close', done)
+
+    await promise
+    throw new Error('Timed out')
+  }
+
   async _activateCore(stream, record) {
     this.stats.activations++
 
@@ -495,7 +583,7 @@ class BlindPeer extends ReadyResource {
     await core.ready()
 
     const tracker = this.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
-    if (tracker && !tracker.record) await tracker.refresh()
+    if (tracker) await tracker.refresh()
 
     if (record.announce) {
       await this._announceCore(core.key)
@@ -549,6 +637,7 @@ class BlindPeer extends ReadyResource {
     let activeSession = null
 
     core.on('append', () => {
+      if (this.closing) return
       const replicationLag = core.length - core.contiguousLength
       if (!activeSession.isClient && replicationLag > this.replicationLagThreshold) {
         activeSession.refresh({ server: true, client: true })
@@ -558,6 +647,7 @@ class BlindPeer extends ReadyResource {
       this.emit('core-append', core)
     })
     core.on('download', () => {
+      if (this.closing) return
       const replicationLag = core.length - core.contiguousLength
       if (replicationLag === 0) {
         if (activeSession.isClient) {
@@ -588,6 +678,10 @@ class BlindPeer extends ReadyResource {
 
   async _onaddcore(stream, record) {
     if (!this.opened) await this.ready()
+    if (this._isBlocked(stream)) {
+      this.emit('connection-banned', stream)
+      await this._timeoutThenThrow()
+    }
 
     record.priority = Math.min(record.priority, 1) // 2 is reserved for trusted peers
     if (record.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
@@ -628,6 +722,10 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onaddcores(stream, request) {
+    if (this._isBlocked(stream)) {
+      this.emit('connection-banned', stream)
+      throw new Error('Timed out')
+    }
     this.stats.addCoresRx++
 
     const { cores, referrer } = request
@@ -635,6 +733,7 @@ class BlindPeer extends ReadyResource {
       this.topKByReferrer.hit(IdEnc.normalize(referrer))
     }
     this.topKByPeer.hit(IdEnc.normalize(stream.remotePublicKey))
+    this.topKByIp.hit(stream.rawStream.remoteHost)
 
     const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
 
@@ -737,6 +836,10 @@ class BlindPeer extends ReadyResource {
   }
 
   async _ondeletecore(stream, { key }) {
+    if (this._isBlocked(stream)) {
+      this.emit('connection-banned', stream)
+      await this._timeoutThenThrow()
+    }
     if (!this._isTrustedPeer(stream.remotePublicKey)) {
       this.emit('delete-blocked', stream, { key })
       throw new Error('Only trusted peers can delete cores')
@@ -786,9 +889,11 @@ class BlindPeer extends ReadyResource {
       await this.routerPool.destroy()
       await this.routerPool.statelessRpc.close()
     }
+    if (this.adminRouter) await this.adminRouter.close()
     clearInterval(this.flushInterval)
     await this.topKByPeer.close()
     await this.topKByReferrer.close()
+    await this.topKByIp.close()
     if (this.ownsWakeup) this.wakeup.destroy()
     if (this.ownsSwarm) await this.swarm.destroy()
     await this.flush()
@@ -911,6 +1016,13 @@ class BlindPeer extends ReadyResource {
         this.set(self.topKByReferrer.topKSum())
       }
     })
+    new promClient.Gauge({
+      name: 'blind_peer_add_cores_top5_by_remote_ip',
+      help: 'The total number of requests from the top 5 remote IPs in the last minute',
+      collect() {
+        this.set(self.topKByIp.topKSum())
+      }
+    })
     if (self.rocks.stats) {
       new promClient.Gauge({
         // eslint-disable-line no-new
@@ -958,6 +1070,14 @@ class BlindPeer extends ReadyResource {
         help: 'The amount of write batches to RocksDB',
         collect() {
           this.set(self.rocks.stats.writeBatches)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_corestore_active',
+        help: 'Whether the corestore is active (1) or passive (0)',
+        collect() {
+          this.set(self.store.active ? 1 : 0)
         }
       })
     }

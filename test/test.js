@@ -7,12 +7,16 @@ const b4a = require('b4a')
 const Client = require('blind-peering')
 const BlindPeerMuxer = require('blind-peer-muxer')
 const Hyperswarm = require('hyperswarm')
+const HyperDHT = require('hyperdht')
 const promClient = require('bare-prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
+const ProtomuxRPC = require('protomux-rpc')
 const ProtomuxRPCRouter = require('protomux-rpc-router')
 const BlindPeerRouter = require('blind-peer-router')
 const crypto = require('hypercore-crypto')
+const HyperDHTAddress = require('hyperdht-address')
+const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodings')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
@@ -161,6 +165,93 @@ test('client can use a blind-peer to add an autobase', async (t) => {
 
     t.is(addedKeys.size, 0, 'no keys were added in the second run')
   }
+})
+
+test('client can use hyperdht addresses to add a core', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { blindPeer: blindPeer2 } = await setupBlindPeer(t, bootstrap)
+  await blindPeer2.listen()
+  await blindPeer2.swarm.flush()
+
+  const { blindPeer: blindPeer3 } = await setupBlindPeer(t, bootstrap)
+  await blindPeer3.listen()
+  await blindPeer2.swarm.flush()
+
+  const addedToAll = Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    once(blindPeer2, 'add-cores-done'),
+    once(blindPeer3, 'add-cores-done')
+  ])
+
+  let coreKey = null
+  let client = null
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  // test both str and buffer keys, as well as the new style
+  client = new Client(swarm.dht, store, {
+    pick: 3,
+    keys: [
+      blindPeer2.publicKey.toString('hex'),
+      blindPeer3.publicKey,
+      HyperDHTAddress.encode(blindPeer.publicKey, bootstrap)
+    ]
+  })
+  coreKey = core.key
+  client.addCoreBackground(core)
+
+  await addedToAll
+  t.pass('added the core to all blind peers')
+
+  // TODO: expose an event in blind-peer which allows us to detect
+  // when a core has updated
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await client.close()
+  await swarm.destroy() // So the core holder stops announcing the core
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    // TODO: revert to flushing when swarm.flush issue solved
+    // await swarm.flush()
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const block = await core.get(1)
+    t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
+  }
+})
+
+test('client only acceps valid keys', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const aaa = b4a.from('a'.repeat(64), 'hex')
+  const bbb = b4a.from('b'.repeat(64), 'hex')
+  const validKeys = [HyperDHTAddress.encode(aaa, bootstrap), bbb, 'c'.repeat(64)]
+
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: validKeys })
+  t.alike(
+    new Set(client.keys),
+    new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]),
+    'uses expected keys'
+  )
+  t.alike(
+    new Set(client.keys),
+    new Set([aaa, bbb, b4a.from('c'.repeat(64), 'hex')]),
+    'uses expected keys'
+  )
+
+  t.exception(() => new Client(swarm.dht, store, { keys: [...validKeys, 'a'.repeat(63)] }))
+  t.exception(
+    () => new Client(swarm.dht, store, { keys: [...validKeys, b4a.from('a'.repeat(63))] })
+  )
 })
 
 test('adding autobase cores only results in replication sessions if there are length differences', async (t) => {
@@ -1048,6 +1139,51 @@ test('client destroys pending timeouts on close', async (t) => {
   t.pass('unless the test run hangs for a really long time, this test passed')
 })
 
+test('client addCore dedups repeated adds but only when needed', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  // We need corestore: false mode to trigger the edge case where neither side activated the core
+  // and it needs re-activation
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 1, 'one add')
+  t.is(client.stats.addCoresTx, 1, 'one tx')
+  t.is(blindPeer.stats.addCoresRx, 1, 'one rx')
+  t.is(blindPeer.stats.activations, 1, 'one activation')
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 1, 'dedups active add')
+  t.is(client.stats.addCoresTx, 1, 'no duplicate tx')
+  t.is(blindPeer.stats.addCoresRx, 1, 'no duplicate rx')
+  t.is(blindPeer.stats.activations, 1, 'no duplicate activation')
+
+  // simulate reconnect
+  await client.suspend()
+  await client.resume()
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 2, 're-adds after reconnect')
+  t.is(client.stats.addCoresTx, 2, 'reconnect tx')
+  t.is(blindPeer.stats.addCoresRx, 2, 'reconnect rx')
+  t.is(blindPeer.stats.activations, 1, 'activation unchanged')
+
+  await core.append('additional block')
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(client.stats.addCore, 3, 'adds changed core')
+  t.is(client.stats.addCoresTx, 3, 'changed core tx')
+  t.is(blindPeer.stats.addCoresRx, 3, 'changed core rx')
+  t.is(blindPeer.stats.activations, 2, 'new activation')
+})
+
 test('invalid requests are emitted', async (t) => {
   t.plan(3)
 
@@ -1138,6 +1274,7 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_add_cores_rx 0'), 'blind_peer_add_cores_rx')
     t.ok(metrics.includes('blind_peer_muxer_paired 0'), 'blind_peer_muxer_paired')
     t.ok(metrics.includes('blind_peer_muxer_errors 0'), 'blind_peer_muxer_error')
+    t.ok(metrics.includes('blind_peer_corestore_active 0'), 'blind_peer_corestore_active')
   }
 
   await blindPeer.listen()
@@ -1335,7 +1472,8 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   // to prevent them from scheduled into different rotate cycle
   await Promise.all([
     once(blindPeer.topKByPeer, 'rotated'),
-    once(blindPeer.topKByReferrer, 'rotated')
+    once(blindPeer.topKByReferrer, 'rotated'),
+    once(blindPeer.topKByIp, 'rotated')
   ])
 
   const allPromises = []
@@ -1355,7 +1493,11 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   }
 
   // wait for all the add cores to finish and the topK got rotated
-  allPromises.push(once(blindPeer.topKByPeer, 'rotated'), once(blindPeer.topKByReferrer, 'rotated'))
+  allPromises.push(
+    once(blindPeer.topKByPeer, 'rotated'),
+    once(blindPeer.topKByReferrer, 'rotated'),
+    once(blindPeer.topKByIp, 'rotated')
+  )
 
   // wait to ensure all addCores request finished
   await Promise.all(allPromises)
@@ -1366,12 +1508,15 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   }
 
   t.is(getMetricValue('blind_peer_add_cores_rx'), totalRequests, 'tracked add-cores requests')
+  t.is(blindPeer.topKByIp.spikeThreshold, null, 'remote IP top-k does not emit spike alerts')
   t.is(
     getMetricValue('blind_peer_add_cores_top5_by_remote_key'),
     top5Requests,
     'top-5 remote peers'
   )
   t.is(getMetricValue('blind_peer_add_cores_top5_by_referrer'), top5Requests, 'top-5 referrers')
+  // since we're doing simple testing where all requests come from one IP, this is just a sanity check
+  t.is(getMetricValue('blind_peer_add_cores_top5_by_remote_ip'), totalRequests, 'top-5 remote IPs')
 })
 
 test('wakeup', async (t) => {
@@ -1568,8 +1713,99 @@ test('resolve-peers-error emitted when router is unreachable', async (t) => {
   )
 })
 
-async function setupCoreHolder(t, bootstrap) {
-  const { swarm, store } = await setupPeer(t, bootstrap)
+test('trusted peers can query top-k over admin RPC', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const adminKeyPair = crypto.keyPair()
+  const referrer = store.get({ name: 'referrer' })
+  await referrer.ready()
+  await referrer.append('referrer block')
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    topK: {
+      bucketCount: 2,
+      bucketTime: 50,
+      k: 5
+    },
+    trustedPubKeys: [adminKeyPair.publicKey]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    client.addCore(core, { referrer: referrer.key })
+  ])
+  await Promise.all([
+    once(blindPeer.topKByPeer, 'rotated'),
+    once(blindPeer.topKByReferrer, 'rotated'),
+    once(blindPeer.topKByIp, 'rotated')
+  ])
+
+  const adminClient = await setupAdminClient(t, {
+    bootstrap,
+    serverPublicKey: blindPeer.publicKey,
+    keyPair: adminKeyPair
+  })
+  const response = await adminClient.request('query-top-k', null, AdminQueryTopKEncoding)
+
+  t.alike(response.peerPublicKey, blindPeer.topKByPeer.topK)
+  t.alike(response.referrer, blindPeer.topKByReferrer.topK)
+  t.alike(response.ip, blindPeer.topKByIp.topK)
+})
+
+test('untrusted peers cannot query top-k over admin RPC', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const nonAdminKeyPair = crypto.keyPair()
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    trustedPubKeys: [IdEnc.decode('a'.repeat(64))]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const adminClient = await setupAdminClient(t, {
+    bootstrap,
+    serverPublicKey: blindPeer.publicKey,
+    keyPair: nonAdminKeyPair
+  })
+
+  try {
+    await adminClient.request('query-top-k', null, AdminQueryTopKEncoding)
+    t.fail('expected query-top-k to reject an untrusted peer')
+  } catch (e) {
+    t.is(
+      e.cause.message,
+      'Only trusted peers can query top-k',
+      'query-top-k rejects untrusted admin RPC requests'
+    )
+  }
+})
+
+test('corestore replication defaults passive, but can be set active', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap)
+    await blindPeer.ready()
+    t.is(blindPeer.store.active, false, 'default passive corestore')
+  }
+
+  {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, { activeCorestore: true })
+    await blindPeer.ready()
+    t.is(blindPeer.store.active, true, 'can set active corestore')
+  }
+})
+
+async function setupCoreHolder(t, bootstrap, { active } = {}) {
+  const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
   const core = store.get({ name: 'core' })
   await core.append('Block 0')
@@ -1619,14 +1855,15 @@ async function setupBlindPeer(
     routerKey,
     routerPoolOpts,
     replicationLagThreshold,
-    topK
+    topK,
+    activeCorestore
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
 
-  const swarm = new Hyperswarm({ bootstrap })
+  const adminRouter = new ProtomuxRPCRouter()
   const peer = new BlindPeer(storage, {
-    swarm,
+    bootstrap,
     maxBytes,
     enableGc,
     trustedPubKeys,
@@ -1634,14 +1871,15 @@ async function setupBlindPeer(
     routerPoolOpts,
     wakeupGcTickTime: 100,
     replicationLagThreshold,
-    topK
+    topK,
+    adminRouter,
+    activeCorestore
   })
 
   const order = clientCounter++
   t.teardown(
     async () => {
       await peer.close()
-      await swarm.destroy()
     },
     { order }
   )
@@ -1654,6 +1892,24 @@ async function setupBlindPeer(
   }
 
   return { blindPeer: peer, storage }
+}
+
+async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
+  const dht = new HyperDHT({ bootstrap, keyPair })
+  t.teardown(() => dht.destroy(), { order: 4000 })
+
+  const stream = dht.connect(serverPublicKey)
+  stream.on('error', () => {})
+  await stream.opened
+
+  const rpc = new ProtomuxRPC(stream, {
+    id: ADMIN_CHANNEL_ID,
+    valueEncoding: null
+  })
+
+  await rpc.fullyOpened()
+
+  return rpc
 }
 
 async function getTestnet(t) {
@@ -1693,10 +1949,10 @@ async function setupRouter(t, swarm, blindPeers) {
   return { storage, store, swarm, router, service }
 }
 
-async function setupPeer(t, bootstrap) {
+async function setupPeer(t, bootstrap, { active } = {}) {
   const storage = await tmpDir(t)
   const swarm = new Hyperswarm({ bootstrap })
-  const store = new Corestore(storage)
+  const store = new Corestore(storage, { active })
 
   const order = clientCounter++
   swarm.on('connection', (c) => {
@@ -1724,7 +1980,7 @@ async function setupMuxer(t, swarm, store, publicKey) {
   const muxer = new BlindPeerMuxer(stream)
   const order = clientCounter++
   t.teardown(
-    async () => {
+    () => {
       muxer.close()
       stream.destroy()
     },
