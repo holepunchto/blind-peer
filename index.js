@@ -1139,6 +1139,14 @@ class BlindPeer extends ReadyResource {
           this.set(self.store.active ? 1 : 0)
         }
       })
+
+      new promClient.Gauge({
+        name: 'blind_peer_push_notifications_active',
+        help: 'Whether push notifications can be forwarded (1) or not (0)',
+        collect() {
+          this.set(self.gatewayPool?.chosenKey ? 1 : 0)
+        }
+      })
     }
   }
 }

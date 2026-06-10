@@ -1285,6 +1285,7 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_muxer_paired 0'), 'blind_peer_muxer_paired')
     t.ok(metrics.includes('blind_peer_muxer_errors 0'), 'blind_peer_muxer_error')
     t.ok(metrics.includes('blind_peer_corestore_active 0'), 'blind_peer_corestore_active')
+    t.ok(metrics.includes('blind_peer_push_notifications_active 0'), 'blind_peer_push_notifications_active')
   }
 
   await blindPeer.listen()
@@ -1365,6 +1366,19 @@ test('Prometheus metrics', async (t) => {
       return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0]) // hack
     }
   }
+})
+
+test('push notifications stat set active when pool is configured', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { pushGatewayKeys: ['a'.repeat(64)] })
+  blindPeer.registerMetrics(promClient)
+  t.teardown(() => {
+    promClient.register.clear()
+  })
+
+  const metrics = await promClient.register.metrics()
+  t.ok(metrics.includes('blind_peer_push_notifications_active 1'))
 })
 
 test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
