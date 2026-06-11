@@ -1,5 +1,6 @@
 const test = require('brittle')
 const setupTestnet = require('hyperdht/testnet')
+const HyperDHT = require('hyperdht')
 const Corestore = require('corestore')
 const tmpDir = require('test-tmp')
 const { once } = require('events')
@@ -7,7 +8,6 @@ const b4a = require('b4a')
 const Client = require('blind-peering')
 const BlindPeerMuxer = require('blind-peer-muxer')
 const Hyperswarm = require('hyperswarm')
-const HyperDHT = require('hyperdht')
 const promClient = require('bare-prom-client')
 const Autobase = require('autobase')
 const IdEnc = require('hypercore-id-encoding')
@@ -17,6 +17,8 @@ const BlindPeerRouter = require('blind-peer-router')
 const crypto = require('hypercore-crypto')
 const HyperDHTAddress = require('hyperdht-address')
 const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodings')
+const blindPush = require('blind-push')
+const BlindPushGateway = require('blind-push-gateway')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
@@ -66,6 +68,50 @@ test('client can use a blind-peer to add a core', async (t) => {
     const block = await core.get(1)
     t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
   }
+})
+
+test('client can ask a blind-peer to create and forward a push notification', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  await core.setUserData('referrer', core.key)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+  await Promise.all([
+    once(blindPeer, 'notification-sent'),
+    client.sendNotification(core, { extra: b4a.from('extra') })
+  ])
+
+  t.is(sentMessages.length, 1, 'gateway received one forwarded push')
+
+  const rawPayload = b4a.from(sentMessages[0].android.data.payload, 'base64')
+  const notification = blindPush.decode(rawPayload)
+  t.alike(notification.discoveryKey, core.discoveryKey, 'room discovery key forwarded')
+
+  const result = await blindPush.readNotification(
+    core.state.storage.store,
+    core.key,
+    notification.payload
+  )
+  t.ok(result, 'forwarded payload can be verified')
+  t.is(result.version, 0, 'notification version defaults to 0')
+  t.alike(result.extra, b4a.from('extra'), 'notification extra')
+  t.alike(result.result.key, core.key, 'verified payload targets the sender core')
+  t.is(result.result.block.index, core.length - 1, 'verified payload contains the latest block')
+  t.is(blindPeer.stats.notificationsRx, 1, 'blind-peer notification rx stat')
+  t.is(blindPeer.stats.notificationsSent, 1, 'blind-peer notification sent stat')
+  t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
 
 test('client can use a blind-peer to add an autobase', async (t) => {
@@ -1239,6 +1285,10 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_muxer_paired 0'), 'blind_peer_muxer_paired')
     t.ok(metrics.includes('blind_peer_muxer_errors 0'), 'blind_peer_muxer_error')
     t.ok(metrics.includes('blind_peer_corestore_active 0'), 'blind_peer_corestore_active')
+    t.ok(
+      metrics.includes('blind_peer_push_notifications_active 0'),
+      'blind_peer_push_notifications_active'
+    )
   }
 
   await blindPeer.listen()
@@ -1319,6 +1369,19 @@ test('Prometheus metrics', async (t) => {
       return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0]) // hack
     }
   }
+})
+
+test('push notifications stat set active when pool is configured', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { pushGatewayKeys: ['a'.repeat(64)] })
+  blindPeer.registerMetrics(promClient)
+  t.teardown(() => {
+    promClient.register.clear()
+  })
+
+  const metrics = await promClient.register.metrics()
+  t.ok(metrics.includes('blind_peer_push_notifications_active 1'))
 })
 
 test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
@@ -1820,7 +1883,9 @@ async function setupBlindPeer(
     routerPoolOpts,
     replicationLagThreshold,
     topK,
-    activeCorestore
+    activeCorestore,
+    pushGatewayKeys,
+    pushGatewayPoolOpts
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -1833,6 +1898,8 @@ async function setupBlindPeer(
     trustedPubKeys,
     routerKey,
     routerPoolOpts,
+    pushGatewayKeys,
+    pushGatewayPoolOpts,
     wakeupGcTickTime: 100,
     replicationLagThreshold,
     topK,
@@ -1874,6 +1941,31 @@ async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair 
   await rpc.fullyOpened()
 
   return rpc
+}
+
+async function setupPushGateway(t, bootstrap) {
+  const sentMessages = []
+  const dht = new HyperDHT({ bootstrap })
+  const router = new ProtomuxRPCRouter()
+  // push service stub to simulate real fcm send
+  const pushServiceStub = {
+    send: async (message) => {
+      sentMessages.push(message)
+    }
+  }
+  const gateway = new BlindPushGateway(dht, router, pushServiceStub)
+
+  t.teardown(
+    async () => {
+      await gateway.close()
+      await dht.destroy()
+    },
+    { order: clientCounter++ }
+  )
+
+  await gateway.ready()
+
+  return { gateway, sentMessages }
 }
 
 async function getTestnet(t) {
