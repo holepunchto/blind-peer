@@ -1144,7 +1144,7 @@ class BlindPeer extends ReadyResource {
         name: 'blind_peer_push_notifications_active',
         help: 'Whether push notifications can be forwarded (1) or not (0)',
         collect() {
-          this.set(self.gatewayPool?.chosenKey ? 1 : 0)
+          this.set(self.gatewayPool ? 1 : 0)
         }
       })
     }
