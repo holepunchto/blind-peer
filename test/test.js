@@ -455,43 +455,46 @@ test('blind-peering respects max batch options', async (t) => {
   }
 })
 
-test('repeated add-core requests do not result in db updates', async (t) => {
-  const { bootstrap } = await getTestnet(t)
+for (let i = 0; i < 100; i++) {
+  test.solo('repeated add-core requests do not result in db updates', async (t) => {
+    const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+    const { blindPeer } = await setupBlindPeer(t, bootstrap)
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
 
-  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  const client2 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  const client3 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+    const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+    const client2 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+    const client3 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
 
-  t.is(await blindPeer.db.getCoreRecord(core.key), null, 'sanity check')
-  const coreKey = core.key
-  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
-  const record = await blindPeer.db.getCoreRecord(core.key)
+    t.is(await blindPeer.db.getCoreRecord(core.key), null, 'sanity check')
+    const coreKey = core.key
+    await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+    const record = await blindPeer.db.getCoreRecord(core.key)
 
-  t.alike(record.key, coreKey, 'added the core (sanity check)')
+    t.alike(record.key, coreKey, 'added the core (sanity check)')
 
-  // wait for it to be downloaded
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-  const initFlushes = blindPeer.db.stats.flushes
-  t.is(initFlushes > 0, true, 'sanity check')
+    // wait for it to be downloaded
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const initFlushes = blindPeer.db.stats.flushes
+    console.log('flushes', initFlushes)
+    t.is(initFlushes > 0, true, 'sanity check')
 
-  await client2.addCore(core)
-  t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
+    await client2.addCore(core)
+    t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
 
-  await client3.addCore(core, { priority: 1 })
-  t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
-  await blindPeer.flush()
-  const record3 = await blindPeer.db.getCoreRecord(core.key)
-  t.is(record3.priority, 0, 'cannot change the record after it was added')
+    await client3.addCore(core, { priority: 1 })
+    t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
+    await blindPeer.flush()
+    const record3 = await blindPeer.db.getCoreRecord(core.key)
+    t.is(record3.priority, 0, 'cannot change the record after it was added')
 
-  await client.close()
-  await client2.close()
-  await client3.close()
-})
+    await client.close()
+    await client2.close()
+    await client3.close()
+  })
+}
 
 test('relayThrough opt passed through', async (t) => {
   t.plan(1)
