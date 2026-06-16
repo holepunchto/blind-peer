@@ -511,6 +511,28 @@ test('relayThrough opt passed through', async (t) => {
   await client.close()
 })
 
+test.solo('peer can be banned in _onconnection using hyperswarm ban api', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await client.addCore(core)
+
+  // sleep long time for blind-peering to reconnect
+  await new Promise((resolve) => setTimeout(resolve, 10_000))
+
+  const blindPeeringPeer = client.blindPeers.values().next().value
+  console.log('blindPeeringPeer.connects', blindPeeringPeer.connects)
+  t.is(blindPeeringPeer.connects, 1, 'blind-peering should connect once')
+
+  await client.close()
+  await swarm.destroy()
+})
+
 test('can lookup core after blind peer restart', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
