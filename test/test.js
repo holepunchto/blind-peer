@@ -631,6 +631,120 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
+test('re-adding a partially gc-d core does not reactivate it', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc: true, maxBytes: 1 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm: seedSwarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const seedClient = new Client(seedSwarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), seedClient.addCore(core)])
+
+  t.is(blindPeer.stats.activations, 1, 'sanity check: initial add activated core')
+
+  const mirroredCore = blindPeer.store.get({ key: core.key })
+  await mirroredCore.ready()
+
+  await new Promise((resolve) => {
+    mirroredCore.on('download', () => {
+      if (mirroredCore.length === core.length) {
+        resolve()
+      }
+    })
+  })
+
+  await seedClient.close()
+  await seedSwarm.destroy()
+
+  // flush to trigger gc
+  await blindPeer.flush()
+
+  const record = await blindPeer.db.getCoreRecord(core.key)
+  t.is(record.bytesAllocated, 0, 'sanity check: core data was gc-d')
+  t.is(record.blocksCleared, core.length, 'sanity check: all current blocks were cleared')
+  t.not(await mirroredCore.has(0), 'block #0 is cleared')
+  t.not(await mirroredCore.has(1), 'block #1 is cleared')
+
+  await mirroredCore.close()
+
+  {
+    // force-close the active replication to prevent background downloads
+    const coreTracker = blindPeer.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
+    await coreTracker.core.close()
+
+    const dht = new HyperDHT({ bootstrap })
+    const client = new Client(dht, store, { keys: [blindPeer.publicKey] })
+
+    await core.append('#2')
+    await core.append('#3')
+    await core.append('#4')
+
+    const newMirroredCore = blindPeer.store.get({ key: core.key })
+    await newMirroredCore.ready()
+
+    // simulate full download
+    const a = core.replicate(true)
+    const b = newMirroredCore.replicate(false)
+    a.pipe(b).pipe(a)
+    await newMirroredCore.download({ blocks: [2, 3, 4] }).done()
+
+    t.is(newMirroredCore.length, 5, 'mirrored core got latest length')
+    t.ok(await newMirroredCore.has(2), 'block #2 is downloaded')
+    t.ok(await newMirroredCore.has(3), 'block #3 is downloaded')
+    t.ok(await newMirroredCore.has(4), 'block #4 is downloaded')
+
+    // add core again
+    await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+    t.is(
+      blindPeer.stats.activations,
+      1,
+      'if the blind-peer has all the blocks, it does not get activated again'
+    )
+    t.not(
+      blindPeer.activeReplication.has(b4a.toString(core.discoveryKey, 'hex')),
+      'no active replication session'
+    )
+
+    await newMirroredCore.close()
+    await client.close()
+    await dht.destroy()
+  }
+
+  {
+    const dht = new HyperDHT({ bootstrap })
+    const client = new Client(dht, store, { keys: [blindPeer.publicKey] })
+
+    await core.append('#5')
+    await core.append('#6')
+    await core.append('#7')
+
+    const newMirroredCore = blindPeer.store.get({ key: core.key })
+    await newMirroredCore.ready()
+
+    // simulate sparse download
+    const a = core.replicate(true)
+    const b = newMirroredCore.replicate(false)
+    a.pipe(b).pipe(a)
+    await newMirroredCore.download({ blocks: [5, 7] }).done()
+
+    t.is(newMirroredCore.length, 8, 'mirrored core got latest length')
+    t.ok(await newMirroredCore.has(5), 'block #5 is downloaded')
+    t.not(await newMirroredCore.has(6), 'block #6 is not downloaded')
+    t.ok(await newMirroredCore.has(7), 'block #7 is downloaded')
+
+    // add core again
+    await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+    t.is(blindPeer.stats.activations, 2, 'missing block make core activate again')
+
+    await newMirroredCore.close()
+    await client.close()
+    await dht.destroy()
+  }
+})
+
 test('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
