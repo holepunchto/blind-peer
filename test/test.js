@@ -380,6 +380,42 @@ test('adding autobase cores only results in replication sessions if there are le
   }
 })
 
+test('view cores are added with no wakeup set', async (t) => {
+  t.plan(4)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap)
+
+  let nrAdded = 0
+  console.log(base.views())
+  const viewKeys = new Set(base.views().map((v) => IdEnc.normalize(v.key)))
+  // A writer adds the autobase
+  {
+    const onaddcore = (record) => {
+      console.log('record', record)
+      nrAdded++
+
+      if (viewKeys.has(IdEnc.normalize(record.key))) {
+        t.is(record.wakeup, false, 'no wakeup for view key')
+      } else {
+        t.is(record.wakeup, true, 'wakeup for non-view key')
+      }
+    }
+    blindPeer.on('add-core', onaddcore)
+
+    const client = new Client(swarm.dht, store, {
+      ...clientOpts,
+      keys: [blindPeer.publicKey]
+    })
+    await client.addAutobase(base)
+  }
+})
+
 test('Client stats correctness', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
