@@ -1838,8 +1838,6 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const before = blindPeer.activeReplication.size
-
   const core = blindPeer.store.get({ name: 'leak-repro' })
   await core.ready()
   await core.close() // insta close to trigger race condition
@@ -1848,7 +1846,7 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
 
   t.is(
     blindPeer.activeReplication.size,
-    before,
+    0,
     'activeReplication entry removed after core closed'
   )
 })
