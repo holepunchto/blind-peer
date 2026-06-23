@@ -1844,11 +1844,7 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
 
   await new Promise((resolve) => setTimeout(resolve, 10000))
 
-  t.is(
-    blindPeer.activeReplication.size,
-    0,
-    'activeReplication entry removed after core closed'
-  )
+  t.is(blindPeer.activeReplication.size, 0, 'activeReplication entry removed after core closed')
 })
 
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
