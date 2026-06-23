@@ -1840,15 +1840,10 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
 
   const before = blindPeer.activeReplication.size
 
-  // Opening a core via the store triggers store.watch -> _oncoreopen,
-  // which creates a CoreTracker and calls refresh() (async).
-  // Closing immediately closes the weak session before refresh assigns
-  // downloadRange, so destroy() runs with downloadRange === null.
   const core = blindPeer.store.get({ name: 'leak-repro' })
   await core.ready()
-  await core.close()
+  await core.close() // insta close to trigger race condition
 
-  // Let the close handler + refresh microtasks settle.
   await new Promise((resolve) => setTimeout(resolve, 10000))
 
   t.is(
