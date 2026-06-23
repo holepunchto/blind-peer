@@ -145,9 +145,10 @@ class CoreTracker {
   }
 
   destroy() {
+    // not allowed to throw
     if (this.destroyed) return
     this.destroyed = true
-    this.downloadRange.destroy()
+    if (this.downloadRange) this.downloadRange.destroy()
   }
 }
 

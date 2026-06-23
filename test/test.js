@@ -1831,6 +1831,33 @@ test('corestore replication defaults passive, but can be set active', async (t) 
   }
 })
 
+test('coreTracker does not leak when core closes before refresh completes', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const before = blindPeer.activeReplication.size
+
+  // Opening a core via the store triggers store.watch -> _oncoreopen,
+  // which creates a CoreTracker and calls refresh() (async).
+  // Closing immediately closes the weak session before refresh assigns
+  // downloadRange, so destroy() runs with downloadRange === null.
+  const core = blindPeer.store.get({ name: 'leak-repro' })
+  await core.ready()
+  await core.close()
+
+  // Let the close handler + refresh microtasks settle.
+  await new Promise((resolve) => setTimeout(resolve, 10000))
+
+  t.is(
+    blindPeer.activeReplication.size,
+    before,
+    'activeReplication entry removed after core closed'
+  )
+})
+
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
