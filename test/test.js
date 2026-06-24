@@ -482,7 +482,6 @@ test('repeated add-core requests do not result in db updates', async (t) => {
   // wait for it to be downloaded
   await new Promise((resolve) => setTimeout(resolve, 1000))
   const initFlushes = blindPeer.db.stats.flushes
-  console.log('flushes', initFlushes)
   t.is(initFlushes > 0, true, 'sanity check')
 
   await client2.addCore(core)

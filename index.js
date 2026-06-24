@@ -720,7 +720,6 @@ class BlindPeer extends ReadyResource {
     const existing = await this.db.getCoreRecord(record.key)
     const upgradeToAnnounce = existing && !existing.announce && record.announce
     if (!existing || upgradeToAnnounce) {
-      console.log('forcing flush')
       this.db.addCore(record)
       await this.flush() // flush now as important data
       this.emit('add-new-core', record, true, stream)
