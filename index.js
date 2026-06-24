@@ -514,7 +514,6 @@ class BlindPeer extends ReadyResource {
   }
 
   async flush() {
-    console.trace('index.js flush')
     // not allowed to throw
     if (!(await this.lock.lock())) return
     try {

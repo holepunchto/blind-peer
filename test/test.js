@@ -22,7 +22,7 @@ const BlindPushGateway = require('blind-push-gateway')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
-const DEBUG = true
+const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 const clientOpts = { batchIdleWait: 250, batchMaxWait: 1000 }
 
@@ -114,111 +114,109 @@ test('client can ask a blind-peer to create and forward a push notification', as
   t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
 
-for (let i = 0; i < 100; i++) {
-  test('client can use a blind-peer to add an autobase', async (t) => {
-    const tFirstAdd = t.test()
-    tFirstAdd.plan(2)
+test('client can use a blind-peer to add an autobase', async (t) => {
+  const tFirstAdd = t.test()
+  tFirstAdd.plan(2)
 
-    const { bootstrap } = await getTestnet(t)
+  const { bootstrap } = await getTestnet(t)
 
-    const { blindPeer } = await setupBlindPeer(t, bootstrap)
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
 
-    const {
-      swarm: indexerSwarm,
-      base: indexer,
-      store: indexerStore
-    } = await setupAutobaseHolder(t, bootstrap)
-    await indexerSwarm.flush()
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
 
-    const bases = []
-    for (let i = 0; i < 2; i++) {
-      const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
-      await swarm.flush()
-      await Promise.all([
-        once(base, 'is-indexer'),
-        indexer.append({ add: b4a.toString(base.local.key, 'hex') })
-      ])
+  const bases = []
+  for (let i = 0; i < 2; i++) {
+    const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap, indexer.local.key)
+    await swarm.flush()
+    await Promise.all([
+      once(base, 'is-indexer'),
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') })
+    ])
 
-      await base.append({ some: 'thing' })
-      bases.push({ base, swarm, store })
-    }
+    await base.append({ some: 'thing' })
+    bases.push({ base, swarm, store })
+  }
 
-    await indexer.append({ some: 'thing' })
-    for (const { base } of bases) {
-      await base.append({ other: 'thing' })
-    }
+  await indexer.append({ some: 'thing' })
+  for (const { base } of bases) {
+    await base.append({ other: 'thing' })
+  }
 
-    await new Promise((resolve) => setTimeout(resolve, 1000)) // Give time to stabilise the signed lengths
-    t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
+  await new Promise((resolve) => setTimeout(resolve, 1000)) // Give time to stabilise the signed lengths
+  t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
 
-    const nrCoresInAutobase = 6 // could change if autobase internals change
+  const nrCoresInAutobase = 6 // could change if autobase internals change
 
-    // A first writer adds the autobase
-    {
-      const expectedAddedKeys = new Set([
-        ...[...indexer.views()].map((v) => b4a.toString(v.key, 'hex')),
-        ...[...indexer.activeWriters].map((w) => b4a.toString(w.core.key, 'hex'))
-      ])
-      t.is(expectedAddedKeys.size, nrCoresInAutobase, 'sanity check')
+  // A first writer adds the autobase
+  {
+    const expectedAddedKeys = new Set([
+      ...[...indexer.views()].map((v) => b4a.toString(v.key, 'hex')),
+      ...[...indexer.activeWriters].map((w) => b4a.toString(w.core.key, 'hex'))
+    ])
+    t.is(expectedAddedKeys.size, nrCoresInAutobase, 'sanity check')
 
-      let nrAdded = 0
-      const addedKeys = new Set()
+    let nrAdded = 0
+    const addedKeys = new Set()
 
-      let done = false
-      const onaddcore = (record) => {
-        nrAdded++
-        addedKeys.add(b4a.toString(record.key, 'hex'))
-        if (addedKeys.size > expectedAddedKeys.size) {
-          t.fail('more keys added than expected')
-        }
-        if (addedKeys.size === expectedAddedKeys.size && !done) {
-          done = true // We don't want to test that a core never gets added twice here (too restrictive, and causes flakiness)
-          if (DEBUG) {
-            console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
-          }
-          tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
-          tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
-        }
+    let done = false
+    const onaddcore = (record) => {
+      nrAdded++
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+      if (addedKeys.size > expectedAddedKeys.size) {
+        t.fail('more keys added than expected')
       }
-      blindPeer.on('add-core', onaddcore)
-
-      const client = new Client(indexerSwarm.dht, indexerStore, {
-        ...clientOpts,
-        keys: [blindPeer.publicKey]
-      })
-      await client.addAutobase(indexer)
-      await tFirstAdd
-
-      // Give some time to sync
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      blindPeer.off('add-core', onaddcore)
-    }
-
-    // Another writer adds the autobase as well.
-    // No cores get re-added when they didn't change
-    // Note: this test originally flaked because due to autobase acks,
-    // some cores can change. So we merely test that at most 1 core gets added
-    {
-      let nrAdded = 0
-      const addedKeys = new Set()
-      const onaddcore = (record) => {
-        nrAdded++
-        if (DEBUG) console.log('added core', nrAdded)
-        addedKeys.add(b4a.toString(record.key, 'hex'))
+      if (addedKeys.size === expectedAddedKeys.size && !done) {
+        done = true // We don't want to test that a core never gets added twice here (too restrictive, and causes flakiness)
+        if (DEBUG) {
+          console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
+        }
+        tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
+        tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
       }
-      blindPeer.on('add-core', onaddcore)
-      const requestProcessed = once(blindPeer, 'add-cores-done')
-
-      const client = new Client(bases[0].swarm.dht, bases[0].store, { keys: [blindPeer.publicKey] })
-      await client.addAutobase(bases[0].base)
-      await requestProcessed
-
-      t.is(addedKeys.size < 2, true, 'no more than 1 key was added in the second run')
     }
-  })
-}
+    blindPeer.on('add-core', onaddcore)
+
+    const client = new Client(indexerSwarm.dht, indexerStore, {
+      ...clientOpts,
+      keys: [blindPeer.publicKey]
+    })
+    await client.addAutobase(indexer)
+    await tFirstAdd
+
+    // Give some time to sync
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    blindPeer.off('add-core', onaddcore)
+  }
+
+  // Another writer adds the autobase as well.
+  // No cores get re-added when they didn't change
+  // Note: this test originally flaked because due to autobase acks,
+  // some cores can change. So we merely test that at most 1 core gets added
+  {
+    let nrAdded = 0
+    const addedKeys = new Set()
+    const onaddcore = (record) => {
+      nrAdded++
+      if (DEBUG) console.log('added core', nrAdded)
+      addedKeys.add(b4a.toString(record.key, 'hex'))
+    }
+    blindPeer.on('add-core', onaddcore)
+    const requestProcessed = once(blindPeer, 'add-cores-done')
+
+    const client = new Client(bases[0].swarm.dht, bases[0].store, { keys: [blindPeer.publicKey] })
+    await client.addAutobase(bases[0].base)
+    await requestProcessed
+
+    t.is(addedKeys.size < 2, true, 'no more than 1 key was added in the second run')
+  }
+})
 
 test('client can use hyperdht addresses to add a core', async (t) => {
   const { bootstrap } = await getTestnet(t)
@@ -462,46 +460,44 @@ test('blind-peering respects max batch options', async (t) => {
   }
 })
 
-for (let i = 0; i < 100; i++) {
-  test('repeated add-core requests do not result in db updates', async (t) => {
-    const { bootstrap } = await getTestnet(t)
+test('repeated add-core requests do not result in db updates', async (t) => {
+  const { bootstrap } = await getTestnet(t)
 
-    const { blindPeer } = await setupBlindPeer(t, bootstrap)
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
 
-    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-    const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-    const client2 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-    const client3 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  const client2 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  const client3 = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
 
-    t.is(await blindPeer.db.getCoreRecord(core.key), null, 'sanity check')
-    const coreKey = core.key
-    await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
-    const record = await blindPeer.db.getCoreRecord(core.key)
+  t.is(await blindPeer.db.getCoreRecord(core.key), null, 'sanity check')
+  const coreKey = core.key
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+  const record = await blindPeer.db.getCoreRecord(core.key)
 
-    t.alike(record.key, coreKey, 'added the core (sanity check)')
+  t.alike(record.key, coreKey, 'added the core (sanity check)')
 
-    // wait for it to be downloaded
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    const initFlushes = blindPeer.db.stats.flushes
-    console.log('flushes', initFlushes)
-    t.is(initFlushes > 0, true, 'sanity check')
+  // wait for it to be downloaded
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  const initFlushes = blindPeer.db.stats.flushes
+  console.log('flushes', initFlushes)
+  t.is(initFlushes > 0, true, 'sanity check')
 
-    await client2.addCore(core)
-    t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
+  await client2.addCore(core)
+  t.is(blindPeer.db.stats.flushes, initFlushes, 'did not flush db again')
 
-    await client3.addCore(core, { priority: 1 })
-    t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
-    await blindPeer.flush()
-    const record3 = await blindPeer.db.getCoreRecord(core.key)
-    t.is(record3.priority, 0, 'cannot change the record after it was added')
+  await client3.addCore(core, { priority: 1 })
+  t.is(blindPeer.db.stats.flushes, initFlushes, 'flush db not called, even if record changed')
+  await blindPeer.flush()
+  const record3 = await blindPeer.db.getCoreRecord(core.key)
+  t.is(record3.priority, 0, 'cannot change the record after it was added')
 
-    await client.close()
-    await client2.close()
-    await client3.close()
-  })
-}
+  await client.close()
+  await client2.close()
+  await client3.close()
+})
 
 test('relayThrough opt passed through', async (t) => {
   t.plan(1)
