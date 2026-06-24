@@ -1155,7 +1155,7 @@ class BlindPeer extends ReadyResource {
 
       new promClient.Gauge({
         name: 'blind_peer_core_trackers_created',
-        help: 'How many core trackers were opened',
+        help: 'How many core trackers were created',
         collect() {
           this.set(self.stats.coreTrackersCreated)
         }
@@ -1163,7 +1163,7 @@ class BlindPeer extends ReadyResource {
 
       new promClient.Gauge({
         name: 'blind_peer_core_trackers_destroyed',
-        help: 'How many core trackers were closed',
+        help: 'How many core trackers were destroyed',
         collect() {
           this.set(self.stats.coreTrackersDestroyed)
         }
