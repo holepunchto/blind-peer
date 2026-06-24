@@ -1845,14 +1845,14 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
 
   const core = blindPeer.store.get({ name: 'leak-repro' })
   await core.ready()
-  t.is(blindPeer.stats.weakSessionsOpened, 1, 'weak session opened stat')
+  t.is(blindPeer.stats.coreTrackersCreated, 1, 'core trackers created stat')
 
   await core.close() // insta close to trigger race condition
 
   await core.core.close() // Force close, rather than relying on the gc (takes ~10s otherwise)
 
   t.is(blindPeer.activeReplication.size, 0, 'activeReplication entry removed after core closed')
-  t.is(blindPeer.stats.weakSessionsClosed, 1, 'weak session closed stat')
+  t.is(blindPeer.stats.weakSessionsClosed, 1, 'core trackers destroyed stat')
 })
 
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
