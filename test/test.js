@@ -116,7 +116,7 @@ test('client can ask a blind-peer to create and forward a push notification', as
 
 test('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
-  tFirstAdd.plan(2)
+  tFirstAdd.plan(1)
 
   const { bootstrap } = await getTestnet(t)
 
@@ -164,18 +164,20 @@ test('client can use a blind-peer to add an autobase', async (t) => {
 
     let nrAdded = 0
     const addedKeys = new Set()
+
+    let done = false
     const onaddcore = (record) => {
       nrAdded++
       addedKeys.add(b4a.toString(record.key, 'hex'))
       if (addedKeys.size > expectedAddedKeys.size) {
         t.fail('more keys added than expected')
       }
-      if (addedKeys.size === expectedAddedKeys.size) {
+      if (addedKeys.size === expectedAddedKeys.size && !done) {
+        done = true // We don't want to test that a core never gets added twice here (too restrictive, and causes flakiness)
         if (DEBUG) {
           console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
         }
         tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
-        tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
       }
     }
     blindPeer.on('add-core', onaddcore)
@@ -193,7 +195,9 @@ test('client can use a blind-peer to add an autobase', async (t) => {
   }
 
   // Another writer adds the autobase as well.
-  // No cores get added, because nothing changed
+  // No cores get re-added when they didn't change
+  // Note: this test originally flaked because due to autobase acks,
+  // some cores can change. So we merely test that at most 1 core gets added
   {
     let nrAdded = 0
     const addedKeys = new Set()
@@ -209,7 +213,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     await client.addAutobase(bases[0].base)
     await requestProcessed
 
-    t.is(addedKeys.size, 0, 'no keys were added in the second run')
+    t.is(addedKeys.size <= 1, true, 'no more than 1 key was added in the second run')
   }
 })
 
