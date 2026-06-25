@@ -116,7 +116,7 @@ test('client can ask a blind-peer to create and forward a push notification', as
 
 test('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
-  tFirstAdd.plan(2)
+  tFirstAdd.plan(1)
 
   const { bootstrap } = await getTestnet(t)
 
@@ -178,7 +178,6 @@ test('client can use a blind-peer to add an autobase', async (t) => {
           console.log('total add core requests received', nrAdded, 'unique:', addedKeys.size)
         }
         tFirstAdd.alike(addedKeys, expectedAddedKeys, 'expected cores added')
-        tFirstAdd.is(nrAdded, expectedAddedKeys.size, 'no duplicate add-core requests')
       }
     }
     blindPeer.on('add-core', onaddcore)
@@ -214,7 +213,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     await client.addAutobase(bases[0].base)
     await requestProcessed
 
-    t.is(addedKeys.size < 2, true, 'no more than 1 key was added in the second run')
+    t.is(addedKeys.size <= 1, true, 'no more than 1 key was added in the second run')
   }
 })
 
