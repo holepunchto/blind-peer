@@ -1293,6 +1293,11 @@ test('Prometheus metrics', async (t) => {
       metrics.includes('blind_peer_push_notifications_active 0'),
       'blind_peer_push_notifications_active'
     )
+    t.ok(metrics.includes('blind_peer_core_trackers_created 0'), 'blind_peer_core_trackers_created')
+    t.ok(
+      metrics.includes('blind_peer_core_trackers_destroyed 0'),
+      'blind_peer_core_trackers_destroyed'
+    )
   }
 
   await blindPeer.listen()
@@ -1833,6 +1838,25 @@ test('corestore replication defaults passive, but can be set active', async (t) 
     await blindPeer.ready()
     t.is(blindPeer.store.active, true, 'can set active corestore')
   }
+})
+
+test('coreTracker does not leak when core closes before refresh completes', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const core = blindPeer.store.get({ name: 'leak-repro' })
+  await core.ready()
+  t.is(blindPeer.stats.coreTrackersCreated, 1, 'core trackers created stat')
+
+  await core.close() // insta close to trigger race condition
+
+  await core.core.close() // Force close, rather than relying on the gc (takes ~10s otherwise)
+
+  t.is(blindPeer.activeReplication.size, 0, 'activeReplication entry removed after core closed')
+  t.is(blindPeer.stats.coreTrackersDestroyed, 1, 'core trackers destroyed stat')
 })
 
 async function setupCoreHolder(t, bootstrap, { active } = {}) {

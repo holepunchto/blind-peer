@@ -145,9 +145,10 @@ class CoreTracker {
   }
 
   destroy() {
+    // not allowed to throw
     if (this.destroyed) return
     this.destroyed = true
-    this.downloadRange.destroy()
+    if (this.downloadRange) this.downloadRange.destroy()
   }
 }
 
@@ -279,7 +280,9 @@ class BlindPeer extends ReadyResource {
       notificationsSent: 0,
       notificationErrors: 0,
       muxerPaired: 0,
-      muxerErrors: 0
+      muxerErrors: 0,
+      coreTrackersCreated: 0,
+      coreTrackersDestroyed: 0
     }
 
     const {
@@ -496,6 +499,7 @@ class BlindPeer extends ReadyResource {
 
   _oncoreopen(core) {
     const session = new Hypercore({ core, weak: true })
+    this.stats.coreTrackersCreated++
     const id = b4a.toString(core.discoveryKey, 'hex')
     const tracker = new CoreTracker(this, session)
 
@@ -507,6 +511,7 @@ class BlindPeer extends ReadyResource {
       if (this.activeReplication.get(id) === tracker) {
         this.activeReplication.delete(id)
       }
+      this.stats.coreTrackersDestroyed++
     })
     session.on('invalid-request', (err, req, from) => {
       this.emit('invalid-request', session, err, req, from)
@@ -1145,6 +1150,22 @@ class BlindPeer extends ReadyResource {
         help: 'Whether push notifications can be forwarded (1) or not (0)',
         collect() {
           this.set(self.gatewayPool ? 1 : 0)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_core_trackers_created',
+        help: 'How many core trackers were created',
+        collect() {
+          this.set(self.stats.coreTrackersCreated)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_core_trackers_destroyed',
+        help: 'How many core trackers were destroyed',
+        collect() {
+          this.set(self.stats.coreTrackersDestroyed)
         }
       })
     }
