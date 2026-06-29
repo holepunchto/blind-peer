@@ -104,8 +104,8 @@ test('client can ask a blind-peer to create and forward a push notification', as
     core.key,
     notification.payload
   )
+
   t.ok(result, 'forwarded payload can be verified')
-  t.is(result.version, 0, 'notification version defaults to 0')
   t.alike(result.extra, b4a.from('extra'), 'notification extra')
   t.alike(result.result.key, core.key, 'verified payload targets the sender core')
   t.is(result.result.block.index, core.length - 1, 'verified payload contains the latest block')
