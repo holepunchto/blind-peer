@@ -36,7 +36,7 @@
     "bare-prom-client": "^15.1.3",
     "blind-peer-router": "^0.2.2",
     "blind-peering": "^2.2.1",
-    "blind-push-gateway": "holepunchto/blind-push-gateway#v1-blind-push",
+    "blind-push-gateway": "^0.2.0",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
     "graceful-goodbye": "^1.3.3",
