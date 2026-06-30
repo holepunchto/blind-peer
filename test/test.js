@@ -19,6 +19,8 @@ const HyperDHTAddress = require('hyperdht-address')
 const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodings')
 const blindPush = require('blind-push')
 const BlindPushGateway = require('blind-push-gateway')
+const rrp = require('resolve-reject-promise')
+
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
@@ -416,7 +418,7 @@ test('Client stats correctness', async (t) => {
   t.is(blindPeer.stats.muxerErrors === 0, true, 'sanity check')
 })
 
-test('blind-peering respects max batch options', async (t) => {
+test('blind-peering respects max batch options for the writer cores', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
@@ -447,8 +449,8 @@ test('blind-peering respects max batch options', async (t) => {
   {
     const client = new Client(indexerSwarm.dht, indexerStore, {
       keys: [blindPeer.publicKey],
-      maxBatchMin: 3,
-      maxBatchMax: 7
+      maxBatchMin: 1,
+      maxBatchMax: 4
     })
     t.teardown(async () => await client.close())
     await client.addAutobase(indexer)
@@ -1042,6 +1044,7 @@ test('client suspend/resume logic', async (t) => {
   const coreKey = core.key
   const { base } = await setupAutobaseHolder(t, bootstrap)
   await base.ready()
+  await base.append('something')
 
   {
     const coreAddedProm = once(blindPeer, 'add-core')
@@ -1054,13 +1057,25 @@ test('client suspend/resume logic', async (t) => {
   await once(blindPeer, 'add-cores-done') // finish request
 
   {
-    const coreAddedProm = once(blindPeer, 'add-cores-done')
-    coreAddedProm.catch(() => {})
-    await client.addAutobase(base, { announce: false })
+    let nrHandled = 0
+    let coresAdded = 0
+    const { promise, resolve } = rrp()
+    const onreq = (_, req) => {
+      nrHandled++
+      coresAdded += req.cores.length
+      if (nrHandled > 2) t.fail('too many rpc requests')
+      if (req.referrer) {
+        t.alike(req.referrer, base.key, 'sanity check')
+      }
 
-    const [, req] = await coreAddedProm
-    t.alike(req.referrer, base.key, 'sanity check')
-    t.is(req.cores.length > 3, true, 'includes views/writers')
+      if (nrHandled === 2) resolve()
+    }
+
+    blindPeer.on('add-cores-done', onreq)
+    await Promise.all([client.addAutobase(base, { announce: false }), promise])
+
+    blindPeer.off('add-cores-done', onreq)
+    t.is(coresAdded > 3, true, 'includes views/writers')
   }
 
   const getSuspendeds = () => [...client.blindPeers.values()].map((v) => v.suspended)
@@ -1073,18 +1088,24 @@ test('client suspend/resume logic', async (t) => {
   t.alike(getSuspendeds(), [true], 'clients suspended')
   t.is(client.suspended, true, 'suspended')
 
-  const tResume = t.test('resume')
-  tResume.plan(2)
+  const tResumeAutobase = t.test('resume autobase')
+  tResumeAutobase.plan(2)
+  const tResumeCore = t.test('resume core')
+  tResumeCore.plan(1)
+
   blindPeer.on('add-cores-done', (_, req) => {
     if (!req.referrer) {
-      tResume.pass('core resent after resume')
+      if (req.cores.length === 1) tResumeCore.pass('core resent after resume')
+      else if (req.cores.length === 3) tResumeAutobase.pass('views resent')
+      else t.fail('unexpected request')
     } else {
-      tResume.is(req.cores.length > 3, true, 'autobase re-sends views/writers on resume')
+      tResumeAutobase.is(req.cores.length, 1, 'autobase re-sends writers on resume')
     }
   })
   await client.resume()
 
-  await tResume
+  await tResumeAutobase
+  await tResumeCore
 
   t.alike(getSuspendeds(), [false], 'clients resumed')
   t.is(client.suspended, false, 'resumed')
