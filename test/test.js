@@ -116,6 +116,76 @@ test('client can ask a blind-peer to create and forward a push notification', as
   t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
 
+test('send push notification when not yet connected to blind peer', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  await core.setUserData('referrer', core.key)
+
+  const initClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
+  await initClient.close()
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.is(sentMessages.length, 0, 'sanity check')
+
+  await Promise.all([
+    once(blindPeer, 'notification-sent'),
+    client.sendNotification(core, { extra: b4a.from('extra') })
+  ])
+
+  t.is(sentMessages.length, 1, 'gateway received one forwarded push')
+})
+
+test('send push notification falls back when closest blind peer times out', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  await core.setUserData('referrer', core.key)
+
+  const initClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
+  await initClient.close()
+
+  const deadKey = HyperDHT.keyPair().publicKey
+  const client = new Client(swarm.dht, store, {
+    keys: [deadKey, blindPeer.publicKey],
+    pick: 2
+  })
+  t.teardown(async () => {
+    await initClient.close()
+  })
+
+  t.is(sentMessages.length, 0, 'sanity check')
+
+  const start = Date.now()
+  await Promise.all([
+    once(blindPeer, 'notification-sent').then(() => console.log('something 1')),
+    initClient.sendNotification(core, {
+      keys: [deadKey, blindPeer.publicKey],
+      target: deadKey, // try the dead key before the actual blind peer
+      extra: b4a.from('extra')
+    })
+  ])
+
+  t.ok(Date.now() - start >= 5000, 'waited for closest dead peer to time out')
+  t.is(sentMessages.length, 1, 'fallback blind peer forwarded one push')
+})
+
 test('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(1)
