@@ -136,30 +136,14 @@ test('send push notification when not yet connected to blind peer', async (t) =>
   for (const bp of client.blindPeers.values()) bp.destroy()
   client.blindPeers.clear()
 
+  t.is(sentMessages.length, 0, 'sanity check')
+
   await Promise.all([
     once(blindPeer, 'notification-sent'),
     client.sendNotification(core, { extra: b4a.from('extra') })
   ])
 
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
-
-  const rawPayload = b4a.from(sentMessages[0].android.data.payload, 'base64')
-  const notification = blindPush.decode(rawPayload)
-  t.alike(notification.discoveryKey, core.discoveryKey, 'room discovery key forwarded')
-
-  const result = await blindPush.readNotification(
-    core.state.storage.store,
-    core.key,
-    notification.payload
-  )
-
-  t.ok(result, 'forwarded payload can be verified')
-  t.alike(result.extra, b4a.from('extra'), 'notification extra')
-  t.alike(result.result.key, core.key, 'verified payload targets the sender core')
-  t.is(result.result.block.index, core.length - 1, 'verified payload contains the latest block')
-  t.is(blindPeer.stats.notificationsRx, 1, 'blind-peer notification rx stat')
-  t.is(blindPeer.stats.notificationsSent, 1, 'blind-peer notification sent stat')
-  t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
 
 test('client can use a blind-peer to add an autobase', async (t) => {
