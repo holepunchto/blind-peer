@@ -286,11 +286,10 @@ class BlindPeer extends ReadyResource {
       gc: {
         prio0Gcd: 0,
         prio1Gcd: 0,
-        prio2gcd: 0 ,
+        prio2Gcd: 0,
         firstTimeCoreGcd: 0,
         coresGcd: 0
-      },
-
+      }
     }
 
     const {
@@ -486,8 +485,7 @@ class BlindPeer extends ReadyResource {
       } finally {
         await core.close().catch(safetyCatch)
         coresGcd++
-        console.log('bytes cleared post', record.bytesCleared)
-        if (record.bytesCleared === 0) newCoresGcd = 0
+        if (record.bytesCleared === 0) newCoresGcd++
         if (record.priority === 0) prio0Gcd++
         if (record.priority === 1) prio1Gcd++
         if (record.priority === 2) prio2Gcd++
@@ -497,6 +495,12 @@ class BlindPeer extends ReadyResource {
     await this.db.flush()
     if (this.closing) return
     this.stats.bytesGcd += bytesCleared
+    this.stats.gc.coresGcd += coresGcd
+    this.stats.gc.firstTimeCoreGcd += newCoresGcd
+    this.stats.gc.prio0Gcd += prio0Gcd
+    this.stats.gc.prio1Gcd += prio1Gcd
+    this.stats.gc.prio2Gcd += prio2Gcd
+
     this.emit('gc-done', { bytesCleared })
   }
 
@@ -1023,6 +1027,42 @@ class BlindPeer extends ReadyResource {
       help: 'The total amount of bytes garbage collected since the process started',
       collect() {
         this.set(self.stats.bytesGcd)
+      }
+    })
+
+    new promClient.Gauge({
+      name: 'blind_peer_gc_prio_0',
+      help: 'Number of times a core of priority 0 got garbage collected',
+      collect() {
+        this.set(self.stats.gc.prio0Gcd)
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_gc_prio_1',
+      help: 'Number of times a core of priority 1 got garbage collected',
+      collect() {
+        this.set(self.stats.gc.prio1Gcd)
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_gc_prio_2',
+      help: 'Number of times a core of priority 2 got garbage collected',
+      collect() {
+        this.set(self.stats.gc.prio2Gcd)
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_gc_cores_total',
+      help: 'Number of times a core got garbage collected',
+      collect() {
+        this.set(self.stats.gc.coresGcd)
+      }
+    })
+    new promClient.Gauge({
+      name: 'blind_peer_gc_cores_first_time_total',
+      help: 'Number of cores that got garbage collected for the first time',
+      collect() {
+        this.set(self.stats.gc.firstTimeCoreGcd)
       }
     })
 
