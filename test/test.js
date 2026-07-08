@@ -349,7 +349,18 @@ test('adding autobase cores only results in replication sessions if there are le
   {
     const client = new Client(indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
     t.teardown(async () => await client.close())
-    await Promise.all([once(blindPeer, 'add-cores-done'), client.addAutobase(indexer)])
+
+    const { promise, resolve } = rrp()
+    let addCoresDone = 0
+    const onaddcores = () => {
+      addCoresDone++
+      if (addCoresDone === 2) {
+        resolve()
+        blindPeer.off('add-cores-done', onaddcores)
+      }
+    }
+    blindPeer.on('add-cores-done', onaddcores)
+    await Promise.all([promise, client.addAutobase(indexer)])
 
     t.is(blindPeer.stats.activations, 6, '3 views and all 3 indexer core activated')
     await new Promise((resolve) => setTimeout(resolve, 500)) // Give time to download the cores
