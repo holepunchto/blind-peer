@@ -128,14 +128,12 @@ test('send push notification when not yet connected to blind peer', async (t) =>
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   await core.setUserData('referrer', core.key)
+
+  const initClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
+  await initClient.close()
+
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-
-  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
-
-  // Hack to ensure we're not connected
-  for (const bp of client.blindPeers.values()) bp.destroy()
-  client.blindPeers.clear()
-
   t.is(sentMessages.length, 0, 'sanity check')
 
   await Promise.all([
