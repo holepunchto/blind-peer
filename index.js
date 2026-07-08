@@ -287,7 +287,7 @@ class BlindPeer extends ReadyResource {
         prio0Gcd: 0,
         prio1Gcd: 0,
         prio2Gcd: 0,
-        firstTimeCoreGcd: 0,
+        firstTimeCoresGcd: 0,
         coresGcd: 0
       }
     }
@@ -496,7 +496,7 @@ class BlindPeer extends ReadyResource {
     if (this.closing) return
     this.stats.bytesGcd += bytesCleared
     this.stats.gc.coresGcd += coresGcd
-    this.stats.gc.firstTimeCoreGcd += newCoresGcd
+    this.stats.gc.firstTimeCoresGcd += newCoresGcd
     this.stats.gc.prio0Gcd += prio0Gcd
     this.stats.gc.prio1Gcd += prio1Gcd
     this.stats.gc.prio2Gcd += prio2Gcd
@@ -1062,7 +1062,7 @@ class BlindPeer extends ReadyResource {
       name: 'blind_peer_gc_cores_first_time_total',
       help: 'Number of cores that got garbage collected for the first time',
       collect() {
-        this.set(self.stats.gc.firstTimeCoreGcd)
+        this.set(self.stats.gc.firstTimeCoresGcd)
       }
     })
 

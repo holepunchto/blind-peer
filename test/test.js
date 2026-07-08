@@ -758,7 +758,7 @@ test('gc stats', async (t) => {
   t.is(blindPeer.stats.gc.prio1Gcd, 0, 'prio1')
   t.is(blindPeer.stats.gc.prio2Gcd, 0, 'prio2')
   t.is(blindPeer.stats.gc.coresGcd, 1, 'coresGcd')
-  t.is(blindPeer.stats.gc.firstTimeCoreGcd, 1, 'firstTimeCoresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 1, 'firstTimeCoresGcd')
 
   const blocks = []
   for (let j = 0; j < 6; j++) blocks.push(b4a.alloc(1))
@@ -773,7 +773,7 @@ test('gc stats', async (t) => {
 
   t.is(blindPeer.stats.gc.prio0Gcd, 2, 'prio0')
   t.is(blindPeer.stats.gc.coresGcd, 2, 'coresGcd')
-  t.is(blindPeer.stats.gc.firstTimeCoreGcd, 1, 'firstTimeCoresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 1, 'firstTimeCoresGcd')
 
   client.addCoreBackground(cores[2], { priority: 2 })
   // time to download
@@ -784,7 +784,7 @@ test('gc stats', async (t) => {
   t.is(blindPeer.stats.gc.prio1Gcd, 1, 'prio1')
   t.is(blindPeer.stats.gc.prio2Gcd, 0, 'prio2')
   t.is(blindPeer.stats.gc.coresGcd, 3, 'coresGcd')
-  t.is(blindPeer.stats.gc.firstTimeCoreGcd, 2, 'firstTimeCoresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 2, 'firstTimeCoresGcd')
 
   await cores[2].append(blocks)
   // time to download
@@ -793,7 +793,7 @@ test('gc stats', async (t) => {
   await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
   t.is(blindPeer.stats.gc.prio2Gcd, 1, 'prio2')
   t.is(blindPeer.stats.gc.coresGcd, 4, 'coresGcd')
-  t.is(blindPeer.stats.gc.firstTimeCoreGcd, 3, 'firstTimeCoresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 3, 'firstTimeCoresGcd')
 })
 
 test('can gc core that is not currently active', async (t) => {
