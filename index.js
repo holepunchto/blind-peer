@@ -282,7 +282,15 @@ class BlindPeer extends ReadyResource {
       muxerPaired: 0,
       muxerErrors: 0,
       coreTrackersCreated: 0,
-      coreTrackersDestroyed: 0
+      coreTrackersDestroyed: 0,
+      gc: {
+        prio0Gcd: 0,
+        prio1Gcd: 0,
+        prio2gcd: 0 ,
+        firstTimeCoreGcd: 0,
+        coresGcd: 0
+      },
+
     }
 
     const {
@@ -449,6 +457,12 @@ class BlindPeer extends ReadyResource {
     let bytesCleared = 0
     this.emit('gc-start', { bytesToClear })
 
+    let coresGcd = 0
+    let newCoresGcd = 0
+    let prio0Gcd = 0
+    let prio1Gcd = 0
+    let prio2Gcd = 0
+
     for await (const record of this.db.createGcCandidateReadStream()) {
       if (this.closing) return
       if (bytesCleared >= bytesToClear) break
@@ -471,6 +485,12 @@ class BlindPeer extends ReadyResource {
         bytesCleared += coreBytesCleared
       } finally {
         await core.close().catch(safetyCatch)
+        coresGcd++
+        console.log('bytes cleared post', record.bytesCleared)
+        if (record.bytesCleared === 0) newCoresGcd = 0
+        if (record.priority === 0) prio0Gcd++
+        if (record.priority === 1) prio1Gcd++
+        if (record.priority === 2) prio2Gcd++
       }
     }
 
