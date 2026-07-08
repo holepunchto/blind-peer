@@ -1314,10 +1314,7 @@ test('Prometheus metrics', async (t) => {
       metrics.includes('blind_peer_push_notifications_active 0'),
       'blind_peer_push_notifications_active'
     )
-    t.ok(
-      metrics.includes('blind_peer_push_notifications_rx 0'),
-      'blind_peer_push_notifications_rx'
-    )
+    t.ok(metrics.includes('blind_peer_push_notifications_rx 0'), 'blind_peer_push_notifications_rx')
     t.ok(
       metrics.includes('blind_peer_push_notifications_sent 0'),
       'blind_peer_push_notifications_sent'
