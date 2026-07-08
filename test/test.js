@@ -1314,6 +1314,19 @@ test('Prometheus metrics', async (t) => {
       metrics.includes('blind_peer_push_notifications_active 0'),
       'blind_peer_push_notifications_active'
     )
+    t.ok(
+      metrics.includes('blind_peer_push_notifications_rx 0'),
+      'blind_peer_push_notifications_rx'
+    )
+    t.ok(
+      metrics.includes('blind_peer_push_notifications_sent 0'),
+      'blind_peer_push_notifications_sent'
+    )
+    t.ok(
+      metrics.includes('blind_peer_push_notifications_errors 0'),
+      'blind_peer_push_notifications_errors'
+    )
+
     t.ok(metrics.includes('blind_peer_core_trackers_created 0'), 'blind_peer_core_trackers_created')
     t.ok(
       metrics.includes('blind_peer_core_trackers_destroyed 0'),
