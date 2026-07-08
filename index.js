@@ -99,8 +99,9 @@ class CoreTracker {
     return bytesCleared
   }
 
-  async refresh() {
-    if (this.destroyed || this.record) return
+  async refresh(force) {
+    if (this.destroyed) return
+    if (this.record && !force) return
     await this.core.ready()
     if (this.destroyed) return
 
@@ -108,7 +109,7 @@ class CoreTracker {
     this.channel = 'hypercore/alpha##' + b4a.toString(this.core.discoveryKey, 'hex')
 
     const record = await this.blindPeer.db.get('@blind-peer/cores', { key: this.core.key })
-    if (this.destroyed || this.record || !record) return
+    if (this.destroyed || !record) return
 
     this.record = record
     this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
@@ -607,14 +608,14 @@ class BlindPeer extends ReadyResource {
     throw new Error('Timed out')
   }
 
-  async _activateCore(stream, record) {
+  async _activateCore(stream, record, force) {
     this.stats.activations++
 
     const core = this.store.get({ key: record.key })
     await core.ready()
 
     const tracker = this.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
-    if (tracker) await tracker.refresh()
+    if (tracker) await tracker.refresh(force)
 
     if (record.announce) {
       await this._announceCore(core.key)
@@ -794,7 +795,8 @@ class BlindPeer extends ReadyResource {
         referrer,
         ownLength: 0, // set later
         ownContigLength: 0, // set later
-        needsActivation: false // changed later if needed
+        needsActivation: false, // changed later if needed,
+        needsForceActivation: false
       })
     }
 
@@ -825,6 +827,21 @@ class BlindPeer extends ReadyResource {
         entry.ownContigLength = storageInfo.hints?.contiguousLength || 0
         if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
         if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
+
+        // this is special case we need to reset the blocks + bytes cleared metadata
+        // then reset the core tracker
+        if (entry.priority === 2 && storageInfo.priority !== 2) {
+          entry.needsActivation = true
+          entry.needsForceActivation = true
+          recordsToAdd.push({
+            key: entry.key,
+            priority: entry.priority,
+            announce: entry.announce,
+            referrer: entry.referrer,
+            blocksCleared: 0,
+            bytesCleared: 0
+          })
+        }
       }
     }
 
@@ -856,7 +873,7 @@ class BlindPeer extends ReadyResource {
       if (!entry.needsActivation) continue
       this.stats.coresAdded++
       this.emit('add-core', entry, true, stream)
-      activateProms.push(this._activateCore(stream, entry))
+      activateProms.push(this._activateCore(stream, entry, entry.needsForceActivation ?? false))
     }
     await Promise.all(activateProms)
 
