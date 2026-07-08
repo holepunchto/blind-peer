@@ -455,6 +455,7 @@ class BlindPeer extends ReadyResource {
       if (bytesCleared >= bytesToClear) break
       if (record.bytesAllocated === 0) continue
       if (record.announce) continue // We never clear these ATM, since we do no book keeping on the cleared length of announced  cores
+      if (record.priority === 2) continue // We do not gc high priorty core for now
 
       const { key } = record
 

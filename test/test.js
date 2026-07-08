@@ -723,6 +723,20 @@ test.solo('priority 2 add-cores redownloads blocks cleared by gc', async (t) => 
     t.is(blindCore.contiguousLength, 10, 'block content comeback after priority 2')
     await blindCore.close()
   }
+
+  await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+  {
+    const record = await blindPeer.db.getCoreRecord(core.key)
+    t.is(record.priority, 2, 'sanity check')
+    t.is(record.blocksCleared, 0, 'priority 2 does not get gc')
+    t.is(record.bytesCleared, 0, 'priority 2 does not get gc')
+  }
+  {
+    const blindCore = blindPeer.store.get({ key: core.key })
+    await blindCore.ready()
+    t.is(blindCore.contiguousLength, 10, 'block content comeback after gc')
+    await blindCore.close()
+  }
 })
 
 test('can gc core that is not currently active', async (t) => {
