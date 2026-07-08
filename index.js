@@ -766,7 +766,7 @@ class BlindPeer extends ReadyResource {
     this.topKByPeer.hit(IdEnc.normalize(stream.remotePublicKey))
     this.topKByIp.hit(stream.rawStream.remoteHost)
 
-    const priority = Math.min(request.priority, 1) // 2 is reserved for trusted peers
+    const priority = Math.min(request.priority, 2) // 3 is reserved for trusted peers
 
     if (request.announce !== false && !this._isTrustedPeer(stream.remotePublicKey)) {
       // Note: we can't use the original downgrade-announce event because that assumes a 'record' object
