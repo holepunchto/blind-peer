@@ -1154,6 +1154,30 @@ class BlindPeer extends ReadyResource {
       })
 
       new promClient.Gauge({
+        name: 'blind_peer_push_notifications_rx',
+        help: 'Number of push notification requests received',
+        collect() {
+          this.set(self.stats.notificationsRx)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_push_notifications_sent',
+        help: 'Number of push notification sent to a push gateway',
+        collect() {
+          this.set(self.stats.notificationsSent)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_push_notifications_errors',
+        help: 'Number of errors when forwarding a push notification to a push gateway',
+        collect() {
+          this.set(self.stats.notificationErrors)
+        }
+      })
+
+      new promClient.Gauge({
         name: 'blind_peer_core_trackers_created',
         help: 'How many core trackers were created',
         collect() {
