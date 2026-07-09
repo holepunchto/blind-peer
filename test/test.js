@@ -812,6 +812,84 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   }
 })
 
+test('gc stats', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const enableGc = false // We trigger it manually, so we can test the accounting
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(
+    async () => {
+      await client.close()
+    },
+    { order: 0 }
+  )
+
+  const cores = []
+  for (let i = 0; i < 3; i++) {
+    const core = store.get({ name: `core-${i}` })
+    cores.push(core)
+    const blocks = []
+    for (let j = 0; j < 6; j++) blocks.push(b4a.alloc(1))
+    await core.append(blocks)
+  }
+
+  client.addCoreBackground(cores[1], { priority: 1 })
+  client.addCoreBackground(cores[0], { priority: 0 })
+
+  // time to download
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  t.is(blindPeer.digest.bytesAllocated, 12, 'sanity check on bytes allocated')
+  await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+  t.is(blindPeer.digest.bytesAllocated, 6, 'sanity check 1 core got gcd')
+
+  t.is(blindPeer.stats.gc.prio0Gcd, 1, 'prio0')
+  t.is(blindPeer.stats.gc.prio1Gcd, 0, 'prio1')
+  t.is(blindPeer.stats.gc.prio2Gcd, 0, 'prio2')
+  t.is(blindPeer.stats.gc.coresGcd, 1, 'coresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 1, 'firstTimeCoresGcd')
+
+  const blocks = []
+  for (let j = 0; j < 6; j++) blocks.push(b4a.alloc(1))
+
+  await cores[0].append(blocks)
+
+  // time to download
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+  t.is(blindPeer.digest.bytesAllocated, 6, 'sanity check 1 core got gcd')
+
+  t.is(blindPeer.stats.gc.prio0Gcd, 2, 'prio0')
+  t.is(blindPeer.stats.gc.coresGcd, 2, 'coresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 1, 'firstTimeCoresGcd')
+
+  client.addCoreBackground(cores[2], { priority: 2 })
+  // time to download
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+  t.is(blindPeer.stats.gc.prio0Gcd, 2, 'prio0')
+  t.is(blindPeer.stats.gc.prio1Gcd, 1, 'prio1')
+  t.is(blindPeer.stats.gc.prio2Gcd, 0, 'prio2')
+  t.is(blindPeer.stats.gc.coresGcd, 3, 'coresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 2, 'firstTimeCoresGcd')
+
+  await cores[2].append(blocks)
+  // time to download
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+  t.is(blindPeer.stats.gc.prio2Gcd, 1, 'prio2')
+  t.is(blindPeer.stats.gc.coresGcd, 4, 'coresGcd')
+  t.is(blindPeer.stats.gc.firstTimeCoresGcd, 3, 'firstTimeCoresGcd')
+})
+
 test('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -1468,6 +1546,14 @@ test('Prometheus metrics', async (t) => {
     const metrics = await promClient.register.metrics()
     t.ok(metrics.includes('blind_peer_bytes_allocated 0'), 'blind_peer_bytes_allocated included')
     t.ok(metrics.includes('blind_peer_bytes_gcd 0'), 'blind_peer_bytes_gcd included')
+    t.ok(metrics.includes('blind_peer_gc_prio_0 0'), 'blind_peer_gc_prio_0 included')
+    t.ok(metrics.includes('blind_peer_gc_prio_1 0'), 'blind_peer_gc_prio_1 included')
+    t.ok(metrics.includes('blind_peer_gc_prio_2 0'), 'blind_peer_gc_prio_2 included')
+    t.ok(metrics.includes('blind_peer_gc_cores_total 0'), 'blind_peer_gc_cores_total included')
+    t.ok(
+      metrics.includes('blind_peer_gc_cores_first_time_total 0'),
+      'blind_peer_gc_cores_first_time_total included'
+    )
     t.ok(metrics.includes('blind_peer_cores_added 0'), 'blind_peer_cores_added included')
     t.ok(metrics.includes('blind_peer_cores 0'), 'blind_peer_cores included')
     t.ok(metrics.includes('blind_peer_core_activations 0'), 'blind_peer_core_activations included')
