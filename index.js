@@ -109,7 +109,7 @@ class CoreTracker {
     this.channel = 'hypercore/alpha##' + b4a.toString(this.core.discoveryKey, 'hex')
 
     const record = await this.blindPeer.db.get('@blind-peer/cores', { key: this.core.key })
-    if (this.destroyed || !record) return
+    if (this.destroyed || !record || (this.record && !force)) return
 
     this.record = record
     this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
@@ -283,7 +283,8 @@ class BlindPeer extends ReadyResource {
       muxerPaired: 0,
       muxerErrors: 0,
       coreTrackersCreated: 0,
-      coreTrackersDestroyed: 0
+      coreTrackersDestroyed: 0,
+      coreResetDownload: 0
     }
 
     const {
@@ -455,7 +456,6 @@ class BlindPeer extends ReadyResource {
       if (bytesCleared >= bytesToClear) break
       if (record.bytesAllocated === 0) continue
       if (record.announce) continue // We never clear these ATM, since we do no book keeping on the cleared length of announced  cores
-      if (record.priority === 2) continue // We do not gc high priorty core for now
 
       const { key } = record
 
@@ -829,19 +829,23 @@ class BlindPeer extends ReadyResource {
         if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
         if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
 
-        // this is special case we need to reset the blocks + bytes cleared metadata
-        // then reset the core tracker
-        if (entry.priority === 2 && storageInfo.priority !== 2) {
-          entry.needsActivation = true
-          entry.needsForceActivation = true
-          recordsToAdd.push({
-            key: entry.key,
-            priority: entry.priority,
-            announce: entry.announce,
-            referrer: entry.referrer,
-            blocksCleared: 0,
-            bytesCleared: 0
-          })
+        // special case: reset block/byte metadata to force a full core re-download
+        if (entry.priority === 2) {
+          const record = await this.db.getCoreRecord(entry.key)
+          if (record && record.priority < 2) {
+            this.stats.coreResetDownload++
+
+            entry.needsActivation = true
+            entry.needsForceActivation = true
+            recordsToAdd.push({
+              key: entry.key,
+              priority: entry.priority,
+              announce: entry.announce,
+              referrer: entry.referrer,
+              blocksCleared: 0,
+              bytesCleared: 0
+            })
+          }
         }
       }
     }
@@ -1208,6 +1212,14 @@ class BlindPeer extends ReadyResource {
         help: 'How many core trackers were destroyed',
         collect() {
           this.set(self.stats.coreTrackersDestroyed)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_core_reset_download',
+        help: 'How many core trigger reset download',
+        collect() {
+          this.set(self.stats.coreResetDownload)
         }
       })
     }
