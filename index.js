@@ -112,6 +112,7 @@ class CoreTracker {
     if (this.destroyed || !record || (this.record && !force)) return
 
     this.record = record
+    if (this.downloadRange) this.downloadRange.destroy()
     this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
 
     if (this.updated) this._onupdate()
