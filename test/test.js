@@ -718,6 +718,100 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
+test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const enableGc = false
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 1 })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  for (let i = 2; i < 10; i++) {
+    await core.append(`Block ${i}`)
+  }
+
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    muxer.addCores({
+      referrer: core.key,
+      priority: 0,
+      announce: false,
+      cores: [{ key: core.key, length: core.length }]
+    })
+  ])
+
+  // wait a bit for downloading blocks
+  await new Promise((resolve) => setTimeout(resolve, 1_000))
+
+  const expectedBytes = core.byteLength
+  {
+    const record = await blindPeer.db.getCoreRecord(core.key)
+    t.is(record.bytesAllocated, expectedBytes, 'gc cleared allocated bytes')
+    t.is(record.blocksCleared, 0, 'gc marked all blocks cleared')
+    t.is(record.bytesCleared, 0, 'gc marked all bytes cleared')
+    t.is(blindPeer.stats.coreResetDownload, 0, 'no core got reset download yet')
+  }
+
+  await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+  {
+    const record = await blindPeer.db.getCoreRecord(core.key)
+    t.is(record.bytesAllocated, 0, 'gc cleared allocated bytes')
+    t.is(record.blocksCleared, core.length, 'gc marked all blocks cleared')
+    t.is(record.bytesCleared, expectedBytes, 'gc marked all bytes cleared')
+  }
+
+  {
+    const blindCore = blindPeer.store.get({ key: core.key })
+    await blindCore.ready()
+    t.is(blindCore.contiguousLength, 0, 'block content is gone after gc')
+    await blindCore.close()
+  }
+
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    muxer.addCores({
+      referrer: core.key,
+      priority: 2,
+      announce: false,
+      cores: [{ key: core.key, length: core.length }]
+    })
+  ])
+
+  {
+    const record = await blindPeer.db.getCoreRecord(core.key)
+    t.is(record.priority, 2, 'sanity check')
+    t.is(record.blocksCleared, 0, 'priority 2 resets cleared block metadata')
+    t.is(record.bytesCleared, 0, 'priority 2 resets cleared byte metadata')
+    t.is(blindPeer.stats.coreResetDownload, 1, 'core got reset')
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 1_000))
+
+  {
+    const blindCore = blindPeer.store.get({ key: core.key })
+    await blindCore.ready()
+    t.is(blindCore.contiguousLength, 10, 'block content comeback after priority 2')
+    await blindCore.close()
+  }
+
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    muxer.addCores({
+      referrer: core.key,
+      priority: 2,
+      announce: false,
+      cores: [{ key: core.key, length: core.length }]
+    })
+  ])
+  {
+    const record = await blindPeer.db.getCoreRecord(core.key)
+    t.is(record.priority, 2, 'sanity check')
+    t.is(blindPeer.stats.coreResetDownload, 1, 'core did not reset after addCore again')
+  }
+})
+
 test('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -1410,6 +1504,7 @@ test('Prometheus metrics', async (t) => {
       metrics.includes('blind_peer_core_trackers_destroyed 0'),
       'blind_peer_core_trackers_destroyed'
     )
+    t.ok(metrics.includes('blind_peer_core_reset_download 0'), 'blind_peer_core_reset_download')
   }
 
   await blindPeer.listen()
