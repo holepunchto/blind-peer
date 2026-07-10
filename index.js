@@ -596,7 +596,7 @@ class BlindPeer extends ReadyResource {
             await self._onnotification(conn, request)
           } catch (e) {
             self.stats.notificationErrors++
-            self.emit('notification-error', e, conn)
+            self.emit('notification-error', e, conn, request)
             throw e
           }
         }
