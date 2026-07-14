@@ -72,6 +72,16 @@ test('client can use a blind-peer to add a core', async (t) => {
   }
 })
 
+test('blind-peer can set treeCache options for corestore', async (t) => {
+  const dir = await tmpDir(t)
+  const blindPeer = new BlindPeer(dir, { treeCache: { maxSize: 2 ** 17, maxAge: 1337 } })
+  t.teardown(() => blindPeer.close())
+  await blindPeer.ready()
+
+  t.is(blindPeer.store.storage.treeCache.maxSize, 2 ** 17, 'got maxSize')
+  t.is(blindPeer.store.storage.treeCache.maxAge, 1337, 'got maxAge')
+})
+
 test('client can ask a blind-peer to create and forward a push notification', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
