@@ -72,6 +72,47 @@ test('client can use a blind-peer to add a core', async (t) => {
   }
 })
 
+test('client can change to a new blind-peer', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { blindPeer: blindPeer2 } = await setupBlindPeer(t, bootstrap)
+  await blindPeer2.listen()
+  await blindPeer2.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  const coreKey = core.key
+  await client.addCore(core)
+
+  // when a core has updated
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  client.setKeys([blindPeer2.publicKey])
+
+  // give some time for new blindPeer2
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer2.publicKey, { dht: swarm.dht })
+
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    try {
+      const block = await core.get(1, { timeout: 1000 })
+      t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
+    } catch {
+      t.fail('Peer did not sync on new blindPeer')
+    }
+  }
+})
+
 test('blind-peer can set treeCache options for corestore', async (t) => {
   const dir = await tmpDir(t)
   const blindPeer = new BlindPeer(dir, { treeCache: { maxSize: 2 ** 17, maxAge: 1337 } })
