@@ -230,6 +230,7 @@ test('push notification timeout when getting block does not error the connection
 
   await blindPeer.close()
   await swarm.destroy()
+  await store.close()
 })
 
 test('client can use a blind-peer to add an autobase', async (t) => {
