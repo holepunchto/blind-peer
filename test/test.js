@@ -196,6 +196,42 @@ test('send push notification falls back when closest blind peer times out', asyn
   t.is(sentMessages.length, 1, 'fallback blind peer forwarded one push')
 })
 
+test('push notification timeout when getting block does not error the connection', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey],
+    notificationTimeout: 1000
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  // We'll add the core of a different peer, so the blind peer can't get the block
+  const swarm = new Hyperswarm({ bootstrap })
+  const store = new Corestore(await t.tmp())
+
+  blindPeer.swarm.on('connection', (conn, peerInfo) => {
+    conn.on('error', (err) => {
+      t.fail('connection should not error')
+      console.error(err)
+    })
+  })
+
+  const { core } = await setupCoreHolder(t, bootstrap)
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'notification-error'), client.sendNotification(core)])
+
+  // some time for swarm error to trigger if any
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  t.pass('notification error emitted, but conn did not close')
+
+  await blindPeer.close()
+  await swarm.destroy()
+})
+
 test('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(1)
@@ -2216,7 +2252,8 @@ async function setupBlindPeer(
     topK,
     activeCorestore,
     pushGatewayKeys,
-    pushGatewayPoolOpts
+    pushGatewayPoolOpts,
+    notificationTimeout
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -2235,7 +2272,8 @@ async function setupBlindPeer(
     replicationLagThreshold,
     topK,
     adminRouter,
-    activeCorestore
+    activeCorestore,
+    notificationTimeout
   })
 
   const order = clientCounter++
