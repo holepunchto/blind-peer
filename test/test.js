@@ -358,7 +358,7 @@ test('client can change blind-peer for an autobase', async (t) => {
   } = await setupAutobaseHolder(t, bootstrap)
   await indexerSwarm.flush()
 
-  await indexer.append({ block: 2 })
+  await indexer.append({ block: 0 })
 
   const client = new Client(indexerSwarm.dht, indexerStore, {
     keys: [blindPeer.publicKey]
