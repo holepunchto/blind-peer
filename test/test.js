@@ -340,6 +340,67 @@ test('client can use a blind-peer to add an autobase', async (t) => {
   }
 })
 
+test('client can change blind-peer for an autobase', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { blindPeer: blindPeer2 } = await setupBlindPeer(t, bootstrap)
+  await blindPeer2.listen()
+  await blindPeer2.swarm.flush()
+
+  const {
+    swarm: indexerSwarm,
+    base: indexer,
+    store: indexerStore
+  } = await setupAutobaseHolder(t, bootstrap)
+  await indexerSwarm.flush()
+
+  await indexer.append({ block: 2 })
+
+  const client = new Client(indexerSwarm.dht, indexerStore, {
+    keys: [blindPeer.publicKey]
+  })
+  await client.addAutobase(indexer)
+  await indexer.append({ block: 1 })
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  client.setKeys([blindPeer2.publicKey])
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  await client.close()
+  await indexerSwarm.destroy()
+
+  await replicateAndAssert(blindPeer.publicKey, 'Can read from blindPeer1')
+  await replicateAndAssert(blindPeer2.publicKey, 'Can read from blindPeer2')
+
+  async function replicateAndAssert(blindPeerKey, message) {
+    const { swarm: readerSwarm, store: readerStore } = await setupAutobaseHolder(
+      t,
+      bootstrap,
+      indexer.local.key
+    )
+    await readerSwarm.flush()
+    const core = readerStore.get({ key: indexer.views()[0].key, valueEncoding: 'json' })
+    await core.ready()
+    readerSwarm.joinPeer(blindPeerKey, { dht: readerSwarm.dht })
+
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    try {
+      const block = await core.get(1, { timeout: 1000 })
+      t.alike(block, { block: 1 }, `${message} - alike`)
+    } catch {
+      t.fail(`${message} - timed out`)
+    }
+    await readerSwarm.destroy()
+  }
+})
+
 test('client can use hyperdht addresses to add a core', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
