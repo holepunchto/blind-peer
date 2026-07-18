@@ -560,11 +560,16 @@ class BlindPeer extends ReadyResource {
     }
   }
 
-  _onconnection(conn) {
+  _onconnection(conn, peerInfo) {
     if (this.closing) {
       conn.destroy()
       return
     }
+
+    peerInfo.ban(true)
+    conn.destroy()
+    console.log('test', peerInfo.banned)
+    return
 
     if (this.ownsStore) this.store.replicate(conn)
     if (this.ownsWakeup) this.wakeup.addStream(conn)
