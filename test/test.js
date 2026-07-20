@@ -165,9 +165,9 @@ test('client can migrate multiple cores to multiple blind-peers and preserve set
   t.alike(record2.key, coreKey2, 'blindPeer4 added core2')
   t.is(record2.priority, 0, 'blindPeer4 added core2 with priority 0')
 
-  t.is(await getBlindPeerCoreLength(blindPeer4, coreKey), 0, 'blindPeer4 did not swarm')
-  t.is(await getBlindPeerCoreLength(blindPeer5, coreKey), 2, 'blindPeer5 swarmed')
-  t.is(await getBlindPeerCoreLength(blindPeer6, coreKey), 0, 'blindPeer6 did not swarm')
+  t.is(await getBlindPeerCoreLength(blindPeer4, coreKey), 0, 'blindPeer4 not swarm for core1')
+  t.is(await getBlindPeerCoreLength(blindPeer5, coreKey), 2, 'blindPeer5 swarmed for core1')
+  t.is(await getBlindPeerCoreLength(blindPeer6, coreKey), 0, 'blindPeer6 not swarm for core1')
 
   t.is(await getBlindPeerCoreLength(blindPeer4, coreKey2), 1, 'blindPeer4 swarmed for core2')
   t.is(await getBlindPeerCoreLength(blindPeer5, coreKey2), 1, 'blindPeer5 swarmed for core2')
