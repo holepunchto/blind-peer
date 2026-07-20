@@ -233,7 +233,8 @@ class BlindPeer extends ReadyResource {
       topK = {},
       adminRouter = null,
       activeCorestore = false,
-      treeCache
+      treeCache,
+      notificationTimeout = 10000
     } = {}
   ) {
     super()
@@ -244,6 +245,7 @@ class BlindPeer extends ReadyResource {
     const ipBanNs = this.store.namespace('ip-ban-lists')
     this.ipBanLists = ipBanListKeys.map((key) => new IpBanList(ipBanNs, { key }))
     this.banTimeout = banTimeout
+    this.notificationTimeout = notificationTimeout
 
     this._port = port || 0
     this.bootstrap = bootstrap
@@ -609,7 +611,8 @@ class BlindPeer extends ReadyResource {
           } catch (e) {
             self.stats.notificationErrors++
             self.emit('notification-error', e, conn, request)
-            throw e
+            if (e.code === 'REQUEST_TIMEOUT') return
+            throw e // unexpected error: crash the connection
           }
         }
       })
@@ -994,7 +997,8 @@ class BlindPeer extends ReadyResource {
       roomDiscoveryKey: request.destination.discoveryKey,
       index: request.block.index,
       version: request.version,
-      extra: request.extra
+      extra: request.extra,
+      timeout: this.notificationTimeout
     })
 
     await this.gatewayPool.makeRequest(
