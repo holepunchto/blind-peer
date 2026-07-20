@@ -154,7 +154,7 @@ test('send push notification when not yet connected to blind peer', async (t) =>
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
 })
 
-test('sets up core replication on notification if not present', async (t) => {
+test('sets up core replication on notification if not present and the core is outdated', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
