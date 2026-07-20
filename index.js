@@ -974,7 +974,7 @@ class BlindPeer extends ReadyResource {
     const core = this.store.get({ key: request.block.key })
     await core.ready()
 
-    if (core.contiguousLength < request.block.index && !await core.has(request.block.index)) {
+    if (core.contiguousLength < request.block.index && !(await core.has(request.block.index))) {
       const record = await this.db.getCoreRecord(core.key)
       if (!record) throw new Error('Cannot replicate because the core is not known')
 
