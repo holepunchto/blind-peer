@@ -113,6 +113,84 @@ test('client can change to a new blind-peer', async (t) => {
   }
 })
 
+test('client can migrate multiple cores to multiple blind-peers and preserve settings', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const [blindPeer1, blindPeer2, blindPeer3, blindPeer4, blindPeer5, blindPeer6] =
+    await getBlindPeers(6)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const core2 = store.get({ name: 'core2' })
+  await core2.append('Block 0')
+  swarm.join(core2.discoveryKey)
+
+  const coreKey = core.key
+  const coreKey2 = core2.key
+
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer1.publicKey, blindPeer2.publicKey, blindPeer3.publicKey]
+  })
+  await client.addCore(core, { priority: 1, pick: 1, target: blindPeer5.publicKey })
+  await client.addCore(core2, { pick: 3 })
+
+  // when a core has updated
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const core1Results = await Promise.all([
+    getBlindPeerCoreLength(blindPeer1, coreKey),
+    getBlindPeerCoreLength(blindPeer2, coreKey),
+    getBlindPeerCoreLength(blindPeer3, coreKey)
+  ])
+
+  // Sanity check that it is what we expect before keys change
+  t.ok(core1Results.indexOf(2) === core1Results.lastIndexOf(2), '1 blindPeer swarmed for core1')
+  t.ok(core1Results.indexOf(0) !== core1Results.lastIndexOf(0), '2 blindPeers not swarm for core1')
+
+  t.is(await getBlindPeerCoreLength(blindPeer1, coreKey2), 1, 'blindPeer1 swarmed for core2')
+  t.is(await getBlindPeerCoreLength(blindPeer2, coreKey2), 1, 'blindPeer2 swarmed for core2')
+  t.is(await getBlindPeerCoreLength(blindPeer3, coreKey2), 1, 'blindPeer3 swarmed for core2')
+
+  const core1Event = once(blindPeer5, 'add-core')
+  core1Event.catch(() => {})
+  const core2Event = once(blindPeer4, 'add-core')
+  core2Event.catch(() => {})
+
+  client.setKeys([blindPeer4.publicKey, blindPeer5.publicKey, blindPeer6.publicKey])
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const [record] = await core1Event
+  t.alike(record.key, coreKey, 'blindPeer5 added core1')
+  t.is(record.priority, 1, 'blindPeer5 added core1 with priority 1')
+
+  const [record2] = await core2Event
+  t.alike(record2.key, coreKey2, 'blindPeer4 added core2')
+  t.is(record2.priority, 0, 'blindPeer4 added core2 with priority 0')
+
+  t.is(await getBlindPeerCoreLength(blindPeer4, coreKey), 0, 'blindPeer4 did not swarm')
+  t.is(await getBlindPeerCoreLength(blindPeer5, coreKey), 2, 'blindPeer5 swarmed')
+  t.is(await getBlindPeerCoreLength(blindPeer6, coreKey), 0, 'blindPeer6 did not swarm')
+
+  t.is(await getBlindPeerCoreLength(blindPeer4, coreKey2), 1, 'blindPeer4 swarmed for core2')
+  t.is(await getBlindPeerCoreLength(blindPeer5, coreKey2), 1, 'blindPeer5 swarmed for core2')
+  t.is(await getBlindPeerCoreLength(blindPeer6, coreKey2), 1, 'blindPeer6 swarmed for core2')
+
+  async function getBlindPeers(amount) {
+    const results = []
+    for (let i = 0; i < amount; i++) {
+      const { blindPeer } = await setupBlindPeer(t, bootstrap)
+      await blindPeer.listen()
+      await blindPeer.swarm.flush()
+      results.push(blindPeer)
+    }
+    return results
+  }
+
+  async function getBlindPeerCoreLength(blindPeer, key) {
+    const core = blindPeer.store.get({ key: key })
+    await core.ready()
+    return core.length
+  }
+})
+
 test('blind-peer can set treeCache options for corestore', async (t) => {
   const dir = await tmpDir(t)
   const blindPeer = new BlindPeer(dir, { treeCache: { maxSize: 2 ** 17, maxAge: 1337 } })
