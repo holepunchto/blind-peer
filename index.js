@@ -424,6 +424,17 @@ class BlindPeer extends ReadyResource {
     return session
   }
 
+  _isReplicating(core, stream) {
+    const session = this.activeReplication.get(b4a.toString(core.key, 'hex'))
+    if (!session) return false
+
+    for (const p of core.peers) {
+      if (b4a.equals(p.remotePublicKey, stream.remotePublicKey)) return true
+    }
+
+    return false
+  }
+
   async _onwakeup(discoveryKey, muxer) {
     this.stats.wakeups++
 
@@ -969,8 +980,14 @@ class BlindPeer extends ReadyResource {
     }
 
     const core = this.store.get({ key: request.block.key })
-
     await core.ready()
+
+    if (!this._isReplicating(core, stream)) {
+      const record = await this.db.getCoreRecord(core.key)
+      if (!record) throw new Error('Cannot replicate because the core is not known')
+
+      await this._activateCore(stream, record)
+    }
 
     const payload = await blindPush.createNotification(core, {
       roomKey: request.destination.key,
