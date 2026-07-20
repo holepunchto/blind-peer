@@ -247,6 +247,12 @@ test('push notification timeout when getting block does not error the connection
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
+  const { core, swarm: initSwarm, store: initStore } = await setupCoreHolder(t, bootstrap)
+
+  const initClient = new Client(initSwarm.dht, initStore, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
+  await initClient.close()
+
   // We'll add the core of a different peer, so the blind peer can't get the block
   const swarm = new Hyperswarm({ bootstrap })
   const store = new Corestore(await t.tmp())
@@ -258,7 +264,7 @@ test('push notification timeout when getting block does not error the connection
     })
   })
 
-  const { core } = await setupCoreHolder(t, bootstrap)
+  await core.append('Block2')
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   await Promise.all([once(blindPeer, 'notification-error'), client.sendNotification(core)])
