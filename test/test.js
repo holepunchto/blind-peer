@@ -479,6 +479,71 @@ test('client can change blind-peer for an autobase', async (t) => {
   }
 })
 
+test('client can change multiple blind-peers for multiple autobases', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const blindPeer1 = await initBlindPeer()
+  const blindPeer2 = await initBlindPeer()
+  const blindPeer3 = await initBlindPeer()
+  const blindPeer4 = await initBlindPeer()
+
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const base1 = await initAutobase()
+  const base2 = await initAutobase('base2')
+  await base2.append({ block: 3 })
+
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer1.publicKey, blindPeer2.publicKey]
+  })
+
+  await client.addAutobase(base1, { pick: 1, target: blindPeer3.publicKey })
+  await client.addAutobase(base2, { pick: 2 })
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const lengths = await Promise.all([
+    getCoreLength(blindPeer1, base1),
+    getCoreLength(blindPeer2, base1)
+  ])
+
+  // sanity check that it swarms as we expect before keys change
+  // for base1, it is random on which blind-peer it will end up
+  t.ok(lengths.indexOf(0) !== -1 && lengths.indexOf(2) !== -1, '1 blindPeer swarmed base1')
+  t.is(await getCoreLength(blindPeer1, base2), 3, 'blindPeer1 swarmed base2')
+  t.is(await getCoreLength(blindPeer2, base2), 3, 'blindPeer2 swarmed base2')
+
+  client.setKeys([blindPeer3.publicKey, blindPeer4.publicKey])
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  t.is(await getCoreLength(blindPeer3, base1), 2, 'blindPeer3 swarmed base1')
+  t.is(await getCoreLength(blindPeer4, base1), 0, 'blindPeer4 did not swarm base1')
+  t.is(await getCoreLength(blindPeer3, base2), 3, 'blindPeer3 swarmed base2')
+  t.is(await getCoreLength(blindPeer4, base2), 3, 'blindPeer4 swarmed base2')
+
+  async function initBlindPeer() {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap)
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
+
+    return blindPeer
+  }
+
+  async function getCoreLength(blindPeer, key) {
+    const core = blindPeer.store.get({ key: key.local.key })
+    await core.ready()
+    return core.length
+  }
+
+  async function initAutobase(namespace = 'base') {
+    const { base } = await loadAutobase(store, null, { namespace })
+    swarm.join(base.discoveryKey)
+    await base.append({ block: 0 })
+    await base.append({ block: 1 })
+
+    return base
+  }
+})
+
 test('client can use hyperdht addresses to add a core', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -2353,7 +2418,11 @@ async function setupCoreHolder(t, bootstrap, { active } = {}) {
   return { swarm, store, core }
 }
 
-async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = true } = {}) {
+async function loadAutobase(
+  store,
+  autobaseBootstrap = null,
+  { addIndexers = true, namespace = 'base' } = {}
+) {
   const open = (store) => {
     return store.get('view', { valueEncoding: 'json' })
   }
@@ -2370,7 +2439,7 @@ async function loadAutobase(store, autobaseBootstrap = null, { addIndexers = tru
     }
   }
 
-  const base = new Autobase(store.namespace('base'), autobaseBootstrap, {
+  const base = new Autobase(store.namespace(namespace), autobaseBootstrap, {
     open,
     apply,
     valueEncoding: 'json',
