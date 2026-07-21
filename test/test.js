@@ -144,21 +144,27 @@ test('client can migrate multiple cores to multiple blind-peers and preserve set
   t.is(await getBlindPeerCoreLength(blindPeer2, coreKey2), 1, 'blindPeer2 swarmed for core2')
   t.is(await getBlindPeerCoreLength(blindPeer3, coreKey2), 1, 'blindPeer3 swarmed for core2')
 
-  const core1Event = once(blindPeer5, 'add-core')
-  core1Event.catch(() => {})
-  const core2Event = once(blindPeer4, 'add-core')
-  core2Event.catch(() => {})
+  const bp5AddsCore1 = t.test()
+  bp5AddsCore1.plan(1)
+  const bp5AddsCore2 = t.test()
+  bp5AddsCore2.plan(1)
+  blindPeer5.on('add-core', (record) => {
+    if (record.key.equals(coreKey)) {
+      bp5AddsCore1.is(record.priority, 1, 'blindPeer5 added core1 with priority 1')
+      return
+    }
+    if (record.key.equals(coreKey2)) {
+      bp5AddsCore2.is(record.priority, 0, 'blindPeer5 added core2 with priority 0')
+      return
+    }
+    bp5AddsCore1.fail('blindPeer5 should add only two cores')
+  })
 
   client.setKeys([blindPeer4.publicKey, blindPeer5.publicKey, blindPeer6.publicKey])
   await new Promise((resolve) => setTimeout(resolve, 1000))
 
-  const [record] = await core1Event
-  t.alike(record.key, coreKey, 'blindPeer5 added core1')
-  t.is(record.priority, 1, 'blindPeer5 added core1 with priority 1')
-
-  const [record2] = await core2Event
-  t.alike(record2.key, coreKey2, 'blindPeer4 added core2')
-  t.is(record2.priority, 0, 'blindPeer4 added core2 with priority 0')
+  await bp5AddsCore1
+  await bp5AddsCore2
 
   t.is(await getBlindPeerCoreLength(blindPeer4, coreKey), 0, 'blindPeer4 not swarm for core1')
   t.is(await getBlindPeerCoreLength(blindPeer5, coreKey), 2, 'blindPeer5 swarmed for core1')
