@@ -105,6 +105,7 @@ test('client can change to a new blind-peer', async (t) => {
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
     try {
+      // todo: remove the timeout and try/catch block after blind-peering is updated and test is expected to pass
       const block = await core.get(1, { timeout: 1000 })
       t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
     } catch {
@@ -148,23 +149,28 @@ test('client can migrate multiple cores to multiple blind-peers and preserve set
   t.is(await getBlindPeerCoreLength(blindPeer1, coreKey2), 1, 'blindPeer1 swarmed for core2')
   t.is(await getBlindPeerCoreLength(blindPeer2, coreKey2), 1, 'blindPeer2 swarmed for core2')
   t.is(await getBlindPeerCoreLength(blindPeer3, coreKey2), 1, 'blindPeer3 swarmed for core2')
-
-  const core1Event = once(blindPeer5, 'add-core')
+  // todo: remove signal when test is expected to pass
+  const core1Event = once(blindPeer5, 'add-core', { signal: AbortSignal.timeout(2000) })
   core1Event.catch(() => {})
-  const core2Event = once(blindPeer4, 'add-core')
+  // todo: remove signal when test is expected to pass
+  const core2Event = once(blindPeer4, 'add-core', { signal: AbortSignal.timeout(2000) })
   core2Event.catch(() => {})
 
   client.setKeys([blindPeer4.publicKey, blindPeer5.publicKey, blindPeer6.publicKey])
   await new Promise((resolve) => setTimeout(resolve, 1000))
 
-  const [record] = await core1Event
-  t.alike(record.key, coreKey, 'blindPeer5 added core1')
-  t.is(record.priority, 1, 'blindPeer5 added core1 with priority 1')
+  // todo: remove try/catch block when test is expected to pass
+  try {
+    const [record] = await core1Event
+    t.alike(record.key, coreKey, 'blindPeer5 added core1')
+    t.is(record.priority, 1, 'blindPeer5 added core1 with priority 1')
 
-  const [record2] = await core2Event
-  t.alike(record2.key, coreKey2, 'blindPeer4 added core2')
-  t.is(record2.priority, 0, 'blindPeer4 added core2 with priority 0')
-
+    const [record2] = await core2Event
+    t.alike(record2.key, coreKey2, 'blindPeer4 added core2')
+    t.is(record2.priority, 0, 'blindPeer4 added core2 with priority 0')
+  } catch {
+    t.fail('core1Event/core2Event did not resolve')
+  }
   t.is(await getBlindPeerCoreLength(blindPeer4, coreKey), 0, 'blindPeer4 not swarm for core1')
   t.is(await getBlindPeerCoreLength(blindPeer5, coreKey), 2, 'blindPeer5 swarmed for core1')
   t.is(await getBlindPeerCoreLength(blindPeer6, coreKey), 0, 'blindPeer6 not swarm for core1')
