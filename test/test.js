@@ -117,7 +117,6 @@ test('client can migrate multiple cores to multiple blind-peers and preserve set
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const core2 = store.get({ name: 'core2' })
   await core2.append('Block 0')
-  swarm.join(core2.discoveryKey)
 
   const coreKey = core.key
   const coreKey2 = core2.key
@@ -529,7 +528,6 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
 
   async function initAutobase(namespace = 'base') {
     const { base } = await loadAutobase(store, null, { namespace })
-    swarm.join(base.discoveryKey)
     await base.append({ block: 0 })
     await base.append({ block: 1 })
 
