@@ -274,6 +274,46 @@ test('send push notification when not yet connected to blind peer', async (t) =>
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
 })
 
+test('sets up core replication on notification if not present and the core is outdated', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  // needs both sides to have a passive corestore, otherwise this side will
+  // set up hypercore replication for the core always
+  const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap, { active: false })
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  swarm2.joinPeer(swarm.keyPair.publicKey)
+  const coreCopy = store2.get(core.key)
+  coreCopy.download({ start: 0, end: -1 })
+
+  const initClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
+  await initClient.close()
+
+  await Promise.all([core.append('another block'), once(coreCopy, 'append')])
+
+  const client = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
+
+  blindPeer.on('notification-error', () => {
+    t.fail('notification should work')
+  })
+
+  await coreCopy.get(2) // ensure synced
+  t.is(coreCopy.length, core.length, 'sanity check')
+
+  await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(coreCopy)])
+
+  t.is(sentMessages.length, 1, 'gateway received one forwarded push')
+})
+
 test('send push notification falls back when closest blind peer times out', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -327,6 +367,12 @@ test('push notification timeout when getting block does not error the connection
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
+  const { core, swarm: initSwarm, store: initStore } = await setupCoreHolder(t, bootstrap)
+
+  const initClient = new Client(initSwarm.dht, initStore, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
+  await initClient.close()
+
   // We'll add the core of a different peer, so the blind peer can't get the block
   const swarm = new Hyperswarm({ bootstrap })
   const store = new Corestore(await t.tmp())
@@ -338,7 +384,7 @@ test('push notification timeout when getting block does not error the connection
     })
   })
 
-  const { core } = await setupCoreHolder(t, bootstrap)
+  await core.append('Block2')
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   await Promise.all([once(blindPeer, 'notification-error'), client.sendNotification(core)])
