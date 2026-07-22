@@ -6,28 +6,27 @@ on:
   pull_request:
     branches:
       - main
+permissions:
+  contents: read
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    name: Security
+    steps:
+      - uses: holepunchto/actions/security-base@v1
   build:
     strategy:
       matrix:
-        node-version: [lts/*]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
-      - run: npm install
+      - uses: holepunchto/actions/bare-base@v1
       - run: npm test
-      - run: npm -g install bare
       - run: npm run test:bare
   test-netns:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Use Node.js lts/*
-        uses: actions/setup-node@v3
-      - run: npm install
+      - uses: holepunchto/actions/node-base@v1
       - name: Setup network namespaces
         run: sudo test-netns/scripts/setup.sh
       - name: Run netns tests
