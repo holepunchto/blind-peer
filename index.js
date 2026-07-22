@@ -29,6 +29,7 @@ const { ForwardPushRequest } = require('blind-push/encodings')
 
 const BlindPeerDB = require('./lib/db.js')
 const TopKWindow = require('./lib/top-k.js')
+const BlindPeerError = require('./lib/errors.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
@@ -601,6 +602,7 @@ class BlindPeer extends ReadyResource {
             self.stats.notificationErrors++
             self.emit('notification-error', e, conn, request)
             if (e.code === 'REQUEST_TIMEOUT') return
+            if (e.code === 'UNKNOWN_CORE') return
             throw e // unexpected error: crash the connection
           }
         }
@@ -974,9 +976,11 @@ class BlindPeer extends ReadyResource {
     const core = this.store.get({ key: request.block.key })
     await core.ready()
 
-    if (core.contiguousLength < request.block.index && !(await core.has(request.block.index))) {
+    if (!(await core.has(request.block.index))) {
       const record = await this.db.getCoreRecord(core.key)
-      if (!record) throw new Error('Cannot replicate because the core is not known')
+      if (!record) {
+        throw BlindPeerError.UNKNOWN_CORE('Cannot replicate because the core is not known')
+      }
 
       await this._activateCore(stream, record)
     }
