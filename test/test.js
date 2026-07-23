@@ -2487,6 +2487,37 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
   t.is(blindPeer.stats.coreTrackersDestroyed, 1, 'core trackers destroyed stat')
 })
 
+test('a new core that already exists in the corestore is added to the db', async (t) => {
+  // This is a failing test for an edge case we detected occurs in practice.
+  // The actual path for it to happen is much more complex, most likely via
+  // the wakeup logic, but that's not relevant for validating the fix.
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const coreAddedProm = once(blindPeer, 'add-core')
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  swarm.joinPeer(blindPeer.swarm.keyPair.publicKey)
+
+  // Force the corestore to already know the core
+  const bpCore = blindPeer.store.get(core.key)
+  await once(bpCore, 'append')
+  t.is(bpCore.length, core.length, 'sanity check')
+
+  client.addCoreBackground(core)
+
+  await coreAddedProm
+
+  const record = await blindPeer.db.getCoreRecord(core.key)
+  t.ok(record, 'record got added to db')
+  console.log(record)
+  t.alike(record.key, core.key, 'sanity check')
+})
+
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 

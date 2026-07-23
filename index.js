@@ -813,8 +813,10 @@ class BlindPeer extends ReadyResource {
     this.emit('add-cores-received', stream, request)
 
     const discKeys = []
+    const keys = []
     const overview = new Map()
     for (const c of cores) {
+      keys.push(c.key)
       const discoveryKey = crypto.discoveryKey(c.key)
       discKeys.push(discoveryKey)
       const id = IdEnc.normalize(discoveryKey)
@@ -833,20 +835,23 @@ class BlindPeer extends ReadyResource {
     }
 
     const recordsToAdd = []
-    const infos = await this.store.storage.getInfos(discKeys)
-    for (let i = 0; i < infos.length; i++) {
+    const [storageInfos, hasCoreOverview] = await Promise.all([
+      this.store.storage.getInfos(discKeys),
+      this.db.hasCoreOverview(keys)
+    ])
+
+    // console.log(hasCoreOverview, keys)
+    for (let i = 0; i < storageInfos.length; i++) {
       const id = IdEnc.normalize(discKeys[i])
-      const storageInfo = infos[i]
+      const storageInfo = storageInfos[i]
       const entry = overview.get(id)
+
+      // console.log(storageInfo, entry)
 
       // Note: just the null check does not suffice for storageInfo, because we already try
       // loading some keys from other contexts, like when the system core of an autobase is
       // used as a referrer.
-      if (
-        storageInfo === null ||
-        entry.announce ||
-        (storageInfo.head === null && entry.remoteLength > 0)
-      ) {
+      if (entry.announce || !hasCoreOverview[i]) {
         entry.needsActivation = true
         recordsToAdd.push({
           key: entry.key,
@@ -855,8 +860,8 @@ class BlindPeer extends ReadyResource {
           referrer: entry.referrer
         })
       } else {
-        entry.ownLength = storageInfo.head?.length || 0
-        entry.ownContigLength = storageInfo.hints?.contiguousLength || 0
+        entry.ownLength = storageInfo?.head?.length || 0
+        entry.ownContigLength = storageInfo?.hints?.contiguousLength || 0
         if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
         if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
 
