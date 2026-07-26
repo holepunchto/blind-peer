@@ -2514,9 +2514,6 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
     await Promise.all([
       once(blindPeer, 'add-cores-done'),
       muxer.addCores({
-        referrer: core.key,
-        priority: 0,
-        announce: false,
         cores: [{ key: core.key, length: core.length }]
       })
     ])
