@@ -267,6 +267,7 @@ class BlindPeer extends ReadyResource {
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
+    this._coresPerConnection = new Map()
 
     this.rpcClient = null
     this.routerKey = routerKey || null
@@ -440,7 +441,6 @@ class BlindPeer extends ReadyResource {
 
     if (session.hasStream(stream)) return
     session.addStream(stream)
-
     // if new peer, send back the active handler for this peer
     const peer = session.getPeer(stream)
     if (peer && peer.active) session.handlers.onpeeractive(peer, session)
@@ -572,6 +572,13 @@ class BlindPeer extends ReadyResource {
     if (this.ownsStore) this.store.replicate(conn)
     if (this.ownsWakeup) this.wakeup.addStream(conn)
 
+    const replicatingCores = new Map()
+    this._coresPerConnection.set(conn, replicatingCores)
+    conn.on('close', () => {
+      this._coresPerConnection.delete(conn)
+      for (const core of replicatingCores.values()) core.close().catch(safetyCatch)
+    })
+
     const rpc = new ProtomuxRPC(conn, {
       id: this.swarm.keyPair.publicKey,
       valueEncoding: c.none
@@ -643,23 +650,25 @@ class BlindPeer extends ReadyResource {
   async _activateCore(stream, record, force) {
     this.stats.activations++
 
-    const core = this.store.get({ key: record.key })
-    await core.ready()
+    const discKey = crypto.discoveryKey(record.key)
 
-    const tracker = this.activeReplication.get(b4a.toString(core.discoveryKey, 'hex'))
+    const tracker = this.activeReplication.get(b4a.toString(discKey, 'hex'))
     if (tracker) await tracker.refresh(force)
 
     if (record.announce) {
-      await this._announceCore(core.key)
+      await this._announceCore(record.key)
     }
 
-    if (stream.destroying) {
-      await core.close()
-      return
-    }
+    if (stream.destroying) return
 
+    const id = b4a.toString(record.key, 'hex')
+    const replicatingCores = this._coresPerConnection.get(stream)
+    if (replicatingCores.has(id)) return // already replicating
+
+    const core = this.store.get(record.key)
+    replicatingCores.set(id, core)
+    await core.ready()
     core.replicate(stream)
-    stream.on('close', () => core.close().catch(safetyCatch))
   }
 
   async _resolvePeers(key) {

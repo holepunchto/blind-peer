@@ -20,6 +20,7 @@ const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodin
 const blindPush = require('blind-push')
 const BlindPushGateway = require('blind-push-gateway')
 const rrp = require('resolve-reject-promise')
+const HypercoreStats = require('hypercore-stats')
 
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
@@ -302,7 +303,8 @@ test('sets up core replication on notification if not present and the core is ou
 
   const client = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
 
-  blindPeer.on('notification-error', () => {
+  blindPeer.on('notification-error', (e) => {
+    console.error(e)
     t.fail('notification should work')
   })
 
@@ -2485,6 +2487,50 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
 
   t.is(blindPeer.activeReplication.size, 0, 'activeReplication entry removed after core closed')
   t.is(blindPeer.stats.coreTrackersDestroyed, 1, 'core trackers destroyed stat')
+})
+
+test('activating the same core repeatedly does not leak hypercore sessions and stream close listeners', async (t) => {
+  // Repeated add-core requests happen when an autobase changes,
+  // but to keep the tests simple we hack into the muxer directly
+  // (the test is for the server side anyway)
+
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
+
+  const connProm = once(blindPeer.swarm, 'connection')
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+  const [conn] = await connProm
+
+  const closeListeners = () => conn.listenerCount('close')
+  const initListeners = closeListeners()
+
+  for (let i = 0; i < 5; i++) {
+    await core.append(`Block ${i + 1}`) // ensure length differs so needsActivation is set
+    await Promise.all([
+      once(blindPeer, 'add-cores-done'),
+      muxer.addCores({
+        referrer: core.key,
+        priority: 0,
+        announce: false,
+        cores: [{ key: core.key, length: core.length }]
+      })
+    ])
+  }
+
+  t.is(blindPeer.stats.activations, 5, 'each add-cores triggered an activation')
+  const bpCore = blindPeer.store.get(core.key)
+  await bpCore.ready()
+  console.log('sessions', bpCore.sessions.length)
+
+  t.is(closeListeners() - initListeners, 1, `no close listener leak`)
+  t.is(bpCore.sessions.length, 2, 'no new session per request')
+
+  await muxer.close()
 })
 
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
