@@ -20,7 +20,6 @@ const { ADMIN_CHANNEL_ID, AdminQueryTopKEncoding } = require('blind-peer-encodin
 const blindPush = require('blind-push')
 const BlindPushGateway = require('blind-push-gateway')
 const rrp = require('resolve-reject-promise')
-const HypercoreStats = require('hypercore-stats')
 
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
