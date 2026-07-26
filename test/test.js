@@ -2496,52 +2496,49 @@ test('coreTracker does not leak when core closes before refresh completes', asyn
   t.is(blindPeer.stats.coreTrackersDestroyed, 1, 'core trackers destroyed stat')
 })
 
-test(
-  'activating the same core repeatedly does not leak hypercore sessions and stream close listeners',
-  async (t) => {
-    // Repeated add-core requests happen when an autobase changes,
-    // but to keep the tests simple we hack into the muxer directly
-    // (the test is for the server side anyway)
+test('activating the same core repeatedly does not leak hypercore sessions and stream close listeners', async (t) => {
+  // Repeated add-core requests happen when an autobase changes,
+  // but to keep the tests simple we hack into the muxer directly
+  // (the test is for the server side anyway)
 
-    const { bootstrap } = await getTestnet(t)
+  const { bootstrap } = await getTestnet(t)
 
-    const { blindPeer } = await setupBlindPeer(t, bootstrap)
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
 
-    const { core, swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
 
-    const connProm = once(blindPeer.swarm, 'connection')
-    const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
-    const [conn] = await connProm
+  const connProm = once(blindPeer.swarm, 'connection')
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+  const [conn] = await connProm
 
-    const closeListeners = () => conn.listenerCount('close')
-    const initListeners = closeListeners()
+  const closeListeners = () => conn.listenerCount('close')
+  const initListeners = closeListeners()
 
-    for (let i = 0; i < 5; i++) {
-      await core.append(`Block ${i + 1}`) // ensure length differs so needsActivation is set
-      await Promise.all([
-        once(blindPeer, 'add-cores-done'),
-        muxer.addCores({
-          cores: [{ key: core.key, length: core.length }]
-        })
-      ])
-    }
-
-    t.is(blindPeer.stats.activations, 5, 'each add-cores triggered an activation (sanity check)')
-
-    t.is(closeListeners() - initListeners, 1, `no close listener leak`)
-
-    const bpCore = blindPeer.store.get(core.key)
-    await bpCore.ready()
-    t.is(bpCore.sessions.length, 2, 'no new session per request')
-    t.is(blindPeer.getActiveReplicationSessions(), 1, 'blind peers own view correct')
-    t.is(blindPeer.stats.activatedReplications, 1, 'blind peers own stat correct')
-    await muxer.stream.destroy()
-    await new Promise((resolve) => setTimeout(resolve, 100)) // Some timing involved (0 does not always work)
-    t.is(blindPeer.getActiveReplicationSessions(), 0, 'blind peers own stat correct')
+  for (let i = 0; i < 5; i++) {
+    await core.append(`Block ${i + 1}`) // ensure length differs so needsActivation is set
+    await Promise.all([
+      once(blindPeer, 'add-cores-done'),
+      muxer.addCores({
+        cores: [{ key: core.key, length: core.length }]
+      })
+    ])
   }
-)
+
+  t.is(blindPeer.stats.activations, 5, 'each add-cores triggered an activation (sanity check)')
+
+  t.is(closeListeners() - initListeners, 1, `no close listener leak`)
+
+  const bpCore = blindPeer.store.get(core.key)
+  await bpCore.ready()
+  t.is(bpCore.sessions.length, 2, 'no new session per request')
+  t.is(blindPeer.getActiveReplicationSessions(), 1, 'blind peers own view correct')
+  t.is(blindPeer.stats.activatedReplications, 1, 'blind peers own stat correct')
+  await muxer.stream.destroy()
+  await new Promise((resolve) => setTimeout(resolve, 100)) // Some timing involved (0 does not always work)
+  t.is(blindPeer.getActiveReplicationSessions(), 0, 'blind peers own stat correct')
+})
 
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
