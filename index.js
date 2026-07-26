@@ -281,6 +281,7 @@ class BlindPeer extends ReadyResource {
       bytesGcd: 0,
       coresAdded: 0,
       activations: 0,
+      activatedReplications: 0,
       wakeups: 0,
       addCoresRx: 0,
       notificationsRx: 0,
@@ -344,6 +345,12 @@ class BlindPeer extends ReadyResource {
 
   get nrAnnouncedCores() {
     return this.announcedCores.size
+  }
+
+  getActiveReplicationSessions() {
+    let res = 0
+    for (const actives of this._coresPerConnection.values()) res += actives.size
+    return res
   }
 
   addTrustedPubKey(key) {
@@ -672,6 +679,8 @@ class BlindPeer extends ReadyResource {
 
     if (stream.destroying) return
     core.replicate(stream)
+
+    this.stats.activatedReplications++
   }
 
   async _resolvePeers(key) {
@@ -1127,6 +1136,22 @@ class BlindPeer extends ReadyResource {
 
     new promClient.Gauge({
       // eslint-disable-line no-new
+      name: 'blind_peer_active_replication_sessions',
+      help: 'The total amount of hypercore replication sessions currently explicitly tracked',
+      collect() {
+        this.set(self.getActiveReplicationSessions())
+      }
+    })
+
+    new promClient.Gauge({
+      name: 'blind_peer_replication_sessions_opened',
+      help: 'The total amount of hypercore replication sessions ever opened',
+      collect() {
+        this.set(self.stats.activatedReplications)
+      }
+    })
+
+    new promClient.Gauge({
       name: 'blind_peer_wakeups',
       help: 'The total amount of hypercore wakeups since the process started',
       collect() {
