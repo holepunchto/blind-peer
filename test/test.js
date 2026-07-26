@@ -2518,11 +2518,12 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
     ])
   }
 
-  t.is(blindPeer.stats.activations, 5, 'each add-cores triggered an activation')
-  const bpCore = blindPeer.store.get(core.key)
-  await bpCore.ready()
+  t.is(blindPeer.stats.activations, 5, 'each add-cores triggered an activation (sanity check)')
 
   t.is(closeListeners() - initListeners, 1, `no close listener leak`)
+
+  const bpCore = blindPeer.store.get(core.key)
+  await bpCore.ready()
   t.is(bpCore.sessions.length, 2, 'no new session per request')
 
   await muxer.close()
