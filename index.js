@@ -574,7 +574,7 @@ class BlindPeer extends ReadyResource {
 
     const replicatingCores = new Map()
     this._coresPerConnection.set(conn, replicatingCores)
-    conn.on('close', () => {
+    conn.once('close', () => {
       this._coresPerConnection.delete(conn)
       for (const core of replicatingCores.values()) core.close().catch(safetyCatch)
     })
@@ -663,11 +663,14 @@ class BlindPeer extends ReadyResource {
 
     const id = b4a.toString(record.key, 'hex')
     const replicatingCores = this._coresPerConnection.get(stream)
+    if (!replicatingCores) return // race condition
     if (replicatingCores.has(id)) return // already replicating
 
-    const core = this.store.get(record.key)
+    const core = this.store.get({ key: record.key })
     replicatingCores.set(id, core)
     await core.ready()
+
+    if (stream.destroying) return
     core.replicate(stream)
   }
 
