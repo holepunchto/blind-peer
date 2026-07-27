@@ -2535,7 +2535,6 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
   t.is(blindPeer.getActiveReplicationSessions(), 1, 'blind peers own view correct')
   t.is(blindPeer.stats.activatedReplications, 1, 'blind peers own stat correct')
   await Promise.all([new Promise((resolve) => conn.once('close', resolve)), muxer.stream.destroy()])
-  // await new Promise((resolve) => setTimeout(resolve, 100)) // Some timing involved (0 does not always work)
   t.is(blindPeer.getActiveReplicationSessions(), 0, 'blind peers own stat correct')
 })
 
