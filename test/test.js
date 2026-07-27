@@ -2513,8 +2513,7 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
   const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
   const [conn] = await connProm
 
-  const closeListeners = () => conn.listenerCount('close')
-  const initListeners = closeListeners()
+  const initListeners = conn.listenerCount('close')
 
   for (let i = 0; i < 5; i++) {
     await core.append(`Block ${i + 1}`) // ensure length differs so needsActivation is set
@@ -2528,15 +2527,15 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
 
   t.is(blindPeer.stats.activations, 5, 'each add-cores triggered an activation (sanity check)')
 
-  t.is(closeListeners() - initListeners, 1, `no close listener leak`)
+  t.is(conn.listenerCount('close') - initListeners, 1, `no close listener leak`)
 
   const bpCore = blindPeer.store.get(core.key)
   await bpCore.ready()
   t.is(bpCore.sessions.length, 2, 'no new session per request')
   t.is(blindPeer.getActiveReplicationSessions(), 1, 'blind peers own view correct')
   t.is(blindPeer.stats.activatedReplications, 1, 'blind peers own stat correct')
-  await muxer.stream.destroy()
-  await new Promise((resolve) => setTimeout(resolve, 100)) // Some timing involved (0 does not always work)
+  await Promise.all([new Promise((resolve) => conn.once('close', resolve)), muxer.stream.destroy()])
+  // await new Promise((resolve) => setTimeout(resolve, 100)) // Some timing involved (0 does not always work)
   t.is(blindPeer.getActiveReplicationSessions(), 0, 'blind peers own stat correct')
 })
 
