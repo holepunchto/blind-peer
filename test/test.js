@@ -2638,6 +2638,39 @@ async function setupBlindPeer(
   return { blindPeer: peer, storage }
 }
 
+test('sendNotification does not create a second ref to an already-added blind peer when using HyperDHT addresses', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway } = await setupPushGateway(t, bootstrap)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+  console.log(blindPeer)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const client = new Client(swarm.dht, store, {
+    keys: [HyperDHTAddress.encode(blindPeer.publicKey, bootstrap)]
+  })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await Promise.all([once(blindPeer, 'add-core'), client.addCore(core)])
+
+  t.is(client.blindPeers.size, 1, 'sanity check')
+
+  await Promise.all([
+    once(blindPeer, 'notification-sent'),
+    client.sendNotification(core, { extra: b4a.from('extra') })
+  ])
+
+  t.is(client.blindPeers.size, 1, 'sendNotification reused the existing ref')
+})
+
 async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
   const dht = new HyperDHT({ bootstrap, keyPair })
   t.teardown(() => dht.destroy(), { order: 4000 })
