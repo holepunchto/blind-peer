@@ -1006,8 +1006,9 @@ class BlindPeer extends ReadyResource {
         await new Promise((resolve) => setTimeout(resolve, this._retryRecordLookupTimeout).unref())
         if (this.closing) return
         record = await this.db.getCoreRecord(core.key)
-        if (!record)
+        if (!record) {
           throw BlindPeerError.UNKNOWN_CORE('Cannot replicate because the core is not known')
+        }
       }
 
       await this._activateCore(stream, record)
