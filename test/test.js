@@ -2646,7 +2646,6 @@ test('sendNotification does not create a second ref to an already-added blind pe
   const { blindPeer } = await setupBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey]
   })
-  console.log(blindPeer)
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
