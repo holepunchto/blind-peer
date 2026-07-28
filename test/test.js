@@ -2538,6 +2538,73 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
   t.is(blindPeer.getActiveReplicationSessions(), 0, 'blind peers own stat correct')
 })
 
+test('notification racing an in-flight add-cores waits for the core instead of erroring', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey],
+    retryRecordLookupTimeout: 500
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  await core.setUserData('referrer', core.key)
+
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+  blindPeer.on('notification-error', (e) => {
+    console.error(e)
+    t.fail('notification errored')
+  })
+
+  const request = {
+    block: { key: core.key, index: core.length - 1 },
+    destination: {
+      key: core.key,
+      discoveryKey: crypto.discoveryKey(core.key)
+    }
+  }
+
+  muxer.addCores({
+    cores: [{ key: core.key, length: core.length }]
+  })
+  await Promise.all([once(blindPeer, 'notification-sent'), muxer.sendNotification(request)])
+
+  t.is(sentMessages.length, 1, 'notification forwarded after the core landed')
+})
+
+test('notification for an unknown core errors', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey],
+    retryRecordLookupTimeout: 500
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+  const request = {
+    block: { key: core.key, index: core.length - 1 },
+    destination: {
+      key: core.key,
+      discoveryKey: crypto.discoveryKey(core.key)
+    }
+  }
+
+  const start = Date.now()
+  await Promise.all([once(blindPeer, 'notification-error'), muxer.sendNotification(request)])
+
+  t.ok(Date.now() - start >= 500, 'waited the retry timeout before erroring')
+  t.is(sentMessages.length, 0, 'nothing forwarded for an unknown core')
+})
+
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
@@ -2597,7 +2664,8 @@ async function setupBlindPeer(
     activeCorestore,
     pushGatewayKeys,
     pushGatewayPoolOpts,
-    notificationTimeout
+    notificationTimeout,
+    retryRecordLookupTimeout
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -2617,7 +2685,8 @@ async function setupBlindPeer(
     topK,
     adminRouter,
     activeCorestore,
-    notificationTimeout
+    notificationTimeout,
+    retryRecordLookupTimeout
   })
 
   const order = clientCounter++

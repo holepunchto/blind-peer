@@ -235,7 +235,8 @@ class BlindPeer extends ReadyResource {
       adminRouter = null,
       activeCorestore = false,
       treeCache,
-      notificationTimeout = 10000
+      notificationTimeout = 10000,
+      retryRecordLookupTimeout = 5000
     } = {}
   ) {
     super()
@@ -267,6 +268,7 @@ class BlindPeer extends ReadyResource {
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
+    this._retryRecordLookupTimeout = retryRecordLookupTimeout
     this._coresPerConnection = new Map()
 
     this.rpcClient = null
@@ -998,9 +1000,15 @@ class BlindPeer extends ReadyResource {
     await core.ready()
 
     if (!(await core.has(request.block.index))) {
-      const record = await this.db.getCoreRecord(core.key)
+      let record = await this.db.getCoreRecord(core.key)
       if (!record) {
-        throw BlindPeerError.UNKNOWN_CORE('Cannot replicate because the core is not known')
+        // 2nd try, in case the core is in the process of being added
+        await new Promise((resolve) => setTimeout(resolve, this._retryRecordLookupTimeout).unref())
+        if (this.closing) return
+        record = await this.db.getCoreRecord(core.key)
+        if (!record) {
+          throw BlindPeerError.UNKNOWN_CORE('Cannot replicate because the core is not known')
+        }
       }
 
       await this._activateCore(stream, record)
