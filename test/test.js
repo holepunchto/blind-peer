@@ -24,7 +24,6 @@ const rrp = require('resolve-reject-promise')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
-const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 const clientOpts = { batchIdleWait: 250, batchMaxWait: 1000 }
 
@@ -2603,6 +2602,28 @@ test('notification for an unknown core errors', async (t) => {
 
   t.ok(Date.now() - start >= 500, 'waited the retry timeout before erroring')
   t.is(sentMessages.length, 0, 'nothing forwarded for an unknown core')
+})
+
+test('client does not spam reconnect when connection closes immediately after opening', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  blindPeer.swarm.on('connection', (conn) => conn.destroy())
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer.publicKey]
+  })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+
+  t.ok([...client.blindPeers.values()][0].connects < 3, 'did not reconnect spam')
 })
 
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
