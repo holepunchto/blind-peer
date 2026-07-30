@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: holepunchto/actions/node-base@v1
+        with:
+          allow-git: root
       - name: Setup network namespaces
         run: sudo test-netns/scripts/setup.sh
       - name: Run netns tests
