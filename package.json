@@ -31,6 +31,7 @@
     "scope-lock": "^1.2.4"
   },
   "devDependencies": {
+    "autobee": "^1.0.10",
     "bare-events": "^2.8.2",
     "bare-process": "^4.2.2",
     "bare-prom-client": "^15.1.3",
