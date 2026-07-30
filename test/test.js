@@ -626,7 +626,7 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
   }
 })
 
-test.solo('null maxBatchMax does not throw when adding an autobase', async (t) => {
+test('null maxBatchMax does not throw when adding an autobase', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
