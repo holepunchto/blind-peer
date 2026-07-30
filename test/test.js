@@ -626,6 +626,22 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
   }
 })
 
+test.solo('null maxBatchMax does not throw when adding an autobase', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey], maxBatchMax: null })
+  t.teardown(async () => await client.close())
+
+  await client.addAutobase(base)
+  t.ok('did not throw')
+})
+
 test('client can use a blind-peer to add an autobee', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
