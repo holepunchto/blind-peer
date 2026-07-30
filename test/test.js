@@ -27,6 +27,8 @@ const TopKWindow = require('../lib/top-k.js')
 let clientCounter = 0 // For clean teardown order
 const clientOpts = { batchIdleWait: 250, batchMaxWait: 1000 }
 
+const DEBUG = true
+
 test('client can use a blind-peer to add a core', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -2624,6 +2626,40 @@ test('client does not spam reconnect when connection closes immediately after op
   await new Promise((resolve) => setTimeout(resolve, 200))
 
   t.ok([...client.blindPeers.values()][0].connects < 3, 'did not reconnect spam')
+})
+
+test('backoff decreases after successful connect', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  let isFirstConn = true
+  blindPeer.swarm.on('connection', (conn) => {
+    if (isFirstConn) conn.destroy()
+    isFirstConn = false
+  })
+
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer.publicKey],
+    backoffResetWait: 200
+  })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  const bp = [...client.blindPeers.values()][0]
+  t.ok(bp.backoff.count > 0, 'not reset yet')
+
+  // Wait for second attempt, which succeeds, then give time for the reset
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  t.is(bp.backoff.count, 0, 'reset now')
 })
 
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
