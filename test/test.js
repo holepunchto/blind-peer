@@ -2624,7 +2624,9 @@ test('client does not spam reconnect when connection closes immediately after op
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 200))
 
-  t.ok([...client.blindPeers.values()][0].connects < 3, 'did not reconnect spam')
+  // 1 connect for the first attempt. It retries when the connection closes
+  // so 2 connects. Then it hangs on the backoff, so it doesn't increment more
+  t.is([...client.blindPeers.values()][0].connects, 2, 'did not reconnect spam')
 })
 
 test('backoff decreases after successful connect', async (t) => {
@@ -2656,7 +2658,8 @@ test('backoff decreases after successful connect', async (t) => {
   const bp = [...client.blindPeers.values()][0]
   t.ok(bp.backoff.count > 0, 'not reset yet')
 
-  // Wait for second attempt, which succeeds, then give time for the reset
+  // We need to wait for the backoff to finish (max 1.5s) and the reset to kick (200ms)
+  // This time the connection stays open, so the reset happens
   await new Promise((resolve) => setTimeout(resolve, 2000))
   t.is(bp.backoff.count, 0, 'reset now')
 })
