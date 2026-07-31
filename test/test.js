@@ -2699,6 +2699,65 @@ test('notification for an unknown core errors', async (t) => {
   t.is(sentMessages.length, 0, 'nothing forwarded for an unknown core')
 })
 
+test('client does not spam reconnect when connection closes immediately after opening', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  blindPeer.swarm.on('connection', (conn) => conn.destroy())
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer.publicKey]
+  })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+
+  // 1 connect for the first attempt. It retries when the connection closes
+  // so 2 connects. Then it hangs on the backoff, so it doesn't increment more
+  t.is([...client.blindPeers.values()][0].connects, 2, 'did not reconnect spam')
+})
+
+test('backoff decreases after successful connect', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  let isFirstConn = true
+  blindPeer.swarm.on('connection', (conn) => {
+    if (isFirstConn) conn.destroy()
+    isFirstConn = false
+  })
+
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer.publicKey],
+    backoffResetWait: 200
+  })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  await client.addCore(core)
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  const bp = [...client.blindPeers.values()][0]
+  t.ok(bp.backoff.count > 0, 'not reset yet')
+
+  // We need to wait for the backoff to finish (max 1.5s) and the reset to kick (200ms)
+  // This time the connection stays open, so the reset happens
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  t.is(bp.backoff.count, 0, 'reset now')
+})
+
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
