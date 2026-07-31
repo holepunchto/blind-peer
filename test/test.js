@@ -2610,7 +2610,7 @@ test('client does not spam reconnect when connection closes immediately after op
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
   await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  await new Promise(resolve => setTimeout(resolve, 500))
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   blindPeer.swarm.on('connection', (conn) => conn.destroy())
@@ -2634,7 +2634,7 @@ test('backoff decreases after successful connect', async (t) => {
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
   await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  await new Promise(resolve => setTimeout(resolve, 500))
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
