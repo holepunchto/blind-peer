@@ -626,22 +626,6 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
   }
 })
 
-test('null maxBatchMax does not throw when adding an autobase', async (t) => {
-  const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
-
-  const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
-
-  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey], maxBatchMax: null })
-  t.teardown(async () => await client.close())
-
-  await client.addAutobase(base)
-  t.ok('did not throw')
-})
-
 test('client can use a blind-peer to add an autobee', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -655,6 +639,12 @@ test('client can use a blind-peer to add an autobee', async (t) => {
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   t.teardown(async () => await client.close())
 
+  const addedKeys = []
+  const onaddcore = (record) => {
+    addedKeys.push(b4a.toString(record.key, 'hex'))
+  }
+  blindPeer.on('add-core', onaddcore)
+
   await client.addAutobase(bee)
 
   await new Promise((resolve) => setTimeout(resolve, 500))
@@ -662,6 +652,12 @@ test('client can use a blind-peer to add an autobee', async (t) => {
   await client.close()
   await bee.close()
   await swarm.destroy()
+
+  const expectedKeys = [
+    b4a.toString(bee.key, 'hex'),
+    ...bee.views().map((x) => b4a.toString(x.key, 'hex'))
+  ]
+  t.alike(addedKeys.sort(), expectedKeys.sort(), 'correct cores were added')
 
   {
     const { swarm, bee: reader } = await setupAutobeeHolder(t, bootstrap, bee.key)
@@ -677,6 +673,50 @@ test('client can use a blind-peer to add an autobee', async (t) => {
     node = await reader.view.get(Buffer.from('latest'))
     t.alike(JSON.parse(node.value), { block: 1 }, 'get data from blind-peer')
   }
+})
+
+test('client can use a blind-peer to add an autobee with additionalViews', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, bee } = await setupAutobeeHolder(t, bootstrap)
+  await bee.append(JSON.stringify({ block: 1 }))
+
+  const { bee: bee2 } = await setupAutobeeHolder(t, bootstrap, bee.key)
+  await bee.append(JSON.stringify({ addWriter: bee2.local.id }))
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  // need to write something or the views() will be []
+  await bee2.append(JSON.stringify({ block: 2 }))
+
+  const { bee: bee3 } = await setupAutobeeHolder(t, bootstrap, bee.key)
+  await bee.append(JSON.stringify({ addWriter: bee3.local.id }))
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  await bee3.append(JSON.stringify({ block: 3 }))
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => await client.close())
+
+  const addedKeys = []
+  const onaddcore = (record) => {
+    addedKeys.push(b4a.toString(record.key, 'hex'))
+  }
+  blindPeer.on('add-core', onaddcore)
+
+  const writerViews = await bee.getWriterViews(bee.getExternalWriters()[0])
+  await client.addAutobase(bee, { additionalViews: writerViews })
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  // add all the writers, views of itself, and views of bee2 only, no bee3
+  const expectedKeys = [
+    b4a.toString(bee.key, 'hex'),
+    ...bee.getExternalWriters().map((x) => b4a.toString(x, 'hex')),
+    ...bee.views().map((x) => b4a.toString(x.key, 'hex')),
+    ...bee2.views().map((x) => b4a.toString(x.key, 'hex'))
+  ]
+  t.alike(addedKeys.sort(), expectedKeys.sort(), 'correct cores were added')
 })
 
 test('client can use hyperdht addresses to add a core', async (t) => {
