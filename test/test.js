@@ -24,10 +24,9 @@ const rrp = require('resolve-reject-promise')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
+const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 const clientOpts = { batchIdleWait: 250, batchMaxWait: 1000 }
-
-const DEBUG = true
 
 test('client can use a blind-peer to add a core', async (t) => {
   const { bootstrap } = await getTestnet(t)
