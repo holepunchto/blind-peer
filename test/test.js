@@ -113,7 +113,7 @@ test('client can change to a new blind-peer', async (t) => {
 test('client can migrate multiple cores to multiple blind-peers and preserve settings', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const [blindPeer1, blindPeer2, blindPeer3, blindPeer4, blindPeer5, blindPeer6] =
-    await getBlindPeers(6)
+    await setupBlindPeers(t, bootstrap, 6)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const core2 = store.get({ name: 'core2' })
@@ -174,23 +174,6 @@ test('client can migrate multiple cores to multiple blind-peers and preserve set
   t.is(await getBlindPeerCoreLength(blindPeer4, coreKey2), 1, 'blindPeer4 swarmed for core2')
   t.is(await getBlindPeerCoreLength(blindPeer5, coreKey2), 1, 'blindPeer5 swarmed for core2')
   t.is(await getBlindPeerCoreLength(blindPeer6, coreKey2), 1, 'blindPeer6 swarmed for core2')
-
-  async function getBlindPeers(amount) {
-    const results = []
-    for (let i = 0; i < amount; i++) {
-      const { blindPeer } = await setupBlindPeer(t, bootstrap)
-      await blindPeer.listen()
-      await blindPeer.swarm.flush()
-      results.push(blindPeer)
-    }
-    return results
-  }
-
-  async function getBlindPeerCoreLength(blindPeer, key) {
-    const core = blindPeer.store.get({ key: key })
-    await core.ready()
-    return core.length
-  }
 })
 
 test('blind-peer can set treeCache options for corestore', async (t) => {
@@ -2784,6 +2767,110 @@ test('backoff decreases after successful connect', async (t) => {
   t.is(bp.backoff.count, 0, 'reset now')
 })
 
+test('client picks blind peers when they have no groups', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const blindPeers = await setupBlindPeers(t, bootstrap, 4)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, {
+    blindPeers: [
+      { key: blindPeers[0].publicKey },
+      { key: blindPeers[1].publicKey },
+      { key: blindPeers[2].publicKey },
+      { key: blindPeers[3].publicKey }
+    ]
+  })
+  t.teardown(() => client.close())
+
+  await client.addCore(core, { pick: 2 })
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const lengths = await Promise.all(
+    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+  )
+  t.is(lengths.filter((length) => length > 0).length, 2, 'added the core to two blind peers')
+})
+
+test('client picks the blind peer closest to the target when they have no groups', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const blindPeers = await setupBlindPeers(t, bootstrap, 4)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, {
+    blindPeers: [
+      { key: blindPeers[0].publicKey },
+      { key: blindPeers[1].publicKey },
+      { key: blindPeers[2].publicKey },
+      { key: blindPeers[3].publicKey }
+    ]
+  })
+  t.teardown(() => client.close())
+
+  // a blind peer is always the closest one to its own key
+  await client.addCore(core, { pick: 1, target: blindPeers[3].publicKey })
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const lengths = await Promise.all(
+    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+  )
+  t.alike(lengths, [0, 0, 0, 2], 'added the core to the targeted blind peer only')
+})
+
+test('client picks blind peers from different groups', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const blindPeers = await setupBlindPeers(t, bootstrap, 4)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, {
+    blindPeers: [
+      { key: blindPeers[0].publicKey, group: 'a' },
+      { key: blindPeers[1].publicKey, group: 'a' },
+      { key: blindPeers[2].publicKey, group: 'a' },
+      { key: blindPeers[3].publicKey, group: 'b' }
+    ]
+  })
+  t.teardown(() => client.close())
+
+  await client.addCore(core, { pick: 2, target: blindPeers[0].publicKey })
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const lengths = await Promise.all(
+    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+  )
+  t.alike(lengths, [2, 0, 0, 2], 'added the core to one blind peer of each group')
+})
+
+test('client balances blind peers across groups when picking more than there are groups', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const blindPeers = await setupBlindPeers(t, bootstrap, 6)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, {
+    blindPeers: [
+      { key: blindPeers[0].publicKey, group: 'a' },
+      { key: blindPeers[1].publicKey, group: 'a' },
+      { key: blindPeers[2].publicKey, group: 'a' },
+      { key: blindPeers[3].publicKey, group: 'b' },
+      { key: blindPeers[4].publicKey, group: 'b' },
+      { key: blindPeers[5].publicKey, group: 'b' }
+    ]
+  })
+  t.teardown(() => client.close())
+
+  await client.addCore(core, { pick: 4, target: blindPeers[0].publicKey })
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const lengths = await Promise.all(
+    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+  )
+  const groupA = lengths.slice(0, 3).filter((length) => length > 0)
+  const groupB = lengths.slice(3).filter((length) => length > 0)
+
+  t.ok(lengths[0] > 0, 'targeted blind peer picked')
+  t.is(groupA.length, 2, 'added the core to two blind peers of group a')
+  t.is(groupB.length, 2, 'added the core to two blind peers of group b')
+})
+
 async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
@@ -2905,6 +2992,25 @@ async function setupBlindPeer(
   }
 
   return { blindPeer: peer, storage }
+}
+
+async function setupBlindPeers(t, bootstrap, amount) {
+  const blindPeers = []
+
+  for (let i = 0; i < amount; i++) {
+    const { blindPeer } = await setupBlindPeer(t, bootstrap)
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
+    blindPeers.push(blindPeer)
+  }
+
+  return blindPeers
+}
+
+async function getBlindPeerCoreLength(blindPeer, key) {
+  const core = blindPeer.store.get({ key })
+  await core.ready()
+  return core.length
 }
 
 test('sendNotification does not create a second ref to an already-added blind peer when using HyperDHT addresses', async (t) => {
