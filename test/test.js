@@ -247,6 +247,32 @@ test('client can ask a blind-peer to create and forward a push notification', as
   t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
 
+test('sendNotification does not leak core sessions', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+
+  const probe = blindPeer.store.get({ key: core.key })
+  await probe.ready()
+  const sessionsBefore = probe.sessions.length
+
+  await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(core)])
+
+  t.is(probe.sessions.length, sessionsBefore, 'core session count is unchanged')
+  await probe.close()
+})
+
 test('send push notification when not yet connected to blind peer', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
