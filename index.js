@@ -999,41 +999,47 @@ class BlindPeer extends ReadyResource {
     const core = this.store.get({ key: request.block.key })
     await core.ready()
 
-    if (!(await core.has(request.block.index))) {
-      let record = await this.db.getCoreRecord(core.key)
-      if (!record) {
-        // 2nd try, in case the core is in the process of being added
-        await new Promise((resolve) => setTimeout(resolve, this._retryRecordLookupTimeout).unref())
-        if (this.closing) return
-        record = await this.db.getCoreRecord(core.key)
+    try {
+      if (!(await core.has(request.block.index))) {
+        let record = await this.db.getCoreRecord(core.key)
         if (!record) {
-          throw BlindPeerError.UNKNOWN_CORE('Cannot replicate because the core is not known')
+          // 2nd try, in case the core is in the process of being added
+          await new Promise((resolve) =>
+            setTimeout(resolve, this._retryRecordLookupTimeout).unref()
+          )
+          if (this.closing) return
+          record = await this.db.getCoreRecord(core.key)
+          if (!record) {
+            throw BlindPeerError.UNKNOWN_CORE('Cannot replicate because the core is not known')
+          }
         }
+
+        await this._activateCore(stream, record)
       }
 
-      await this._activateCore(stream, record)
+      const payload = await blindPush.createNotification(core, {
+        roomKey: request.destination.key,
+        roomDiscoveryKey: request.destination.discoveryKey,
+        index: request.block.index,
+        version: request.version,
+        extra: request.extra,
+        timeout: this.notificationTimeout
+      })
+
+      await this.gatewayPool.makeRequest(
+        'forward-push',
+        { payload, appId: request.appId },
+        {
+          requestEncoding: ForwardPushRequest,
+          responseEncoding: c.none
+        }
+      )
+
+      this.stats.notificationsSent++
+      this.emit('notification-sent', request, payload, stream)
+    } finally {
+      await core.close()
     }
-
-    const payload = await blindPush.createNotification(core, {
-      roomKey: request.destination.key,
-      roomDiscoveryKey: request.destination.discoveryKey,
-      index: request.block.index,
-      version: request.version,
-      extra: request.extra,
-      timeout: this.notificationTimeout
-    })
-
-    await this.gatewayPool.makeRequest(
-      'forward-push',
-      { payload, appId: request.appId },
-      {
-        requestEncoding: ForwardPushRequest,
-        responseEncoding: c.none
-      }
-    )
-
-    this.stats.notificationsSent++
-    this.emit('notification-sent', request, payload, stream)
   }
 
   async _close() {
