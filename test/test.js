@@ -3057,6 +3057,8 @@ test('repeated addCore when not connected does not result in repeated infos and 
   t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners initially')
 
   client.addCoreBackground(core, { pick: 5 })
+  // You'd normally never call it again with a different value.
+  // We do it here to have an easy assertion later
   client.addCoreBackground(core, { pick: 10 })
   await once(blindPeer, 'add-cores-done')
   await new Promise((resolve) => setTimeout(resolve, 100)) // Give some more time for (incorrect) extra requests
@@ -3065,6 +3067,7 @@ test('repeated addCore when not connected does not result in repeated infos and 
 
   t.is(peer.cores.size, 1, '1 core is added despite adding it twice')
   t.is(core.listenerCount('close'), 1, 'just 1 core "close" listener (not added again)')
+  t.is(peer.cores.values().next().value.pick, 5, 'info object is from the first add (we never re-define the info)')
 
   await client.close()
 })
