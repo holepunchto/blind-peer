@@ -3045,7 +3045,7 @@ test('sendNotification does not create a second ref to an already-added blind pe
   t.is(client.blindPeers.size, 1, 'sendNotification reused the existing ref')
 })
 
-test.solo('destroying peer in blind-peering clears listeners', async (t) => {
+test('destroying peer in blind-peering clears listeners', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
