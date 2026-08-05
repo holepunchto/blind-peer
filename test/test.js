@@ -3045,6 +3045,59 @@ test('sendNotification does not create a second ref to an already-added blind pe
   t.is(client.blindPeers.size, 1, 'sendNotification reused the existing ref')
 })
 
+test.solo('destroying peer in blind-peering clears listeners', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
+  await base.append({ hello: 'world' })
+
+  const core = store.get({ name: 'core' })
+  await core.append('block-0')
+
+  const core2 = store.get({ name: 'core2' })
+  await core2.append('block-0')
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners initially')
+  t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners initially')
+  t.is(base.core.listenerCount('migrate'), 0, 'base core 0 "migrate" liteners initially')
+
+  client.addCoreBackground(core, { pick: 5 })
+  client.addCoreBackground(core, { pick: 10 })
+  await client.addAutobase(base)
+
+  const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
+
+  t.is(peer.cores.size, 1, '1 core is added despite adding it twice')
+  t.is(peer.cores.values().next().value.pick, 10, 'info object is from the second addition')
+
+  t.is(core.listenerCount('close'), 1, 'core 1 "close" listener despite adding it twice')
+  t.is(base.listenerCount('close'), 1, 'base 1 "close" listener after adding')
+  t.is(base.core.listenerCount('migrate'), 1, 'base core 1 "close" listener after adding')
+
+  await client.addCore(core2)
+  t.is(core2.listenerCount('close'), 1, 'core2 1 listener after adding')
+  await core2.close()
+  t.is(core2.listenerCount('close'), 0, 'core2 0 listeners after core close')
+
+  await client.close()
+  t.is(peer.destroyed, true, 'closing blind-peering destroyed the peer')
+
+  t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners after peer is destroyed')
+  t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners after peer is destroyed')
+  t.is(
+    base.core.listenerCount('migrate'),
+    0,
+    'base core 0 "migrate" listeners after peer is destroyed'
+  )
+  t.is(peer.cores.size, 0, 'destroy() clears the cores map of the peer')
+  t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
+})
+
 async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
   const dht = new HyperDHT({ bootstrap, keyPair })
   t.teardown(() => dht.destroy(), { order: 4000 })
