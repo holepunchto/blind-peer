@@ -3052,6 +3052,7 @@ test('destroying peer in blind-peering clears listeners', async (t) => {
   await blindPeer.swarm.flush()
 
   const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
+  t.teardown(() => base.close())
   await base.append({ hello: 'world' })
 
   const core = store.get({ name: 'core' })
