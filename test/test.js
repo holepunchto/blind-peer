@@ -3067,7 +3067,11 @@ test('repeated addCore when not connected does not result in repeated infos and 
 
   t.is(peer.cores.size, 1, '1 core is added despite adding it twice')
   t.is(core.listenerCount('close'), 1, 'just 1 core "close" listener (not added again)')
-  t.is(peer.cores.values().next().value.pick, 5, 'info object is from the first add (we never re-define the info)')
+  t.is(
+    peer.cores.values().next().value.pick,
+    5,
+    'info object is from the first add (we never re-define the info)'
+  )
 
   await client.close()
 })
