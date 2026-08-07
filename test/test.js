@@ -1251,6 +1251,95 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   }
 })
 
+test.solo(
+  'priority 2 add-cores redownloads blocks cleared by gc on a new connection',
+  async (t) => {
+    const { bootstrap } = await getTestnet(t)
+
+    const enableGc = false
+    const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 1 })
+    await blindPeer.listen()
+    await blindPeer.swarm.flush()
+
+    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+    for (let i = 2; i < 10; i++) {
+      await core.append(`Block ${i}`)
+    }
+
+    const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+    await Promise.all([
+      once(blindPeer, 'add-cores-done'),
+      muxer.addCores({
+        referrer: core.key,
+        priority: 0,
+        announce: false,
+        cores: [{ key: core.key, length: core.length }]
+      })
+    ])
+
+    // wait a bit for downloading blocks
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+
+    const expectedBytes = core.byteLength
+    {
+      const record = await blindPeer.db.getCoreRecord(core.key)
+      t.is(record.bytesAllocated, expectedBytes, 'gc tracks bytes allocated')
+    }
+
+    {
+      const blindCore = blindPeer.store.get({ key: core.key })
+      await blindCore.ready()
+      t.is(blindCore.contiguousLength, 10, 'block content is there before gc')
+      await blindCore.close()
+    }
+
+    await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+    {
+      const record = await blindPeer.db.getCoreRecord(core.key)
+      t.is(record.bytesAllocated, 0, 'gc cleared allocated bytes')
+    }
+
+    {
+      const blindCore = blindPeer.store.get({ key: core.key })
+      await blindCore.ready()
+      t.is(blindCore.contiguousLength, 0, 'block content is gone after gc')
+      await blindCore.close()
+    }
+
+    await muxer.close()
+    await muxer.stream.destroy()
+    await new Promise((resolve) => setTimeout(resolve, 10_000))
+
+    const muxer2 = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+    await Promise.all([
+      once(blindPeer, 'add-cores-done'),
+      muxer2.addCores({
+        referrer: core.key,
+        priority: 2,
+        announce: false,
+        cores: [{ key: core.key, length: core.length }]
+      })
+    ])
+
+    // wait a bit for re-downloading blocks
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    {
+      const record = await blindPeer.db.getCoreRecord(core.key)
+      t.is(record.priority, 2, 're-added as priority 2')
+      t.is(record.bytesAllocated, expectedBytes, 'gc tracks bytes allocated')
+    }
+
+    {
+      const blindCore = blindPeer.store.get({ key: core.key })
+      await blindCore.ready()
+      t.is(blindCore.contiguousLength, 10, 'block content comeback after priority 2')
+      await blindCore.close()
+    }
+
+    t.ok(blindPeer.needsGc(), 'needs gc after re-downloading')
+  }
+)
+
 test('gc stats', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
