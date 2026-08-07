@@ -3045,6 +3045,77 @@ test('sendNotification does not create a second ref to an already-added blind pe
   t.is(client.blindPeers.size, 1, 'sendNotification reused the existing ref')
 })
 
+test('destroying a peer in blind-peering clears core listeners', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, core } = await setupCoreHolder(t, bootstrap)
+  const core2 = store.get({ name: 'core2' })
+  await core2.append('block-0')
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners initially')
+  t.is(core2.listenerCount('close'), 0, 'core2 0 "close" listeners initially')
+
+  await client.addCore(core)
+  await client.addCore(core2)
+
+  t.is(core.listenerCount('close'), 1, 'core 1 "close" listener after adding')
+  t.is(core2.listenerCount('close'), 1, 'core2 1 "close" listener after adding')
+
+  await core2.close()
+
+  t.is(core2.listenerCount('close'), 0, 'core2 0 listeners after core2 close')
+
+  const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
+
+  await client.close()
+
+  t.is(peer.destroyed, true, 'closing blind-peering destroyed the peer')
+  t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners after peer is destroyed')
+  t.is(peer.cores.size, 0, 'destroy() clears the cores map of the peer')
+})
+
+test('destroying peer in blind-peering clears autobase listeners', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
+  t.teardown(() => base.close())
+  await base.append({ hello: 'world' })
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners initially')
+  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" liteners initially')
+  t.is(base.core.listenerCount('migrate'), 0, 'base core 0 "migrate" liteners initially')
+
+  await client.addAutobase(base)
+
+  t.is(base.listenerCount('close'), 1, 'base 1 "close" listener after adding')
+  t.is(base.listenerCount('writer'), 1, 'base 1 "writer" liteners after adding')
+  t.is(base.core.listenerCount('migrate'), 1, 'base core 1 "migrate" listener after adding')
+
+  const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
+
+  await client.close()
+
+  t.is(peer.destroyed, true, 'closing blind-peering destroyed the peer')
+  t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners after peer is destroyed')
+  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" listeners after peer is destroyed')
+  t.is(
+    base.core.listenerCount('migrate'),
+    0,
+    'base core 0 "migrate" listeners after peer is destroyed'
+  )
+  t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
+})
+
 async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
   const dht = new HyperDHT({ bootstrap, keyPair })
   t.teardown(() => dht.destroy(), { order: 4000 })
