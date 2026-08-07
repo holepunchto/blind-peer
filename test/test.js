@@ -3092,11 +3092,13 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
 
   t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners initially')
+  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" liteners initially')
   t.is(base.core.listenerCount('migrate'), 0, 'base core 0 "migrate" liteners initially')
 
   await client.addAutobase(base)
 
   t.is(base.listenerCount('close'), 1, 'base 1 "close" listener after adding')
+  t.is(base.listenerCount('writer'), 1, 'base 1 "writer" liteners after adding')
   t.is(base.core.listenerCount('migrate'), 1, 'base core 1 "migrate" listener after adding')
 
   const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
@@ -3105,6 +3107,7 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
 
   t.is(peer.destroyed, true, 'closing blind-peering destroyed the peer')
   t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners after peer is destroyed')
+  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" listeners after peer is destroyed')
   t.is(
     base.core.listenerCount('migrate'),
     0,
