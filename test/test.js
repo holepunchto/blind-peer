@@ -3045,6 +3045,69 @@ test('sendNotification does not create a second ref to an already-added blind pe
   t.is(client.blindPeers.size, 1, 'sendNotification reused the existing ref')
 })
 
+test.solo('db flush updates correctly for existing records', async (t) => {
+  const addCore = async (info) => {
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    blindPeer.db.addCore(info)
+    await blindPeer.flush()
+  }
+
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc: false, listen: false })
+  await blindPeer.ready()
+
+  const key = crypto.randomBytes(32)
+  blindPeer.db.addCore({ key, priority: 0 })
+  await blindPeer.flush()
+
+  const initialRecord = await blindPeer.db.getCoreRecord(key)
+  // sanity check initial values on new record
+  t.is(initialRecord.priority, 0, 'initial priority 0')
+  t.is(initialRecord.announce, false, 'initial announce false')
+  t.ok(initialRecord.updated > 0, 'initial updated stamp not 0')
+  t.ok(initialRecord.active > 0, 'initial active stamp not 0')
+  t.is(initialRecord.active, initialRecord.updated, 'initial active and updated stamps match')
+  t.is(initialRecord.blocksCleared, 0, 'initial blocksCleared 0')
+  t.is(initialRecord.bytesCleared, 0, 'initial bytesCleared 0')
+
+  await addCore({ key, priority: 99, blocksCleared: 5, bytesCleared: 10 })
+
+  const updatedRecord = await blindPeer.db.getCoreRecord(key)
+  t.is(updatedRecord.priority, 2, 'new priority clamped down 2')
+  t.is(updatedRecord.announce, false, 'new announce is same')
+  t.ok(updatedRecord.updated > initialRecord.updated, 'new updated stamp increased')
+  t.ok(updatedRecord.active > initialRecord.active, 'new active stamp increased')
+  t.is(updatedRecord.active, updatedRecord.updated, 'new active and updated stamps match')
+  t.is(updatedRecord.blocksCleared, 5, 'new blocksCleared 5')
+  t.is(updatedRecord.bytesCleared, 10, 'new bytesCleared 10')
+
+  await addCore({ key, priority: 1 })
+  {
+    const record = await blindPeer.db.getCoreRecord(key)
+    t.alike(record, updatedRecord, 'did not update for lower priority')
+  }
+
+  await addCore({ key, priority: 99 })
+  {
+    const record = await blindPeer.db.getCoreRecord(key)
+    t.alike(record, updatedRecord, 'did not update for higher priority outside the clamp range')
+  }
+
+  await addCore({ key, priority: 1, announce: true, bytesCleared: 0 })
+  const updatedRecord2 = await blindPeer.db.getCoreRecord(key)
+  t.is(updatedRecord2.priority, 2, 'new priority clamped up to 2')
+  t.ok(updatedRecord2.updated > updatedRecord.updated, 'new updated stamp increased')
+  t.ok(updatedRecord2.active > updatedRecord.active, 'new active stamp increased')
+  t.is(updatedRecord2.blocksCleared, 5, 'new blocksCleared is same')
+  t.is(updatedRecord2.bytesCleared, 0, 'new bytesCleared 0')
+
+  await addCore({ key, announce: true })
+  {
+    const record = await blindPeer.db.getCoreRecord(key)
+    t.ok(record.updated > updatedRecord2.updated, 'announce "true" always updates')
+  }
+})
+
 async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
   const dht = new HyperDHT({ bootstrap, keyPair })
   t.teardown(() => dht.destroy(), { order: 4000 })
