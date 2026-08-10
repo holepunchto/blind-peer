@@ -33,18 +33,19 @@ const swarm = new Hyperswarm()
 const wakeup = new Wakeup()
 
 const DEFAULT_BLIND_PEER_KEYS = ['es4n7ty45odd1udfqyi9xz58mrbheuhdnxgdufsn9gz6e5uhsqco'] // replace with your own key
-const blind = new BlindPeering(swarm, store, { wakeup, mirrors: DEFAULT_BLIND_PEER_KEYS })
+const blind = new BlindPeering(swarm, store, { wakeup, keys: DEFAULT_BLIND_PEER_KEYS })
 
 // Add your autobase
 blind.addAutobaseBackground(autobase1)
 
 // Add another core
-blind.addCore(core1, autobase1.wakeupCapability.key)
+blind.addCoreBackground(core1, { target: autobase1.wakeupCapability.key })
 ```
 
 Related services:
 
 https://github.com/holepunchto/autobase-discovery
+
 https://github.com/HDegroote/dht-prometheus
 
 ## Programmatic Usage
