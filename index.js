@@ -75,11 +75,11 @@ class CoreTracker {
     this.activated = true
 
     if (this.record) {
-      const newBytesAllocated = this.core.byteLength - this.record.bytesCleared
-      const needsFlush = this.record.bytesAllocated !== newBytesAllocated
-      this.record.bytesAllocated = newBytesAllocated
+      // const newBytesAllocated = this.core.byteLength - this.record.bytesCleared
+      // const needsFlush = this.record.bytesAllocated !== newBytesAllocated
+      // this.record.bytesAllocated = newBytesAllocated
       this.blindPeer.db.updateCore(this.record, this.id)
-      if (needsFlush) this.blindPeer.flush().catch(safetyCatch)
+      // if (needsFlush) this.blindPeer.flush().catch(safetyCatch)
     }
 
     this.blindPeer.emit('core-activity', this.core, this.record)
@@ -551,9 +551,11 @@ class BlindPeer extends ReadyResource {
     tracker.refresh().catch(safetyCatch)
 
     session.on('close', () => {
+      console.trace('last core session closed closed')
       tracker.destroy()
       if (this.activeReplication.get(id) === tracker) {
         this.activeReplication.delete(id)
+        console.log('deleted active repl')
       }
       this.stats.coreTrackersDestroyed++
     })
@@ -588,6 +590,7 @@ class BlindPeer extends ReadyResource {
     const replicatingCores = new Map()
     this._coresPerConnection.set(conn, replicatingCores)
     conn.once('close', () => {
+      console.log('conn closed')
       this._coresPerConnection.delete(conn)
       for (const core of replicatingCores.values()) core.close().catch(safetyCatch)
     })
@@ -890,6 +893,8 @@ class BlindPeer extends ReadyResource {
         // special case: reset block/byte metadata to force a full core re-download
         if (entry.priority === 2) {
           const record = await this.db.getCoreRecord(entry.key)
+          const core = this.store.get(entry.key)
+          await core.ready()
           if (record && record.priority < 2) {
             this.stats.coreResetDownload++
 
@@ -901,7 +906,8 @@ class BlindPeer extends ReadyResource {
               announce: entry.announce,
               referrer: entry.referrer,
               blocksCleared: 0,
-              bytesCleared: 0
+              bytesCleared: 0,
+              bytesAllocated: core.byteLength
             })
           }
         }
@@ -912,7 +918,6 @@ class BlindPeer extends ReadyResource {
     // but it's no problem if we do add the same core twice
     for (const record of recordsToAdd) this.db.addCore(record)
     if (recordsToAdd.length > 0) await this.flush() // flush now as important data
-
     if (referrer) {
       const muxer = stream.userData
       const core = this.store.get({ key: referrer })

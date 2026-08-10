@@ -1251,7 +1251,7 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   }
 })
 
-test('priority 2 add-cores redownloads blocks cleared by gc on a new connection', async (t) => {
+test.solo('priority 2 add-cores redownloads blocks cleared by gc on a new connection', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false
@@ -1304,11 +1304,10 @@ test('priority 2 add-cores redownloads blocks cleared by gc on a new connection'
     await blindCore.close()
   }
 
-  await muxer.close()
   await muxer.stream.destroy()
   await new Promise((resolve) => setTimeout(resolve, 10_000))
-
   const muxer2 = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
   await Promise.all([
     once(blindPeer, 'add-cores-done'),
     muxer2.addCores({
@@ -1318,7 +1317,6 @@ test('priority 2 add-cores redownloads blocks cleared by gc on a new connection'
       cores: [{ key: core.key, length: core.length }]
     })
   ])
-
   // wait a bit for re-downloading blocks
   await new Promise((resolve) => setTimeout(resolve, 1_000))
   {
