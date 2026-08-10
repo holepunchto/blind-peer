@@ -2120,7 +2120,7 @@ test('Prometheus metrics', async (t) => {
   }
 })
 
-test('push notifications stat set active when pool is configured', async (t) => {
+test('push notification metrics include client pool stats when configured', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { pushGatewayKeys: ['a'.repeat(64)] })
@@ -2131,6 +2131,12 @@ test('push notifications stat set active when pool is configured', async (t) => 
 
   const metrics = await promClient.register.metrics()
   t.ok(metrics.includes('blind_peer_push_notifications_active 1'))
+  t.ok(metrics.includes('blind_peer_push_notifications_make_request_attempted 0'))
+  t.ok(metrics.includes('blind_peer_push_notifications_make_request_failed'))
+  t.ok(metrics.includes('blind_peer_push_notifications_make_request_succeed 0'))
+  t.ok(metrics.includes('blind_peer_push_notifications_try_attempted'))
+  t.ok(metrics.includes('blind_peer_push_notifications_try_failed'))
+  t.ok(metrics.includes('blind_peer_push_notifications_try_succeeded'))
 })
 
 test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
@@ -3043,6 +3049,108 @@ test('sendNotification does not create a second ref to an already-added blind pe
   ])
 
   t.is(client.blindPeers.size, 1, 'sendNotification reused the existing ref')
+})
+
+test('repeated addCore when not connected does not result in repeated infos and cores', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners initially')
+
+  client.addCoreBackground(core, { pick: 5 })
+  // You'd normally never call it again with a different value.
+  // We do it here to have an easy assertion later
+  client.addCoreBackground(core, { pick: 10 })
+  await once(blindPeer, 'add-cores-done')
+  await new Promise((resolve) => setTimeout(resolve, 100)) // Give some more time for (incorrect) extra requests
+
+  const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
+
+  t.is(peer.cores.size, 1, '1 core is added despite adding it twice')
+  t.is(core.listenerCount('close'), 1, 'just 1 core "close" listener (not added again)')
+  t.is(
+    peer.cores.values().next().value.pick,
+    5,
+    'info object is from the first add (we never re-define the info)'
+  )
+
+  await client.close()
+})
+
+test('destroying a peer in blind-peering clears core listeners', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, core } = await setupCoreHolder(t, bootstrap)
+  const core2 = store.get({ name: 'core2' })
+  await core2.append('block-0')
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners initially')
+  t.is(core2.listenerCount('close'), 0, 'core2 0 "close" listeners initially')
+
+  await client.addCore(core)
+  await client.addCore(core2)
+
+  t.is(core.listenerCount('close'), 1, 'core 1 "close" listener after adding')
+  t.is(core2.listenerCount('close'), 1, 'core2 1 "close" listener after adding')
+
+  await core2.close()
+
+  t.is(core2.listenerCount('close'), 0, 'core2 0 listeners after core2 close')
+
+  const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
+
+  await client.close()
+
+  t.is(peer.destroyed, true, 'closing blind-peering destroyed the peer')
+  t.is(core.listenerCount('close'), 0, 'core 0 "close" listeners after peer is destroyed')
+  t.is(peer.cores.size, 0, 'destroy() clears the cores map of the peer')
+})
+
+test('destroying peer in blind-peering clears autobase listeners', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
+  t.teardown(() => base.close())
+  await base.append({ hello: 'world' })
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners initially')
+  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" liteners initially')
+  t.is(base.core.listenerCount('migrate'), 0, 'base core 0 "migrate" liteners initially')
+
+  await client.addAutobase(base)
+
+  t.is(base.listenerCount('close'), 1, 'base 1 "close" listener after adding')
+  t.is(base.listenerCount('writer'), 1, 'base 1 "writer" liteners after adding')
+  t.is(base.core.listenerCount('migrate'), 1, 'base core 1 "migrate" listener after adding')
+
+  const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
+
+  await client.close()
+
+  t.is(peer.destroyed, true, 'closing blind-peering destroyed the peer')
+  t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners after peer is destroyed')
+  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" listeners after peer is destroyed')
+  t.is(
+    base.core.listenerCount('migrate'),
+    0,
+    'base core 0 "migrate" listeners after peer is destroyed'
+  )
+  t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
 })
 
 test.solo('db flush updates correctly for existing records', async (t) => {
