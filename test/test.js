@@ -3153,7 +3153,7 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
 })
 
-test.solo('db flush updates correctly for existing records', async (t) => {
+test('db flush updates correctly for existing records', async (t) => {
   const addCore = async (info) => {
     await new Promise((resolve) => setTimeout(resolve, 1))
     blindPeer.db.addCore(info)
