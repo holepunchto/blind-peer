@@ -3178,7 +3178,7 @@ test('db flush updates correctly for existing records', async (t) => {
   t.is(initialRecord.blocksCleared, 0, 'initial blocksCleared 0')
   t.is(initialRecord.bytesCleared, 0, 'initial bytesCleared 0')
 
-  await addCore({ key, priority: 99, blocksCleared: 5, bytesCleared: 10 })
+  await addCore({ key, priority: 3, blocksCleared: 5, bytesCleared: 10 })
 
   const updatedRecord = await blindPeer.db.getCoreRecord(key)
   t.is(updatedRecord.priority, 2, 'new priority clamped down 2')
@@ -3195,7 +3195,7 @@ test('db flush updates correctly for existing records', async (t) => {
     t.alike(record, updatedRecord, 'did not update for lower priority')
   }
 
-  await addCore({ key, priority: 99 })
+  await addCore({ key, priority: 3 })
   {
     const record = await blindPeer.db.getCoreRecord(key)
     t.alike(record, updatedRecord, 'did not update for higher priority outside the clamp range')
