@@ -2120,7 +2120,7 @@ test('Prometheus metrics', async (t) => {
   }
 })
 
-test('push notifications stat set active when pool is configured', async (t) => {
+test('push notification metrics include client pool stats when configured', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap, { pushGatewayKeys: ['a'.repeat(64)] })
@@ -2131,6 +2131,12 @@ test('push notifications stat set active when pool is configured', async (t) => 
 
   const metrics = await promClient.register.metrics()
   t.ok(metrics.includes('blind_peer_push_notifications_active 1'))
+  t.ok(metrics.includes('blind_peer_push_notifications_make_request_attempted 0'))
+  t.ok(metrics.includes('blind_peer_push_notifications_make_request_failed'))
+  t.ok(metrics.includes('blind_peer_push_notifications_make_request_succeed 0'))
+  t.ok(metrics.includes('blind_peer_push_notifications_try_attempted'))
+  t.ok(metrics.includes('blind_peer_push_notifications_try_failed'))
+  t.ok(metrics.includes('blind_peer_push_notifications_try_succeeded'))
 })
 
 test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {

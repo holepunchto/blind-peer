@@ -1065,6 +1065,9 @@ class BlindPeer extends ReadyResource {
 
   registerMetrics(promClient) {
     this.wakeup.registerMetrics(promClient)
+    if (this.gatewayPool) {
+      this.gatewayPool.registerMetrics(promClient, { prefix: 'blind_peer_push_notifications_' })
+    }
 
     const self = this
     new promClient.Gauge({
