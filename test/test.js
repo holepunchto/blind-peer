@@ -1157,6 +1157,93 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
+test('gc correctly counts cleared bytes for cores that were gced before', async (t) => {
+  async function appendBlocks(core, n) {
+    const blocks = []
+    for (let i = 0; i < n; i++) blocks.push(b4a.alloc(1))
+    await core.append(blocks)
+  }
+
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    enableGc: false,
+    maxBytes: 15
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  const coreA = store.get({ name: 'a' })
+  const coreB = store.get({ name: 'b' })
+  await appendBlocks(coreA, 10) // 10 bytes, priority 0 -> first gc candidate
+  await appendBlocks(coreB, 10) // 10 bytes, priority 1 -> second gc candidate
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(coreA, { priority: 0 })])
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(coreB, { priority: 1 })])
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  {
+    t.is(blindPeer.digest.bytesAllocated, 20, 'digest bytesAllocated 20 initially')
+    const recordA = await blindPeer.db.getCoreRecord(coreA.key)
+    const recordB = await blindPeer.db.getCoreRecord(coreB.key)
+    t.is(recordA.bytesAllocated, 10, 'coreA bytesAllocated 10 initially')
+    t.is(recordA.bytesCleared, 0, 'coreA bytesCleared 0 initially')
+    t.is(recordB.bytesAllocated, 10, 'coreB bytesAllocated 10 initially')
+    t.is(recordB.bytesCleared, 0, 'coreB bytesCleared 0 initially')
+    t.is(blindPeer.stats.bytesGcd, 0, 'total bytesGcd 0 initially')
+  }
+  // first gc, clears coreA, freeing 10 bytes
+  {
+    const [[{ bytesCleared }]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+    t.is(blindPeer.digest.bytesAllocated, 10, 'digest bytesAllocated 10 after 1 gc')
+    t.is(bytesCleared, 10, 'bytesCleared 10')
+    const recordA = await blindPeer.db.getCoreRecord(coreA.key)
+    const recordB = await blindPeer.db.getCoreRecord(coreB.key)
+    t.is(recordA.bytesAllocated, 0, 'coreA cleared after gc')
+    t.is(recordA.bytesCleared, 10, 'coreA cleared after gc')
+    t.is(recordB.bytesAllocated, 10, 'coreB stayed after gc')
+    t.is(recordB.bytesCleared, 0, 'coreB stayed after gc')
+    t.is(blindPeer.stats.bytesGcd, 10, 'total bytesGcd 10 after gc')
+  }
+
+  t.is(blindPeer.needsGc(), false, 'no need to gc again after gc')
+
+  // grow A a little (1 byte) and B a lot (6 bytes), back over max bytes
+  await appendBlocks(coreA, 1)
+  await appendBlocks(coreB, 6)
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  {
+    t.is(blindPeer.digest.bytesAllocated, 17, 'digest bytesAllocated 17 after cores append')
+    const recordA = await blindPeer.db.getCoreRecord(coreA.key)
+    const recordB = await blindPeer.db.getCoreRecord(coreB.key)
+    t.is(recordA.bytesAllocated, 1, 'coreA bytesAllocated 1 after gc and readd')
+    t.is(recordA.bytesCleared, 10, 'coreA bytesCleared 10 after gc and readd')
+    t.is(recordB.bytesAllocated, 16, 'coreB bytesAllocated 16 after gc and readd')
+    t.is(recordB.bytesCleared, 0, 'coreB bytesCleared 0 after gc and readd')
+  }
+
+  // second gc, clearing just coreA is not enough now
+  // it would free 1 byte, still above max bytes of 15
+  {
+    const [[{ bytesCleared }]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+    t.is(blindPeer.digest.bytesAllocated, 0, 'digest bytesAllocated 0 after 2 gc')
+    t.is(bytesCleared, 17, 'clear all 17 bytes')
+    const recordA = await blindPeer.db.getCoreRecord(coreA.key)
+    const recordB = await blindPeer.db.getCoreRecord(coreB.key)
+    t.is(recordA.bytesAllocated, 0, 'coreA bytesAllocated 0 after gc 2')
+    t.is(recordA.bytesCleared, 11, 'coreA bytesCleared 11 after gc 2')
+    t.is(recordB.bytesAllocated, 0, 'coreB bytesAllocated 0 after gc 2')
+    t.is(recordB.bytesCleared, 16, 'coreB bytesCleared 16 after gc 2')
+    t.is(blindPeer.stats.bytesGcd, 27, 'total bytesGcd 27 after gc')
+  }
+
+  t.is(blindPeer.needsGc(), false, 'no need to gc again after gc 2')
+})
+
 test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
