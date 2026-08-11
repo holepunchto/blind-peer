@@ -25,7 +25,7 @@ const rrp = require('resolve-reject-promise')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
-const DEBUG = true
+const DEBUG = false
 let clientCounter = 0 // For clean teardown order
 const clientOpts = { batchIdleWait: 250, batchMaxWait: 1000 }
 
@@ -308,14 +308,10 @@ for (let i = 0; i < 1000; i++) {
       coreCopy.download({ start: 0, end: -1 })
 
       const initClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-      console.log('awaitng add core done')
       await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
       await initClient.close()
 
-      core.on('append', () => console.log('it appende on orig core'))
-      coreCopy.on('append', () => console.log('it appende on copy core'))
-      console.log('awaiting append on copy')
-      await Promise.all([core.append('another block'), once(coreCopy, 'append')])
+      await Promise.all([once(coreCopy, 'append'), core.append('another block')])
 
       const client = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
 
@@ -324,11 +320,9 @@ for (let i = 0; i < 1000; i++) {
         t.fail('notification should work')
       })
 
-      console.log('awaiting core get')
       await coreCopy.get(2) // ensure synced
       t.is(coreCopy.length, core.length, 'sanity check')
 
-      console.log('awaiting sending notif')
       await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(coreCopy)])
 
       t.is(sentMessages.length, 1, 'gateway received one forwarded push')
