@@ -284,7 +284,7 @@ test('send push notification when not yet connected to blind peer', async (t) =>
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
 })
 
-for (let i = 0; i < 100; i++) {
+for (let i = 0; i < 1000; i++) {
   test.solo(
     'sets up core replication on notification if not present and the core is outdated',
     async (t) => {
@@ -312,6 +312,8 @@ for (let i = 0; i < 100; i++) {
       await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
       await initClient.close()
 
+      core.on('append', () => console.log('it appende on orig core'))
+      coreCopy.on('append', () => console.log('it appende on copy core'))
       console.log('awaiting append on copy')
       await Promise.all([core.append('another block'), once(coreCopy, 'append')])
 
