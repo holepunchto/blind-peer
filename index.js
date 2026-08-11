@@ -619,6 +619,7 @@ class BlindPeer extends ReadyResource {
             self.emit('notification-error', e, conn, request)
             if (e.code === 'REQUEST_TIMEOUT') return
             if (e.code === 'UNKNOWN_CORE') return
+            if (e.code === 'TOO_MANY_RETRIES') return
             throw e // unexpected error: crash the connection
           }
         }
