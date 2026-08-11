@@ -322,6 +322,7 @@ for (let i = 0; i < 100; i++) {
         t.fail('notification should work')
       })
 
+      console.log('awaiting core get')
       await coreCopy.get(2) // ensure synced
       t.is(coreCopy.length, core.length, 'sanity check')
 
