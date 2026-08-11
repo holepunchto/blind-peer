@@ -2714,60 +2714,57 @@ test('notification for an unknown core errors', async (t) => {
   t.is(sentMessages.length, 0, 'nothing forwarded for an unknown core')
 })
 
-test(
-  'notification errors when no push service available, but does not crash the connection',
-  async (t) => {
-    const tError = t.test('notification error')
-    tError.plan(1)
+test('notification errors when no push service available, but does not crash the connection', async (t) => {
+  const tError = t.test('notification error')
+  tError.plan(1)
 
-    const { bootstrap } = await getTestnet(t)
+  const { bootstrap } = await getTestnet(t)
 
-    const { blindPeer } = await setupBlindPeer(t, bootstrap, {
-      pushGatewayKeys: ['a'.repeat(64)],
-      pushGatewayPoolOpts: { rpcTimeout: 100 }
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+    pushGatewayKeys: ['a'.repeat(64)],
+    pushGatewayPoolOpts: { rpcTimeout: 100 }
+  })
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    muxer.addCores({
+      cores: [{ key: core.key, length: core.length }]
     })
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
+  ])
 
-    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-
-    const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
-
-    await Promise.all([
-      once(blindPeer, 'add-cores-done'),
-      muxer.addCores({
-        cores: [{ key: core.key, length: core.length }]
-      })
-    ])
-
-    const request = {
-      block: { key: core.key, index: core.length - 1 },
-      destination: {
-        key: core.key,
-        discoveryKey: crypto.discoveryKey(core.key)
-      }
+  const request = {
+    block: { key: core.key, index: core.length - 1 },
+    destination: {
+      key: core.key,
+      discoveryKey: crypto.discoveryKey(core.key)
     }
-
-    blindPeer.on('notification-error', (e) => {
-      tError.is(e.code, 'TOO_MANY_RETRIES')
-    })
-    muxer.sendNotification(request)
-
-    await tError
-
-    const core2 = store.get({ name: 'core2' })
-    await core2.append('block')
-
-    await Promise.all([
-      once(blindPeer, 'add-cores-done'),
-      muxer.addCores({
-        cores: [{ key: core2.key, length: core2.length }]
-      })
-    ])
-
-    t.pass('muxer did not close (can still send requests')
   }
-)
+
+  blindPeer.on('notification-error', (e) => {
+    tError.is(e.code, 'TOO_MANY_RETRIES')
+  })
+  muxer.sendNotification(request)
+
+  await tError
+
+  const core2 = store.get({ name: 'core2' })
+  await core2.append('block')
+
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    muxer.addCores({
+      cores: [{ key: core2.key, length: core2.length }]
+    })
+  ])
+
+  t.pass('muxer did not close (can still send requests')
+})
 
 test('client does not spam reconnect when connection closes immediately after opening', async (t) => {
   const { bootstrap } = await getTestnet(t)
