@@ -1209,7 +1209,7 @@ test.solo('gc correctly accounts cleared bytes for cores that were gced before',
     t.is(blindPeer.stats.bytesGcd, 10, 'total bytesGcd 10 after gc')
   }
 
-  t.not(blindPeer.needsGc(), 'no need to gc again after gc')
+  t.is(blindPeer.needsGc(), false, 'no need to gc again after gc')
 
   // grow A a little (1 byte) and B a lot (6 bytes), back over max bytes
   await appendBlocks(coreA, 1)
@@ -1241,7 +1241,7 @@ test.solo('gc correctly accounts cleared bytes for cores that were gced before',
     t.is(blindPeer.stats.bytesGcd, 27, 'total bytesGcd 27 after gc')
   }
 
-  t.not(blindPeer.needsGc(), 'no need to gc again after gc 2')
+  t.is(blindPeer.needsGc(), false, 'no need to gc again after gc 2')
 })
 
 test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
