@@ -1157,7 +1157,7 @@ test('garbage collection when space limit reached', async (t) => {
   t.is(blindPeer.digest.bytesAllocated > nowBytes, true, 'downloaded the new block')
 })
 
-test.solo('gc correctly accounts cleared bytes for cores that were gced before', async (t) => {
+test('gc correctly counts cleared bytes for cores that were gced before', async (t) => {
   async function appendBlocks(core, n) {
     const blocks = []
     for (let i = 0; i < n; i++) blocks.push(b4a.alloc(1))

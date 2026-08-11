@@ -85,16 +85,15 @@ class CoreTracker {
     if (!this.record) throw new Error('Record must be set before calling gc')
 
     // TODO: support gc-ing till less than last block (required hypercore to support getting byteLength at arbitrary versions)
-    const bytesCleared = this.core.byteLength
-    const blocksCleared = this.core.length
-    this.record.bytesAllocated = this.core.byteLength - bytesCleared
-    this.record.blocksCleared = blocksCleared
-    this.record.bytesCleared = bytesCleared
+    const bytesCleared = this.record.bytesAllocated
+    this.record.bytesAllocated = 0
+    this.record.blocksCleared = this.core.length
+    this.record.bytesCleared = this.core.byteLength
 
     if (this.downloadRange) this.downloadRange.destroy()
     this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
 
-    this.core.clear(0, blocksCleared).catch(safetyCatch)
+    this.core.clear(0, this.record.blocksCleared).catch(safetyCatch)
     this.blindPeer.db.updateCore(this.record, this.id)
 
     return bytesCleared
