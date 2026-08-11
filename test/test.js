@@ -3155,7 +3155,7 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
 
 test('db flush updates correctly for existing records', async (t) => {
   const addCore = async (info) => {
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
     blindPeer.db.addCore(info)
     await blindPeer.flush()
   }
@@ -3165,8 +3165,7 @@ test('db flush updates correctly for existing records', async (t) => {
   await blindPeer.ready()
 
   const key = crypto.randomBytes(32)
-  blindPeer.db.addCore({ key, priority: 0 })
-  await blindPeer.flush()
+  await addCore({ key, priority: 0 })
 
   const initialRecord = await blindPeer.db.getCoreRecord(key)
   // sanity check initial values on new record
