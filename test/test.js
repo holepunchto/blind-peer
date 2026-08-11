@@ -3155,6 +3155,8 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
 
 test('db flush updates correctly for existing records', async (t) => {
   const addCore = async (info) => {
+    // slight wait between flushes, so that record timestamps always increase
+    // more than 1ms due to the flakiness with ms rounding
     await new Promise((resolve) => setTimeout(resolve, 10))
     blindPeer.db.addCore(info)
     await blindPeer.flush()
