@@ -314,6 +314,9 @@ for (let i = 0; i < 1000; i++) {
       console.log('appending')
       const p1 = once(coreCopy, 'append')
       p1.then(() => console.log('copy appended to'))
+      const interval = setInterval(() => {
+        console.log('copy length and contig', coreCopy.length, coreCopy.contiguousLength, coreCopy.peers[0]?.remoteContiguousLength)
+      }, 1000)
       const p2 = core.append('another block')
       p2.then(() => console.log('orig appended'))
       await Promise.all([p1, p2])
@@ -331,6 +334,8 @@ for (let i = 0; i < 1000; i++) {
       await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(coreCopy)])
 
       t.is(sentMessages.length, 1, 'gateway received one forwarded push')
+
+      clearInterval(interval)
     }
   )
 }
