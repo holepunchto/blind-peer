@@ -312,7 +312,11 @@ for (let i = 0; i < 1000; i++) {
       await initClient.close()
 
       console.log('appending')
-      await Promise.all([once(coreCopy, 'append'), core.append('another block')])
+      const p1 = once(coreCopy, 'append')
+      p1.then(() => console.log('copy appended to'))
+      const p2 = core.append('another block')
+      p2.then(() => console.log('orig appended'))
+      await Promise.all([p1, p2])
       console.log('appended')
       const client = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
 
