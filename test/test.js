@@ -315,7 +315,12 @@ for (let i = 0; i < 1000; i++) {
       const p1 = once(coreCopy, 'append')
       p1.then(() => console.log('copy appended to'))
       const interval = setInterval(() => {
-        console.log('copy length and contig', coreCopy.length, coreCopy.contiguousLength, coreCopy.peers[0]?.remoteContiguousLength)
+        console.log(
+          'copy length and contig',
+          coreCopy.length,
+          coreCopy.contiguousLength,
+          coreCopy.peers[0]?.remoteContiguousLength
+        )
       }, 1000)
       const p2 = core.append('another block')
       p2.then(() => console.log('orig appended'))
