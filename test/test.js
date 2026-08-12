@@ -410,6 +410,36 @@ test('push notification timeout when getting block does not error the connection
   await store.close()
 })
 
+test('blind-peering handles not ready cores for push notifications', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  await core.setUserData('referrer', core.key)
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => await client.close())
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+
+  {
+    const core = store.get({ name: 'core' })
+    await core.ready()
+    await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(core)])
+    t.is(sentMessages.length, 1, 'push gateway received the notification when core was ready')
+  }
+
+  {
+    const core = store.get({ name: 'core' })
+    await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(core)])
+    t.is(sentMessages.length, 2, 'push gateway received the notification when core was not ready')
+  }
+})
+
 test('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(1)
@@ -3139,13 +3169,18 @@ async function setupBlindPeer(
   return { blindPeer: peer, storage }
 }
 
+async function initBlindPeer(t, bootstrap, opts) {
+  const result = await setupBlindPeer(t, bootstrap, opts)
+  await result.blindPeer.listen()
+  await result.blindPeer.swarm.flush()
+  return result
+}
+
 async function setupBlindPeers(t, bootstrap, amount) {
   const blindPeers = []
 
   for (let i = 0; i < amount; i++) {
-    const { blindPeer } = await setupBlindPeer(t, bootstrap)
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
+    const { blindPeer } = await initBlindPeer(t, bootstrap)
     blindPeers.push(blindPeer)
   }
 
