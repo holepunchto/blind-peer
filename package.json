@@ -36,7 +36,7 @@
     "bare-process": "^4.2.2",
     "bare-prom-client": "^15.1.3",
     "blind-peer-router": "^0.2.2",
-    "blind-peering": "holepunchto/blind-peering#ready-notification-core",
+    "blind-peering": "^2.6.2",
     "blind-push-gateway": "^1.0.0",
     "brittle": "^3.7.0",
     "debounceify": "^1.1.0",
