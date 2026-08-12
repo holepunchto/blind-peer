@@ -25,7 +25,7 @@ const rrp = require('resolve-reject-promise')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
-const DEBUG = false
+const DEBUG = true
 let clientCounter = 0 // For clean teardown order
 const clientOpts = { batchIdleWait: 250, batchMaxWait: 1000 }
 
@@ -311,8 +311,9 @@ for (let i = 0; i < 1000; i++) {
       await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
       await initClient.close()
 
+      console.log('appending')
       await Promise.all([once(coreCopy, 'append'), core.append('another block')])
-
+      console.log('appended')
       const client = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
 
       blindPeer.on('notification-error', (e) => {
