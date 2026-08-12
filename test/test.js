@@ -410,7 +410,7 @@ test('push notification timeout when getting block does not error the connection
   await store.close()
 })
 
-test.solo('blind-peering handles not ready cores for push notifications', async (t) => {
+test('blind-peering handles not ready cores for push notifications', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
