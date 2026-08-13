@@ -73,7 +73,7 @@ test('client can use a blind-peer to add a core', async (t) => {
   }
 })
 
-test.solo('client can use a blind-peer to synchronously add a core then close immediately', async (t) => {
+test('client can use a blind-peer to synchronously add a core then close immediately', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
