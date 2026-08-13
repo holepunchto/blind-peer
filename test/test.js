@@ -1959,7 +1959,7 @@ test('client gc logic', async (t) => {
   await client.close()
 })
 
-test.solo('client gc accounts for pending notifications', async (t) => {
+test('client gc accounts for pending notifications', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
