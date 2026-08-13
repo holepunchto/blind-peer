@@ -1959,6 +1959,45 @@ test('client gc logic', async (t) => {
   await client.close()
 })
 
+test.solo('client does not gc peers with pending notifications', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer.publicKey],
+    gcWait: 10_000
+  })
+  t.teardown(async () => await client.close())
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+  const peer = client.blindPeers.values().next().value
+
+  // block mid-sendNotification to test state mid-flight
+  const { promise, resolve } = rrp()
+  const send = peer.channel.sendNotification.bind(peer.channel)
+  peer.channel.sendNotification = async (request) => {
+    await promise
+    return send(request)
+  }
+
+  t.absent(client._gc.has(peer), 'peer is not gc candidate while it has core')
+  await core.close()
+  t.ok(client._gc.has(peer), 'peer is gc candidate after core closed')
+
+  const sendNotification = client.sendNotification(store.get({ name: 'core' }))
+  await sleep(100)
+
+  t.is(peer.pendingNotifications, 1, 'peer has pending notification')
+  t.absent(client._gc.has(peer), 'peer left gc')
+
+  resolve()
+  await sendNotification
+
+  t.is(peer.pendingNotifications, 0, 'peer has no pending notifications')
+  t.ok(client._gc.has(peer), 'peer is gc candidate after notification was sent')
+})
+
 test('client destroys pending timeouts on close', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -3553,4 +3592,8 @@ async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   })
 
   return { client, base, store, swarm, wakeup: base.wakeupProtocol }
+}
+
+function sleep(delay = 1000) {
+  return new Promise((resolve) => setTimeout(resolve, delay))
 }
