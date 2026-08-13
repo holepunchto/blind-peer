@@ -75,7 +75,11 @@ class CoreTracker {
     this.activated = true
 
     if (this.record) {
+      const newBytesAllocated = this.core.byteLength - this.record.bytesCleared
+      const needsFlush = this.record.bytesAllocated !== newBytesAllocated
+      this.record.bytesAllocated = newBytesAllocated
       this.blindPeer.db.updateCore(this.record, this.id)
+      if (needsFlush) this.blindPeer.flush().catch(safetyCatch)
     }
 
     this.blindPeer.emit('core-activity', this.core, this.record)
