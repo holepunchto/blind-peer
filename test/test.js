@@ -1959,7 +1959,7 @@ test('client gc logic', async (t) => {
   await client.close()
 })
 
-test.solo('client does not gc peers with pending notifications', async (t) => {
+test.solo('client gc accounts for pending notifications', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -1981,9 +1981,9 @@ test.solo('client does not gc peers with pending notifications', async (t) => {
     return send(request)
   }
 
-  t.absent(client._gc.has(peer), 'peer is not gc candidate while it has core')
+  t.absent(client._gc.has(peer), 'peer is not gc candidate while it has a core')
   await core.close()
-  t.ok(client._gc.has(peer), 'peer is gc candidate after core closed')
+  t.ok(client._gc.has(peer), 'peer entered gc after core was closed')
 
   const sendNotification = client.sendNotification(store.get({ name: 'core' }))
   await sleep(100)
@@ -1995,7 +1995,7 @@ test.solo('client does not gc peers with pending notifications', async (t) => {
   await sendNotification
 
   t.is(peer.pendingNotifications, 0, 'peer has no pending notifications')
-  t.ok(client._gc.has(peer), 'peer is gc candidate after notification was sent')
+  t.ok(client._gc.has(peer), 'peer entered gc after notification was sent')
 })
 
 test('client destroys pending timeouts on close', async (t) => {
