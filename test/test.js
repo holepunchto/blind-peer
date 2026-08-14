@@ -410,6 +410,64 @@ test('push notification timeout when getting block does not error the connection
   await store.close()
 })
 
+test('other clients help upload a core even if they did not add it', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  let coreKey = null
+  const coreAddedProm = once(blindPeer, 'add-core')
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const { swarm: swarm2, store: store2, core: core2 } = await setupCoreHolder(t, bootstrap)
+
+  const coreCopy = store2.get(core.key)
+  await coreCopy.ready()
+  swarm.joinPeer(swarm2.keyPair.publicKey)
+  await Promise.all([coreCopy.get(0), coreCopy.get(1)])
+
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(coreCopy.contiguousLength, 2, 'sanity check: copy downloaded the core')
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  coreKey = core.key
+  client.addCoreBackground(core)
+  const [record] = await coreAddedProm
+  t.alike(record.key, coreKey, 'added the core')
+
+  // The second client is also talking to the blind peer, for its own cores
+  const client2 = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
+  client2.addCoreBackground(core2)
+  // Give time to upload
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(
+    coreCopy.peers.length,
+    2,
+    'sanity check: second peer is also replicating the copy with the blind peer'
+  )
+
+  // simulate a sudden disconnect of peer 1
+  await client.close()
+
+  const bpCopy = blindPeer.store.get(core.key)
+  await bpCopy.ready()
+
+  await core.append('another block')
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(bpCopy.contiguousLength, 2, 'blind peer could not download the block')
+  t.is(bpCopy.length, 3, 'blind peer could see new length through replication with the other peer')
+
+  // Test: can another peer upload our block to the blind peer?
+  await coreCopy.get(2)
+
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  t.is(bpCopy.contiguousLength, 3, 'blind peer got the last block from the other peer')
+
+  await client2.close()
+})
+
 test('client can use a blind-peer to add an autobase', async (t) => {
   const tFirstAdd = t.test()
   tFirstAdd.plan(1)
