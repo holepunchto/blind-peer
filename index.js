@@ -286,6 +286,7 @@ class BlindPeer extends ReadyResource {
       wakeups: 0,
       addCoresRx: 0,
       notificationsRx: 0,
+      notificationsAttempted: 0,
       notificationsSent: 0,
       notificationErrors: 0,
       muxerPaired: 0,
@@ -991,6 +992,7 @@ class BlindPeer extends ReadyResource {
 
   async _onnotification(stream, request) {
     this.stats.notificationsRx++
+    this.emit('notification-rx', request, stream)
 
     if (!this.gatewayPool) {
       return null
@@ -1025,6 +1027,8 @@ class BlindPeer extends ReadyResource {
         extra: request.extra,
         timeout: this.notificationTimeout
       })
+
+      this.stats.notificationsAttempted++
 
       await this.gatewayPool.makeRequest(
         'forward-push',
@@ -1314,8 +1318,16 @@ class BlindPeer extends ReadyResource {
       })
 
       new promClient.Gauge({
+        name: 'blind_peer_push_notifications_attempted',
+        help: 'Number of push notification attempted to send to a push gateway',
+        collect() {
+          this.set(self.stats.notificationsSent)
+        }
+      })
+
+      new promClient.Gauge({
         name: 'blind_peer_push_notifications_sent',
-        help: 'Number of push notification sent to a push gateway',
+        help: 'Number of push notification successfully sent to a push gateway',
         collect() {
           this.set(self.stats.notificationsSent)
         }

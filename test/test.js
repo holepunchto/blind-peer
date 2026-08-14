@@ -226,6 +226,7 @@ test('client can ask a blind-peer to create and forward a push notification', as
   t.alike(result.result.key, core.key, 'verified payload targets the sender core')
   t.is(result.result.block.index, core.length - 1, 'verified payload contains the latest block')
   t.is(blindPeer.stats.notificationsRx, 1, 'blind-peer notification rx stat')
+  t.is(blindPeer.stats.notificationsAttempted, 1, 'blind-peer notification attempted stat')
   t.is(blindPeer.stats.notificationsSent, 1, 'blind-peer notification sent stat')
   t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
@@ -2140,6 +2141,10 @@ test('Prometheus metrics', async (t) => {
       'blind_peer_push_notifications_active'
     )
     t.ok(metrics.includes('blind_peer_push_notifications_rx 0'), 'blind_peer_push_notifications_rx')
+    t.ok(
+      metrics.includes('blind_peer_push_notifications_attempted 0'),
+      'blind_peer_push_notifications_attempted'
+    )
     t.ok(
       metrics.includes('blind_peer_push_notifications_sent 0'),
       'blind_peer_push_notifications_sent'
