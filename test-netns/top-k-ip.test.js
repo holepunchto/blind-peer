@@ -21,19 +21,28 @@ test('Prometheus top-k metrics reflect add-cores traffic by remote IP across nam
   // with k=3 and requests [1,2,3,4], top-3 sum is 2+3+4 or totalRequests - 1
   const top3Requests = totalRequests - 1
 
-  // wait for top-k to rotate before scheduling addCores,
-  // to prevent requests from being split across rotate cycles
-  await once(blindPeer.topKByIp, 'rotated')
-
   const allPromises = []
+  // add-cores is async, so a child process may exit before the blind peer receives its request
+  // and increments the top-k count.
+  allPromises.push(
+    new Promise((resolve) => {
+      let received = 0
+      const onAddCoresReceived = () => {
+        if (++received < totalRequests) return
+        blindPeer.off('add-cores-received', onAddCoresReceived)
+        resolve()
+      }
+      blindPeer.on('add-cores-received', onAddCoresReceived)
+    })
+  )
+
   for (let i = 0; i < nrPeers; i++) {
     allPromises.push(addCoresWithIp(NETNS_IPS[i], bootstrap, blindPeer.publicKey, i + 1))
   }
 
-  // wait for all add cores to finish and the top-k to rotate
-  allPromises.push(once(blindPeer.topKByIp, 'rotated'))
-
   await Promise.all(allPromises)
+
+  await once(blindPeer.topKByIp, 'rotated')
 
   const metrics = await promClient.register.metrics()
   const getMetricValue = (name) => {

@@ -410,6 +410,36 @@ test('push notification timeout when getting block does not error the connection
   await store.close()
 })
 
+test('blind-peering handles not ready cores for push notifications', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  await core.setUserData('referrer', core.key)
+
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(async () => await client.close())
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+
+  {
+    const core = store.get({ name: 'core' })
+    await core.ready()
+    await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(core)])
+    t.is(sentMessages.length, 1, 'push gateway received the notification when core was ready')
+  }
+
+  {
+    const core = store.get({ name: 'core' })
+    await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(core)])
+    t.is(sentMessages.length, 2, 'push gateway received the notification when core was not ready')
+  }
+})
+
 test('other clients help upload a core even if they did not add it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
