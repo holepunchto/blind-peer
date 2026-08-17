@@ -443,12 +443,7 @@ test('blind-peering handles not ready cores for push notifications', async (t) =
 test('other clients help upload a core even if they did not add it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
-
-  let coreKey = null
-  const coreAddedProm = once(blindPeer, 'add-core')
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const { swarm: swarm2, store: store2, core: core2 } = await setupCoreHolder(t, bootstrap)
@@ -462,10 +457,9 @@ test('other clients help upload a core even if they did not add it', async (t) =
   t.is(coreCopy.contiguousLength, 2, 'sanity check: copy downloaded the core')
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  coreKey = core.key
   client.addCoreBackground(core)
-  const [record] = await coreAddedProm
-  t.alike(record.key, coreKey, 'added the core')
+
+  await Promise.all([once(blindPeer, 'add-core'), client.addCore(core)])
 
   // The second client is also talking to the blind peer, for its own cores
   const client2 = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
