@@ -991,6 +991,8 @@ class BlindPeer extends ReadyResource {
 
   async _onnotification(stream, request) {
     this.stats.notificationsRx++
+    const startTime = Date.now()
+    this.emit('notification-rx', request, stream)
 
     if (!this.gatewayPool) {
       return null
@@ -1036,7 +1038,7 @@ class BlindPeer extends ReadyResource {
       )
 
       this.stats.notificationsSent++
-      this.emit('notification-sent', request, payload, stream)
+      this.emit('notification-sent', request, payload, stream, Date.now() - startTime)
     } finally {
       await core.close()
     }
