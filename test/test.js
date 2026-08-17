@@ -3227,13 +3227,18 @@ async function setupBlindPeer(
   return { blindPeer: peer, storage }
 }
 
+async function initBlindPeer(t, bootstrap, opts) {
+  const result = await setupBlindPeer(t, bootstrap, opts)
+  await result.blindPeer.listen()
+  await result.blindPeer.swarm.flush()
+  return result
+}
+
 async function setupBlindPeers(t, bootstrap, amount) {
   const blindPeers = []
 
   for (let i = 0; i < amount; i++) {
-    const { blindPeer } = await setupBlindPeer(t, bootstrap)
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
+    const { blindPeer } = await initBlindPeer(t, bootstrap)
     blindPeers.push(blindPeer)
   }
 
@@ -3382,7 +3387,7 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
 
 test('db flush updates correctly for existing records', async (t) => {
   const addCore = async (info) => {
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
     blindPeer.db.addCore(info)
     await blindPeer.flush()
   }
@@ -3392,8 +3397,7 @@ test('db flush updates correctly for existing records', async (t) => {
   await blindPeer.ready()
 
   const key = crypto.randomBytes(32)
-  blindPeer.db.addCore({ key, priority: 0 })
-  await blindPeer.flush()
+  await addCore({ key, priority: 0 })
 
   const initialRecord = await blindPeer.db.getCoreRecord(key)
   // sanity check initial values on new record
