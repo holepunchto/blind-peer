@@ -288,6 +288,7 @@ class BlindPeer extends ReadyResource {
       notificationsRx: 0,
       notificationsSent: 0,
       notificationErrors: 0,
+      notificationErrorCodes: {},
       muxerPaired: 0,
       muxerErrors: 0,
       coreTrackersCreated: 0,
@@ -614,7 +615,10 @@ class BlindPeer extends ReadyResource {
           try {
             await self._onnotification(conn, request)
           } catch (e) {
+            const errorCode = e.cause?.code || e.code || 'UNKNOWN'
             self.stats.notificationErrors++
+            self.stats.notificationErrorCodes[errorCode] =
+              (self.stats.notificationErrorCodes[errorCode] || 0) + 1
             self.emit('notification-error', e, conn, request)
             if (e.code === 'REQUEST_TIMEOUT') return
             if (e.code === 'UNKNOWN_CORE') return
@@ -1328,6 +1332,17 @@ class BlindPeer extends ReadyResource {
         help: 'Number of errors when forwarding a push notification to a push gateway',
         collect() {
           this.set(self.stats.notificationErrors)
+        }
+      })
+
+      new promClient.Gauge({
+        name: 'blind_peer_push_notifications_error_codes',
+        help: 'Number of push notifications errors, by error code',
+        labelNames: ['code'],
+        collect() {
+          for (const [code, count] of Object.entries(self.stats.notificationErrorCodes)) {
+            this.set({ code }, count)
+          }
         }
       })
 
