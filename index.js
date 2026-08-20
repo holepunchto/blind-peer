@@ -235,6 +235,7 @@ class BlindPeer extends ReadyResource {
       activeCorestore = false,
       treeCache,
       notificationTimeout = 10000,
+      notificationErrorSnapshotDelay = 30_000,
       retryRecordLookupTimeout = 5000
     } = {}
   ) {
@@ -247,6 +248,7 @@ class BlindPeer extends ReadyResource {
     this.ipBanLists = ipBanListKeys.map((key) => new IpBanList(ipBanNs, { key }))
     this.banTimeout = banTimeout
     this.notificationTimeout = notificationTimeout
+    this.notificationErrorSnapshotDelay = notificationErrorSnapshotDelay
 
     this._port = port || 0
     this.bootstrap = bootstrap
@@ -1019,14 +1021,45 @@ class BlindPeer extends ReadyResource {
         await this._activateCore(stream, record)
       }
 
-      const payload = await blindPush.createNotification(core, {
-        roomKey: request.destination.key,
-        roomDiscoveryKey: request.destination.discoveryKey,
-        index: request.block.index,
-        version: request.version,
-        extra: request.extra,
-        timeout: this.notificationTimeout
-      })
+      const senderPublicKey = stream.remotePublicKey
+      const coreInfoBefore = snapshotCoreInfo(core, senderPublicKey)
+
+      let payload = null
+      try {
+        payload = await blindPush.createNotification(core, {
+          roomKey: request.destination.key,
+          roomDiscoveryKey: request.destination.discoveryKey,
+          index: request.block.index,
+          version: request.version,
+          extra: request.extra,
+          timeout: this.notificationTimeout
+        })
+      } catch (e) {
+        const coreInfoOnError = snapshotCoreInfo(core, senderPublicKey)
+
+        setTimeout(async () => {
+          try {
+            const snapshotCore = this.store.get({ key: request.block.key })
+            await snapshotCore.ready()
+
+            try {
+              const coreInfoAfterDelay = snapshotCoreInfo(snapshotCore, senderPublicKey)
+
+              this.emit('notification-error-snapshot', {
+                coreInfoBefore,
+                coreInfoOnError,
+                coreInfoAfterDelay
+              })
+            } finally {
+              await snapshotCore.close()
+            }
+          } catch (e) {
+            console.warn('error when notify', e)
+          }
+        }, this.notificationErrorSnapshotDelay).unref()
+
+        throw e
+      }
 
       await this.gatewayPool.makeRequest(
         'forward-push',
@@ -1355,6 +1388,58 @@ class BlindPeer extends ReadyResource {
         }
       })
     }
+  }
+}
+
+function snapshotCoreInfo(core, senderPublicKey) {
+  try {
+    const senderPeer = core.peers.find((peer) => b4a.equals(peer.remotePublicKey, senderPublicKey))
+
+    return {
+      length: core.length,
+      contiguousLength: core.contiguousLength,
+      byteLength: core.byteLength,
+      fork: core.fork,
+      peerCount: core.peers.length,
+      senderPeer: senderPeer
+        ? {
+            remotePublicKey: IdEnc.normalize(senderPeer.remotePublicKey),
+            removed: senderPeer.removed,
+            paused: senderPeer.paused,
+            remoteLength: senderPeer.remoteLength,
+            remoteContiguousLength: senderPeer.remoteContiguousLength,
+            remoteFork: senderPeer.remoteFork,
+            lengthAcked: senderPeer.lengthAcked,
+            inflight: senderPeer.inflight,
+            maxInflight: senderPeer.getMaxInflight(),
+            wireRequestTx: senderPeer.stats.wireRequest.tx,
+            wireDataRx: senderPeer.stats.wireData.rx,
+            backoffs: senderPeer.stats.backoffs,
+            notAvailableBackoffs: senderPeer.stats.notAvailableBackoffs,
+            hotswaps: senderPeer.stats.hotswaps,
+            rtt: senderPeer.stream.rawStream.rtt,
+            stream: {
+              destroying: senderPeer.stream.destroying,
+              destroyed: senderPeer.stream.destroyed,
+              rawBytesWritten: senderPeer.stream.rawBytesWritten,
+              rawBytesRead: senderPeer.stream.rawBytesRead,
+              rawStream: {
+                destroying: senderPeer.stream.rawStream.destroying,
+                destroyed: senderPeer.stream.rawStream.destroyed,
+                mtu: senderPeer.stream.rawStream.mtu,
+                rtt: senderPeer.stream.rawStream.rtt,
+                cwnd: senderPeer.stream.rawStream.cwnd,
+                inflight: senderPeer.stream.rawStream.inflight,
+                rtoCount: senderPeer.stream.rawStream.rtoCount,
+                retransmits: senderPeer.stream.rawStream.retransmits
+              }
+            }
+          }
+        : null
+    }
+  } catch (e) {
+    console.warn(e)
+    return null
   }
 }
 

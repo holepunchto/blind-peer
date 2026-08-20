@@ -184,6 +184,7 @@ test('blind-peer can set treeCache options for corestore', async (t) => {
 
   t.is(blindPeer.store.storage.treeCache.maxSize, 2 ** 17, 'got maxSize')
   t.is(blindPeer.store.storage.treeCache.maxAge, 1337, 'got maxAge')
+  t.is(blindPeer.notificationErrorSnapshotDelay, 30_000, 'got snapshot delay default')
 })
 
 test('client can ask a blind-peer to create and forward a push notification', async (t) => {
@@ -367,13 +368,14 @@ test('send push notification falls back when closest blind peer times out', asyn
   t.is(sentMessages.length, 1, 'fallback blind peer forwarded one push')
 })
 
-test('push notification timeout when getting block does not error the connection', async (t) => {
+test('push notification emits a delayed error snapshot and does not close connection', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway } = await setupPushGateway(t, bootstrap)
   const { blindPeer } = await setupBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey],
-    notificationTimeout: 1000
+    notificationTimeout: 1000,
+    notificationErrorSnapshotDelay: 100
   })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
@@ -388,7 +390,7 @@ test('push notification timeout when getting block does not error the connection
   const swarm = new Hyperswarm({ bootstrap })
   const store = new Corestore(await t.tmp())
 
-  blindPeer.swarm.on('connection', (conn, peerInfo) => {
+  blindPeer.swarm.on('connection', (conn) => {
     conn.on('error', (err) => {
       t.fail('connection should not error')
       console.error(err)
@@ -398,7 +400,14 @@ test('push notification timeout when getting block does not error the connection
   await core.append('Block2')
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  await Promise.all([once(blindPeer, 'notification-error'), client.sendNotification(core)])
+  const notificationError = once(blindPeer, 'notification-error')
+  const [[error]] = await Promise.all([notificationError, client.sendNotification(core)])
+  t.is(error.code, 'REQUEST_TIMEOUT', 'emitted the original error')
+
+  const [snapshot] = await once(blindPeer, 'notification-error-snapshot')
+  t.ok(snapshot.coreInfoBefore, 'captured core info before notification')
+  t.ok(snapshot.coreInfoOnError, 'captured core info when notification failed')
+  t.ok(snapshot.coreInfoAfterDelay, 'captured core info after snapshot delay')
 
   // some time for swarm error to trigger if any
   await new Promise((resolve) => setTimeout(resolve, 500))
@@ -3218,6 +3227,7 @@ async function setupBlindPeer(
     pushGatewayKeys,
     pushGatewayPoolOpts,
     notificationTimeout,
+    notificationErrorSnapshotDelay,
     retryRecordLookupTimeout
   } = {}
 ) {
@@ -3239,6 +3249,7 @@ async function setupBlindPeer(
     adminRouter,
     activeCorestore,
     notificationTimeout,
+    notificationErrorSnapshotDelay,
     retryRecordLookupTimeout
   })
 
