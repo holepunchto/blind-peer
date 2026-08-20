@@ -619,7 +619,7 @@ class BlindPeer extends ReadyResource {
             self.stats.notificationErrors++
             self.stats.notificationErrorCodes[errorCode] =
               (self.stats.notificationErrorCodes[errorCode] || 0) + 1
-            self.emit('notification-error', e, conn, request, errorCode)
+            self.emit('notification-error', e, conn, request)
             if (e.code === 'REQUEST_TIMEOUT') return
             if (e.code === 'UNKNOWN_CORE') return
             if (e.code === 'TOO_MANY_RETRIES') return
