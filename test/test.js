@@ -25,7 +25,7 @@ const rrp = require('resolve-reject-promise')
 const BlindPeer = require('..')
 const TopKWindow = require('../lib/top-k.js')
 
-const DEBUG = false
+const DEBUG = true
 let clientCounter = 0 // For clean teardown order
 const clientOpts = { batchIdleWait: 250, batchMaxWait: 1000 }
 
@@ -284,46 +284,66 @@ test('send push notification when not yet connected to blind peer', async (t) =>
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
 })
 
-test('sets up core replication on notification if not present and the core is outdated', async (t) => {
-  const { bootstrap } = await getTestnet(t)
+for (let i = 0; i < 1000; i++) {
+  test.solo(
+    'sets up core replication on notification if not present and the core is outdated',
+    async (t) => {
+      const { bootstrap } = await getTestnet(t)
 
-  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
-    pushGatewayKeys: [gateway.publicKey]
-  })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+      const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+      const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+        pushGatewayKeys: [gateway.publicKey]
+      })
+      await blindPeer.listen()
+      await blindPeer.swarm.flush()
 
-  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+      const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  // needs both sides to have a passive corestore, otherwise this side will
-  // set up hypercore replication for the core always
-  const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap, { active: false })
-  await new Promise((resolve) => setTimeout(resolve, 500))
-  swarm2.joinPeer(swarm.keyPair.publicKey)
-  const coreCopy = store2.get(core.key)
-  coreCopy.download({ start: 0, end: -1 })
+      // needs both sides to have a passive corestore, otherwise this side will
+      // set up hypercore replication for the core always
+      const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap, { active: false })
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      swarm2.joinPeer(swarm.keyPair.publicKey)
+      const coreCopy = store2.get(core.key)
+      coreCopy.download({ start: 0, end: -1 })
 
-  const initClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
-  await initClient.close()
+      const initClient = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+      await Promise.all([once(blindPeer, 'add-cores-done'), initClient.addCore(core)])
+      await initClient.close()
 
-  await Promise.all([core.append('another block'), once(coreCopy, 'append')])
+      console.log('appending')
+      const p1 = once(coreCopy, 'append')
+      p1.then(() => console.log('copy appended to'))
+      const interval = setInterval(() => {
+        console.log(
+          'copy length and contig',
+          coreCopy.length,
+          coreCopy.contiguousLength,
+          coreCopy.peers[0]?.remoteContiguousLength
+        )
+      }, 1000)
+      const p2 = core.append('another block')
+      p2.then(() => console.log('orig appended'))
+      await Promise.all([p1, p2])
+      console.log('appended')
+      const client = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
 
-  const client = new Client(swarm2.dht, store2, { keys: [blindPeer.publicKey] })
+      blindPeer.on('notification-error', (e) => {
+        console.error(e)
+        t.fail('notification should work')
+      })
 
-  blindPeer.on('notification-error', (e) => {
-    console.error(e)
-    t.fail('notification should work')
-  })
+      await coreCopy.get(2) // ensure synced
+      t.is(coreCopy.length, core.length, 'sanity check')
 
-  await coreCopy.get(2) // ensure synced
-  t.is(coreCopy.length, core.length, 'sanity check')
+      await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(coreCopy)])
 
-  await Promise.all([once(blindPeer, 'notification-sent'), client.sendNotification(coreCopy)])
+      t.is(sentMessages.length, 1, 'gateway received one forwarded push')
 
-  t.is(sentMessages.length, 1, 'gateway received one forwarded push')
-})
+      clearInterval(interval)
+    }
+  )
+}
 
 test('send push notification falls back when closest blind peer times out', async (t) => {
   const { bootstrap } = await getTestnet(t)
