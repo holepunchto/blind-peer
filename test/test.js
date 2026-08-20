@@ -2972,6 +2972,12 @@ test('notification errors when no push service available, but does not crash the
   ])
 
   t.pass('muxer did not close (can still send requests')
+
+  t.alike(
+    blindPeer.stats.notificationErrorCodes,
+    { TOO_MANY_RETRIES: 1 },
+    'drop counted under the pool error code'
+  )
 })
 
 test('client does not spam reconnect when connection closes immediately after opening', async (t) => {
