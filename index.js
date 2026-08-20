@@ -616,7 +616,7 @@ class BlindPeer extends ReadyResource {
           } catch (e) {
             self.stats.notificationErrors++
             self.emit('notification-error', e, conn, request)
-            if (e.code === 'REQUEST_TIMEOUT') return
+            if (e.code === 'CREATE_NOTIFICATION_ERROR') return
             if (e.code === 'UNKNOWN_CORE') return
             if (e.code === 'TOO_MANY_RETRIES') return
             throw e // unexpected error: crash the connection
@@ -1019,14 +1019,28 @@ class BlindPeer extends ReadyResource {
         await this._activateCore(stream, record)
       }
 
-      const payload = await blindPush.createNotification(core, {
-        roomKey: request.destination.key,
-        roomDiscoveryKey: request.destination.discoveryKey,
-        index: request.block.index,
-        version: request.version,
-        extra: request.extra,
-        timeout: this.notificationTimeout
-      })
+      const coreInfoBefore = snapshotCoreInfo(core)
+
+      let payload = null
+      try {
+        payload = await blindPush.createNotification(core, {
+          roomKey: request.destination.key,
+          roomDiscoveryKey: request.destination.discoveryKey,
+          index: request.block.index,
+          version: request.version,
+          extra: request.extra,
+          timeout: this.notificationTimeout
+        })
+      } catch (e) {
+        const coreInfoAfter = snapshotCoreInfo(core)
+        throw BlindPeerError.CREATE_NOTIFICATION_ERROR(e.message, {
+          cause: e,
+          data: {
+            coreInfoBefore,
+            coreInfoAfter
+          }
+        })
+      }
 
       await this.gatewayPool.makeRequest(
         'forward-push',
@@ -1355,6 +1369,50 @@ class BlindPeer extends ReadyResource {
         }
       })
     }
+  }
+}
+
+function snapshotCoreInfo(core) {
+  return {
+    length: core.length,
+    contiguousLength: core.contiguousLength,
+    byteLength: core.byteLength,
+    fork: core.fork,
+    peerCount: core.peers.length,
+    peers: core.peers.map((peer) => ({
+      remotePublicKey: IdEnc.normalize(peer.remotePublicKey),
+      removed: peer.removed,
+      paused: peer.paused,
+      remoteLength: peer.remoteLength,
+      remoteContiguousLength: peer.remoteContiguousLength,
+      remoteFork: peer.remoteFork,
+      remoteCanUpgrade: peer.remoteCanUpgrade,
+      lengthAcked: peer.lengthAcked,
+      inflight: peer.inflight,
+      maxInflight: peer.getMaxInflight(),
+      wireRequestTx: peer.stats.wireRequest.tx,
+      wireDataRx: peer.stats.wireData.rx,
+      backoffs: peer.stats.backoffs,
+      notAvailableBackoffs: peer.stats.notAvailableBackoffs,
+      hotswaps: peer.stats.hotswaps,
+      rtt: peer.stream.rawStream.rtt,
+      stream: {
+        destroying: peer.stream.destroying,
+        destroyed: peer.stream.destroyed,
+        rawBytesWritten: peer.stream.rawBytesWritten,
+        rawBytesRead: peer.stream.rawBytesRead,
+        rawStream: {
+          destroying: peer.stream.rawStream.destroying,
+          destroyed: peer.stream.rawStream.destroyed,
+          mtu: peer.stream.rawStream.mtu,
+          rtt: peer.stream.rawStream.rtt,
+          cwnd: peer.stream.rawStream.cwnd,
+          inflight: peer.stream.rawStream.inflight,
+          rtoCount: peer.stream.rawStream.rtoCount,
+          retransmits: peer.stream.rawStream.retransmits
+        }
+      }
+    }))
   }
 }
 
