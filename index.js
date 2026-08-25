@@ -615,7 +615,7 @@ class BlindPeer extends ReadyResource {
             await self._onnotification(conn, request)
           } catch (e) {
             self.stats.notificationErrors++
-            self.emit('notification-error', e, conn, request)
+            self.emit('notification-error', e, conn, request, e.coreState)
             if (e.code === 'REQUEST_TIMEOUT') return
             if (e.code === 'UNKNOWN_CORE') return
             if (e.code === 'TOO_MANY_RETRIES') return
@@ -1039,6 +1039,20 @@ class BlindPeer extends ReadyResource {
 
       this.stats.notificationsSent++
       this.emit('notification-sent', request, payload, stream, Date.now() - startTime)
+    } catch (e) {
+      e.coreState = {
+        length: core.length,
+        contiguousLength: core.contiguousLength,
+        peerCount: core.peers.length,
+        peers: core.peers.map((p) => ({
+          remotePublicKey: p.remotePublicKey,
+          remoteLength: p.remoteLength,
+          remoteContiguousLength: p.remoteContiguousLength,
+          remoteUploading: p.remoteUploading,
+          hasBlock: p.remoteBitfield.get(request.block.index)
+        }))
+      }
+      throw e
     } finally {
       await core.close()
     }
