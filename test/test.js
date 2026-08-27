@@ -187,7 +187,7 @@ test('blind-peer can set treeCache options for corestore', async (t) => {
   t.is(blindPeer.notificationErrorSnapshotDelay, 30_000, 'got snapshot delay default')
 })
 
-test('client can ask a blind-peer to create and forward a push notification', async (t) => {
+test('push notification timeout when getting block does not close the connection and emits a delayed error snapshot', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
