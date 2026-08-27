@@ -235,6 +235,8 @@ class BlindPeer extends ReadyResource {
       activeCorestore = false,
       treeCache,
       notificationTimeout = 10000,
+      // temp, no semver guarantees
+      notificationErrorSnapshotDelay = 30_000,
       retryRecordLookupTimeout = 5000
     } = {}
   ) {
@@ -247,6 +249,8 @@ class BlindPeer extends ReadyResource {
     this.ipBanLists = ipBanListKeys.map((key) => new IpBanList(ipBanNs, { key }))
     this.banTimeout = banTimeout
     this.notificationTimeout = notificationTimeout
+    // temp, no semver guarantees
+    this.notificationErrorSnapshotDelay = notificationErrorSnapshotDelay
 
     this._port = port || 0
     this.bootstrap = bootstrap
@@ -1019,14 +1023,53 @@ class BlindPeer extends ReadyResource {
         await this._activateCore(stream, record)
       }
 
-      const payload = await blindPush.createNotification(core, {
-        roomKey: request.destination.key,
-        roomDiscoveryKey: request.destination.discoveryKey,
-        index: request.block.index,
-        version: request.version,
-        extra: request.extra,
-        timeout: this.notificationTimeout
-      })
+      const senderPublicKey = stream.remotePublicKey
+      const coreInfoBefore = this._snapshotCore(core, senderPublicKey, request.block.index)
+
+      let payload = null
+      try {
+        payload = await blindPush.createNotification(core, {
+          roomKey: request.destination.key,
+          roomDiscoveryKey: request.destination.discoveryKey,
+          index: request.block.index,
+          version: request.version,
+          extra: request.extra,
+          timeout: this.notificationTimeout
+        })
+      } catch (e) {
+        const coreInfoOnError = this._snapshotCore(core, senderPublicKey, request.block.index)
+
+        // temp, no semver guarantees
+        setTimeout(async () => {
+          if (this.closing) return
+
+          try {
+            const snapshotCore = this.store.get({ key: request.block.key })
+            await snapshotCore.ready()
+
+            try {
+              const coreInfoAfterDelay = this._snapshotCore(
+                snapshotCore,
+                senderPublicKey,
+                request.block.index
+              )
+
+              // temp, no semver guarantees
+              this.emit('notification-error-snapshot', {
+                coreInfoBefore,
+                coreInfoOnError,
+                coreInfoAfterDelay
+              })
+            } finally {
+              await snapshotCore.close()
+            }
+          } catch (e) {
+            this.emit('warn', e)
+          }
+        }, this.notificationErrorSnapshotDelay).unref()
+
+        throw e
+      }
 
       await this.gatewayPool.makeRequest(
         'forward-push',
@@ -1041,6 +1084,62 @@ class BlindPeer extends ReadyResource {
       this.emit('notification-sent', request, payload, stream, Date.now() - startTime)
     } finally {
       await core.close()
+    }
+  }
+
+  _snapshotCore(core, senderPublicKey, requestBlockIndex) {
+    try {
+      const senderPeer = core.peers.find((peer) =>
+        b4a.equals(peer.remotePublicKey, senderPublicKey)
+      )
+
+      return {
+        length: core.length,
+        contiguousLength: core.contiguousLength,
+        byteLength: core.byteLength,
+        fork: core.fork,
+        peerCount: core.peers.length,
+        senderPeer: senderPeer
+          ? {
+              remotePublicKey: IdEnc.normalize(senderPeer.remotePublicKey),
+              removed: senderPeer.removed,
+              paused: senderPeer.paused,
+              remoteLength: senderPeer.remoteLength,
+              remoteContiguousLength: senderPeer.remoteContiguousLength,
+              remoteFork: senderPeer.remoteFork,
+              remoteUploading: senderPeer.remoteUploading,
+              hasBlock: senderPeer.remoteBitfield.get(requestBlockIndex),
+              lengthAcked: senderPeer.lengthAcked,
+              inflight: senderPeer.inflight,
+              maxInflight: senderPeer.getMaxInflight(),
+              wireRequestTx: senderPeer.stats.wireRequest.tx,
+              wireDataRx: senderPeer.stats.wireData.rx,
+              backoffs: senderPeer.stats.backoffs,
+              notAvailableBackoffs: senderPeer.stats.notAvailableBackoffs,
+              hotswaps: senderPeer.stats.hotswaps,
+              rtt: senderPeer.stream.rawStream.rtt,
+              stream: {
+                destroying: senderPeer.stream.destroying,
+                destroyed: senderPeer.stream.destroyed,
+                rawBytesWritten: senderPeer.stream.rawBytesWritten,
+                rawBytesRead: senderPeer.stream.rawBytesRead,
+                rawStream: {
+                  destroying: senderPeer.stream.rawStream.destroying,
+                  destroyed: senderPeer.stream.rawStream.destroyed,
+                  mtu: senderPeer.stream.rawStream.mtu,
+                  rtt: senderPeer.stream.rawStream.rtt,
+                  cwnd: senderPeer.stream.rawStream.cwnd,
+                  inflight: senderPeer.stream.rawStream.inflight,
+                  rtoCount: senderPeer.stream.rawStream.rtoCount,
+                  retransmits: senderPeer.stream.rawStream.retransmits
+                }
+              }
+            }
+          : null
+      }
+    } catch (e) {
+      this.emit('warn', e)
+      return null
     }
   }
 
