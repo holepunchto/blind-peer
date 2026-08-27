@@ -5,7 +5,7 @@ const path = require('path')
 const Corestore = require('corestore')
 const goodbye = require('graceful-goodbye')
 const Hyperswarm = require('hyperswarm')
-const BlindPeerMuxer = require('blind-peer-muxer')
+const BlindPeerMuxer = require('blind-peer-muxer-new')
 const IdEnc = require('hypercore-id-encoding')
 
 async function main() {
