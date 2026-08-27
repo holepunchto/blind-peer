@@ -450,6 +450,33 @@ test('blind-peering handles not ready cores for push notifications', async (t) =
   }
 })
 
+test('a client with active corestore dedups repeated requests always', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  // Ensure we're already connected (that triggers a bug this was a failing test for)
+  const core2 = store.get({ name: 'core2' })
+  await core2.append('block')
+  await Promise.all([client.addCore(core2), once(blindPeer, 'add-cores-done')])
+
+  for (let i = 0; i < 10; i++) {
+    client.addCore(core)
+    console.log('done', i)
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  t.is(
+    client.stats.addCoresTx,
+    2,
+    'Dedups repeated requests, also when the core is not yet replicating'
+  )
+})
+
 test('other clients help upload a core even if they did not add it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
