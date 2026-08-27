@@ -2074,7 +2074,7 @@ test('client destroys pending timeouts on close', async (t) => {
   t.pass('unless the test run hangs for a really long time, this test passed')
 })
 
-test('client addCore dedups repeated adds but only when needed', async (t) => {
+test.solo('client addCore dedups repeated adds but only when needed', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
   // We need corestore: false mode to trigger the edge case where neither side activated the core
@@ -2084,6 +2084,7 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   t.teardown(() => client.close())
 
+  client.addCoreBackground(core)
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 500))
   t.is(client.stats.addCore, 1, 'one add')
