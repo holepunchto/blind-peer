@@ -1024,7 +1024,7 @@ class BlindPeer extends ReadyResource {
       }
 
       const senderPublicKey = stream.remotePublicKey
-      const coreInfoBefore = this._snapshotCore(core, senderPublicKey)
+      const coreInfoBefore = this._snapshotCore(core, senderPublicKey, request.block.index)
 
       let payload = null
       try {
@@ -1037,7 +1037,7 @@ class BlindPeer extends ReadyResource {
           timeout: this.notificationTimeout
         })
       } catch (e) {
-        const coreInfoOnError = this._snapshotCore(core, senderPublicKey)
+        const coreInfoOnError = this._snapshotCore(core, senderPublicKey, request.block.index)
 
         // temp, no semver guarantees
         setTimeout(async () => {
@@ -1048,7 +1048,11 @@ class BlindPeer extends ReadyResource {
             await snapshotCore.ready()
 
             try {
-              const coreInfoAfterDelay = this._snapshotCore(snapshotCore, senderPublicKey)
+              const coreInfoAfterDelay = this._snapshotCore(
+                snapshotCore,
+                senderPublicKey,
+                request.block.index
+              )
 
               // temp, no semver guarantees
               this.emit('notification-error-snapshot', {
@@ -1083,7 +1087,7 @@ class BlindPeer extends ReadyResource {
     }
   }
 
-  _snapshotCore(core, senderPublicKey) {
+  _snapshotCore(core, senderPublicKey, requestBlockIndex) {
     try {
       const senderPeer = core.peers.find((peer) =>
         b4a.equals(peer.remotePublicKey, senderPublicKey)
@@ -1103,6 +1107,8 @@ class BlindPeer extends ReadyResource {
               remoteLength: senderPeer.remoteLength,
               remoteContiguousLength: senderPeer.remoteContiguousLength,
               remoteFork: senderPeer.remoteFork,
+              remoteUploading: senderPeer.remoteUploading,
+              hasBlock: senderPeer.remoteBitfield.get(requestBlockIndex),
               lengthAcked: senderPeer.lengthAcked,
               inflight: senderPeer.inflight,
               maxInflight: senderPeer.getMaxInflight(),
