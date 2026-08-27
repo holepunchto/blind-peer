@@ -187,7 +187,7 @@ test('blind-peer can set treeCache options for corestore', async (t) => {
   t.is(blindPeer.notificationErrorSnapshotDelay, 30_000, 'got snapshot delay default')
 })
 
-test('push notification timeout when getting block does not close the connection and emits a delayed error snapshot', async (t) => {
+test('client can ask a blind-peer to create and forward a push notification', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
@@ -368,7 +368,7 @@ test('send push notification falls back when closest blind peer times out', asyn
   t.is(sentMessages.length, 1, 'fallback blind peer forwarded one push')
 })
 
-test('push notification emits a delayed error snapshot and does not close connection', async (t) => {
+test('push notification timeout when getting block does not close the connection and emits a delayed error snapshot', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway } = await setupPushGateway(t, bootstrap)
@@ -401,10 +401,11 @@ test('push notification emits a delayed error snapshot and does not close connec
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
   const notificationError = once(blindPeer, 'notification-error')
+  const snapshotPromise = once(blindPeer, 'notification-error-snapshot')
   const [[error]] = await Promise.all([notificationError, client.sendNotification(core)])
   t.is(error.code, 'REQUEST_TIMEOUT', 'emitted the original error')
 
-  const [snapshot] = await once(blindPeer, 'notification-error-snapshot')
+  const [snapshot] = await snapshotPromise
   t.ok(snapshot.coreInfoBefore, 'captured core info before notification')
   t.ok(snapshot.coreInfoOnError, 'captured core info when notification failed')
   t.ok(snapshot.coreInfoAfterDelay, 'captured core info after snapshot delay')
