@@ -73,6 +73,46 @@ test('client can use a blind-peer to add a core', async (t) => {
   }
 })
 
+test('client can use a blind-peer to synchronously add a core then close immediately', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const coreAddedProm = once(blindPeer, 'add-core')
+
+  coreAddedProm.catch(() => {})
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  const coreKey = core.key
+  await client.addCore(core)
+  t.comment('core add requested')
+  await client.close()
+  t.comment('client closed')
+
+  const [record] = await coreAddedProm
+  t.alike(record.key, coreKey, 'added the core')
+  t.is(record.priority, 0, '0 Default priority')
+  t.is(record.announce, false, 'default no announce')
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await swarm.destroy() // So the core holder stops announcing the core
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap)
+    const core = store.get({ key: coreKey })
+    await core.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const block = await core.get(1)
+    t.is(b4a.toString(block), 'Block 1', 'Can download the core from the blind peer')
+  }
+})
+
 test('client can change to a new blind-peer', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
