@@ -7,7 +7,7 @@
     "autobase": "^7.0.18",
     "b4a": "^1.6.7",
     "blind-peer-encodings": "^3.3.0",
-    "blind-peer-muxer-new": "holepunchto/blind-peer-muxer#add_handshake",
+    "blind-peer-muxer": "holepunchto/blind-peer-muxer#add_handshake",
     "blind-push": "^1.0.1",
     "compact-encoding": "^3.0.0",
     "corestore": "^7.4.4",
