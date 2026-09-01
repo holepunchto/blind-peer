@@ -2129,7 +2129,7 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
   t.is(blindPeer.stats.activations, 2, 'new activation')
 })
 
-test.solo('client addCore dedups new cores on existing connection', async (t) => {
+test('client addCore dedups new cores on existing connection', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -2139,6 +2139,8 @@ test.solo('client addCore dedups new cores on existing connection', async (t) =>
   await Promise.all([client.addCore(core), once(blindPeer, 'add-cores-done')])
   t.is(client.stats.addCoresTx, 1, 'sanity: 1tx for first added core')
 
+  // existing blind-peer connection, but newly added core
+  // with consecutive addCore not giving time to start replication
   const core2 = store.get({ name: 'core2' })
   client.addCoreBackground(core2)
   client.addCoreBackground(core2)
@@ -2147,7 +2149,7 @@ test.solo('client addCore dedups new cores on existing connection', async (t) =>
   t.is(client.stats.addCoresTx, 2, 'dedup new core')
 })
 
-test.solo('client addCore dedups inactive cores when needed', async (t) => {
+test('client addCore dedups inactive cores when needed', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -2161,15 +2163,17 @@ test.solo('client addCore dedups inactive cores when needed', async (t) => {
   await Promise.all([client.resume(), once(blindPeer, 'add-cores-done')])
   t.is(client.stats.addCoresTx, 2, 'sanity: 1tx for initial add and 1tx for reconnect')
 
-  client.addCoreBackground(core)
-  client.addCoreBackground(core)
+  await client.addCore(core)
+  await sleep(500)
+  await client.addCore(core)
   await sleep(500)
 
   t.is(client.stats.addCoresTx, 2, 'dedup inactive core after reconnect')
 
   await core.append('block')
-  client.addCoreBackground(core)
-  client.addCoreBackground(core)
+  await client.addCore(core)
+  await sleep(500)
+  await client.addCore(core)
   await sleep(500)
 
   t.is(client.stats.addCoresTx, 3, '1tx is made after core changed')
