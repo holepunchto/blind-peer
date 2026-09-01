@@ -3197,10 +3197,10 @@ test('client balances blind peers across groups when picking more than there are
   t.is(groupB.length, 2, 'added the core to two blind peers of group b')
 })
 
-async function setupCoreHolder(t, bootstrap, { active } = {}, coreOpts = {}) {
+async function setupCoreHolder(t, bootstrap, { active } = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
-  const core = store.get({ name: 'core', ...coreOpts })
+  const core = store.get({ name: 'core' })
   await core.append('Block 0')
   await core.append('Block 1')
   swarm.join(core.discoveryKey)
