@@ -2114,7 +2114,7 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 500))
-  t.is(client.stats.addCore, 2, 're-adds after reconnect')
+  t.is(client.stats.addCore, 1, 'dedups after reconnect')
   t.is(client.stats.addCoresTx, 2, 'reconnect tx')
   t.is(blindPeer.stats.addCoresRx, 2, 'reconnect rx')
   t.is(blindPeer.stats.activations, 1, 'activation unchanged')
@@ -2123,7 +2123,7 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 500))
-  t.is(client.stats.addCore, 3, 'adds changed core')
+  t.is(client.stats.addCore, 2, 'adds changed core')
   t.is(client.stats.addCoresTx, 3, 'changed core tx')
   t.is(blindPeer.stats.addCoresRx, 3, 'changed core rx')
   t.is(blindPeer.stats.activations, 2, 'new activation')
