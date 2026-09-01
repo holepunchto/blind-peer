@@ -2129,6 +2129,52 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
   t.is(blindPeer.stats.activations, 2, 'new activation')
 })
 
+test.solo('client addCore dedups new cores on existing connection', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  await Promise.all([client.addCore(core), once(blindPeer, 'add-cores-done')])
+  t.is(client.stats.addCoresTx, 1, 'sanity: 1tx for first added core')
+
+  const core2 = store.get({ name: 'core2' })
+  client.addCoreBackground(core2)
+  client.addCoreBackground(core2)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 2, 'dedup new core')
+})
+
+test.solo('client addCore dedups inactive cores when needed', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  const core = store.get({ name: 'inactiveCore', active: false })
+  await Promise.all([client.addCore(core), once(blindPeer, 'add-cores-done')])
+
+  await client.suspend()
+  await Promise.all([client.resume(), once(blindPeer, 'add-cores-done')])
+  t.is(client.stats.addCoresTx, 2, 'sanity: 1tx for initial add and 1tx for reconnect')
+
+  client.addCoreBackground(core)
+  client.addCoreBackground(core)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 2, 'dedup inactive core after reconnect')
+
+  await core.append('block')
+  client.addCoreBackground(core)
+  client.addCoreBackground(core)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 3, '1tx is made after core changed')
+})
+
 test('invalid requests are emitted', async (t) => {
   t.plan(3)
 
@@ -3147,10 +3193,10 @@ test('client balances blind peers across groups when picking more than there are
   t.is(groupB.length, 2, 'added the core to two blind peers of group b')
 })
 
-async function setupCoreHolder(t, bootstrap, { active } = {}) {
+async function setupCoreHolder(t, bootstrap, { active } = {}, coreOpts = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap, { active })
 
-  const core = store.get({ name: 'core' })
+  const core = store.get({ name: 'core', ...coreOpts })
   await core.append('Block 0')
   await core.append('Block 1')
   swarm.join(core.discoveryKey)
