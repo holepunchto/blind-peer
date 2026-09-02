@@ -2114,7 +2114,7 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 500))
-  t.is(client.stats.addCore, 2, 're-adds after reconnect')
+  t.is(client.stats.addCore, 1, 'dedups after reconnect')
   t.is(client.stats.addCoresTx, 2, 'reconnect tx')
   t.is(blindPeer.stats.addCoresRx, 2, 'reconnect rx')
   t.is(blindPeer.stats.activations, 1, 'activation unchanged')
@@ -2123,10 +2123,60 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 500))
-  t.is(client.stats.addCore, 3, 'adds changed core')
+  t.is(client.stats.addCore, 2, 'adds changed core')
   t.is(client.stats.addCoresTx, 3, 'changed core tx')
   t.is(blindPeer.stats.addCoresRx, 3, 'changed core rx')
   t.is(blindPeer.stats.activations, 2, 'new activation')
+})
+
+test('client addCore dedups new cores on existing connection', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  await Promise.all([client.addCore(core), once(blindPeer, 'add-cores-done')])
+  t.is(client.stats.addCoresTx, 1, 'sanity: 1tx for first added core')
+
+  // existing blind-peer connection, but newly added core
+  // with consecutive addCore not giving time to start replication
+  const core2 = store.get({ name: 'core2' })
+  client.addCoreBackground(core2)
+  client.addCoreBackground(core2)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 2, 'dedup new core')
+})
+
+test('client addCore dedups inactive cores when needed', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  const core = store.get({ name: 'inactiveCore', active: false })
+  await Promise.all([client.addCore(core), once(blindPeer, 'add-cores-done')])
+
+  await client.suspend()
+  await Promise.all([client.resume(), once(blindPeer, 'add-cores-done')])
+  t.is(client.stats.addCoresTx, 2, 'sanity: 1tx for initial add and 1tx for reconnect')
+
+  await client.addCore(core)
+  await sleep(500)
+  await client.addCore(core)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 2, 'dedup inactive core after reconnect')
+
+  await core.append('block')
+  await client.addCore(core)
+  await sleep(500)
+  await client.addCore(core)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 3, '1tx is made after core changed')
 })
 
 test('invalid requests are emitted', async (t) => {
