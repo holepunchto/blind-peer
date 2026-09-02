@@ -184,6 +184,7 @@ test('blind-peer can set treeCache options for corestore', async (t) => {
 
   t.is(blindPeer.store.storage.treeCache.maxSize, 2 ** 17, 'got maxSize')
   t.is(blindPeer.store.storage.treeCache.maxAge, 1337, 'got maxAge')
+  t.is(blindPeer.notificationErrorSnapshotDelay, 30_000, 'got snapshot delay default')
 })
 
 test('client can ask a blind-peer to create and forward a push notification', async (t) => {
@@ -367,13 +368,14 @@ test('send push notification falls back when closest blind peer times out', asyn
   t.is(sentMessages.length, 1, 'fallback blind peer forwarded one push')
 })
 
-test('push notification timeout when getting block does not error the connection', async (t) => {
+test('push notification timeout when getting block does not close the connection and emits a delayed error snapshot', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway } = await setupPushGateway(t, bootstrap)
   const { blindPeer } = await setupBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey],
-    notificationTimeout: 1000
+    notificationTimeout: 1000,
+    notificationErrorSnapshotDelay: 100
   })
   await blindPeer.listen()
   await blindPeer.swarm.flush()
@@ -388,7 +390,7 @@ test('push notification timeout when getting block does not error the connection
   const swarm = new Hyperswarm({ bootstrap })
   const store = new Corestore(await t.tmp())
 
-  blindPeer.swarm.on('connection', (conn, peerInfo) => {
+  blindPeer.swarm.on('connection', (conn) => {
     conn.on('error', (err) => {
       t.fail('connection should not error')
       console.error(err)
@@ -398,7 +400,15 @@ test('push notification timeout when getting block does not error the connection
   await core.append('Block2')
 
   const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
-  await Promise.all([once(blindPeer, 'notification-error'), client.sendNotification(core)])
+  const notificationError = once(blindPeer, 'notification-error')
+  const snapshotPromise = once(blindPeer, 'notification-error-snapshot')
+  const [[error]] = await Promise.all([notificationError, client.sendNotification(core)])
+  t.is(error.code, 'REQUEST_TIMEOUT', 'emitted the original error')
+
+  const [snapshot] = await snapshotPromise
+  t.ok(snapshot.coreInfoBefore, 'captured core info before notification')
+  t.ok(snapshot.coreInfoOnError, 'captured core info when notification failed')
+  t.ok(snapshot.coreInfoAfterDelay, 'captured core info after snapshot delay')
 
   // some time for swarm error to trigger if any
   await new Promise((resolve) => setTimeout(resolve, 500))
@@ -2104,7 +2114,7 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 500))
-  t.is(client.stats.addCore, 2, 're-adds after reconnect')
+  t.is(client.stats.addCore, 1, 'dedups after reconnect')
   t.is(client.stats.addCoresTx, 2, 'reconnect tx')
   t.is(blindPeer.stats.addCoresRx, 2, 'reconnect rx')
   t.is(blindPeer.stats.activations, 1, 'activation unchanged')
@@ -2113,10 +2123,60 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   await client.addCore(core)
   await new Promise((resolve) => setTimeout(resolve, 500))
-  t.is(client.stats.addCore, 3, 'adds changed core')
+  t.is(client.stats.addCore, 2, 'adds changed core')
   t.is(client.stats.addCoresTx, 3, 'changed core tx')
   t.is(blindPeer.stats.addCoresRx, 3, 'changed core rx')
   t.is(blindPeer.stats.activations, 2, 'new activation')
+})
+
+test('client addCore dedups new cores on existing connection', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  await Promise.all([client.addCore(core), once(blindPeer, 'add-cores-done')])
+  t.is(client.stats.addCoresTx, 1, 'sanity: 1tx for first added core')
+
+  // existing blind-peer connection, but newly added core
+  // with consecutive addCore not giving time to start replication
+  const core2 = store.get({ name: 'core2' })
+  client.addCoreBackground(core2)
+  client.addCoreBackground(core2)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 2, 'dedup new core')
+})
+
+test('client addCore dedups inactive cores when needed', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  const core = store.get({ name: 'inactiveCore', active: false })
+  await Promise.all([client.addCore(core), once(blindPeer, 'add-cores-done')])
+
+  await client.suspend()
+  await Promise.all([client.resume(), once(blindPeer, 'add-cores-done')])
+  t.is(client.stats.addCoresTx, 2, 'sanity: 1tx for initial add and 1tx for reconnect')
+
+  await client.addCore(core)
+  await sleep(500)
+  await client.addCore(core)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 2, 'dedup inactive core after reconnect')
+
+  await core.append('block')
+  await client.addCore(core)
+  await sleep(500)
+  await client.addCore(core)
+  await sleep(500)
+
+  t.is(client.stats.addCoresTx, 3, '1tx is made after core changed')
 })
 
 test('invalid requests are emitted', async (t) => {
@@ -3218,6 +3278,7 @@ async function setupBlindPeer(
     pushGatewayKeys,
     pushGatewayPoolOpts,
     notificationTimeout,
+    notificationErrorSnapshotDelay,
     retryRecordLookupTimeout
   } = {}
 ) {
@@ -3239,6 +3300,7 @@ async function setupBlindPeer(
     adminRouter,
     activeCorestore,
     notificationTimeout,
+    notificationErrorSnapshotDelay,
     retryRecordLookupTimeout
   })
 
