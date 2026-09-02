@@ -3550,7 +3550,7 @@ test('client sends blindPeeringVersion in handshake', async (t) => {
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   blindPeer.on('add-core', (_, __, stream) => {
     const handshake = stream.userData.getLastChannel({ protocol: 'blind-peer' }).handshake
-    t.ok(typeof handshake.blindPeeringVersion === 'string')
+    t.is(typeof handshake?.blindPeeringVersion, 'string')
   })
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
