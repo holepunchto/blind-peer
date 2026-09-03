@@ -234,7 +234,7 @@ class BlindPeer extends ReadyResource {
       adminRouter = null,
       activeCorestore = false,
       treeCache,
-      notificationTimeout = 10000,
+      notificationTimeout = 30_000,
       // temp, no semver guarantees
       notificationErrorSnapshotDelay = 30_000,
       retryRecordLookupTimeout = 5000
