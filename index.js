@@ -1136,7 +1136,7 @@ class BlindPeer extends ReadyResource {
 
       return {
         ts: Date.now(),
-        localHasBlock: core.core.bitfield.get(requestBlockIndex),
+        hasBlock: core.core.bitfield.get(requestBlockIndex),
         length: core.length,
         contiguousLength: core.contiguousLength,
         byteLength: core.byteLength,
@@ -1151,7 +1151,7 @@ class BlindPeer extends ReadyResource {
               remoteContiguousLength: senderPeer.remoteContiguousLength,
               remoteFork: senderPeer.remoteFork,
               remoteUploading: senderPeer.remoteUploading,
-              hasBlock:
+              remoteHasBlock:
                 requestBlockIndex < senderPeer.remoteContiguousLength ||
                 senderPeer.remoteBitfield.get(requestBlockIndex),
               lengthAcked: senderPeer.lengthAcked,
