@@ -450,6 +450,33 @@ test('blind-peering handles not ready cores for push notifications', async (t) =
   }
 })
 
+test('client sendNotification gets rate limited', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = new Client(swarm.dht, store, {
+    keys: [blindPeer.publicKey],
+    notificationRateLimit: { capacity: 2, interval: 750, timeout: 1250 }
+  })
+  t.teardown(async () => {
+    await client.close()
+  })
+
+  client.sendNotificationBackground(core)
+  client.sendNotificationBackground(core)
+  client.sendNotificationBackground(core)
+  const lastSend = client.sendNotification(core)
+
+  await sleep(500)
+  t.is(client.stats.notificationsTx, 2, 'burst 2')
+
+  await sleep(500)
+  t.is(client.stats.notificationsTx, 3, 'send 1 for passed interval')
+
+  await t.exception(async () => await lastSend, /Timed out/, 'throw for time out')
+})
+
 test('other clients help upload a core even if they did not add it', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
