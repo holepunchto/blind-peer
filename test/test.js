@@ -666,10 +666,10 @@ test('client can change blind-peer for an autobase', async (t) => {
 test('client can change multiple blind-peers for multiple autobases', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const blindPeer1 = await initBlindPeer()
-  const blindPeer2 = await initBlindPeer()
-  const blindPeer3 = await initBlindPeer()
-  const blindPeer4 = await initBlindPeer()
+  const { blindPeer: blindPeer1 } = await initBlindPeer(t, bootstrap)
+  const { blindPeer: blindPeer2 } = await initBlindPeer(t, bootstrap)
+  const { blindPeer: blindPeer3 } = await initBlindPeer(t, bootstrap)
+  const { blindPeer: blindPeer4 } = await initBlindPeer(t, bootstrap)
 
   const { swarm, store } = await setupPeer(t, bootstrap)
   const base1 = await initAutobase()
@@ -679,11 +679,11 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
   const client = new Client(swarm.dht, store, {
     keys: [blindPeer1.publicKey, blindPeer2.publicKey]
   })
+  t.teardown(() => client.close())
 
   await client.addAutobase(base1, { pick: 1, target: blindPeer3.publicKey })
   await client.addAutobase(base2, { pick: 2 })
-
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await sleep(1000)
 
   const lengths = await Promise.all([
     getCoreLength(blindPeer1, base1),
@@ -697,23 +697,15 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
   t.is(await getCoreLength(blindPeer2, base2), 3, 'blindPeer2 swarmed base2')
 
   client.setKeys([blindPeer3.publicKey, blindPeer4.publicKey])
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await sleep(1000)
 
   t.is(await getCoreLength(blindPeer3, base1), 2, 'blindPeer3 swarmed base1')
   t.is(await getCoreLength(blindPeer4, base1), 0, 'blindPeer4 did not swarm base1')
   t.is(await getCoreLength(blindPeer3, base2), 3, 'blindPeer3 swarmed base2')
   t.is(await getCoreLength(blindPeer4, base2), 3, 'blindPeer4 swarmed base2')
 
-  async function initBlindPeer() {
-    const { blindPeer } = await setupBlindPeer(t, bootstrap)
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
-
-    return blindPeer
-  }
-
   async function getCoreLength(blindPeer, key) {
-    const core = blindPeer.store.get({ key: key.local.key })
+    const core = blindPeer.store.get({ key: key.view.key })
     await core.ready()
     return core.length
   }
