@@ -1040,7 +1040,13 @@ class BlindPeer extends ReadyResource {
         const coreInfoOnError = this._snapshotCore(core, senderPublicKey, request.block.index)
 
         const snapshotCore = this.store.get({ key: request.block.key })
-        await snapshotCore.ready()
+        try {
+          await snapshotCore.ready()
+        } catch (readyError) {
+          this.emit('warn', readyError)
+          // throw the original error instead
+          throw e
+        }
 
         const downloadBlocks = []
 
@@ -1095,7 +1101,11 @@ class BlindPeer extends ReadyResource {
             stream.off('error', streamOnError)
             snapshotCore.off('download', onDownload)
 
-            await snapshotCore.close()
+            try {
+              await snapshotCore.close()
+            } catch (e) {
+              this.emit('warn', e)
+            }
           }
         }, this.notificationErrorSnapshotDelay).unref()
 
