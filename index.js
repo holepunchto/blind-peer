@@ -1039,32 +1039,63 @@ class BlindPeer extends ReadyResource {
       } catch (e) {
         const coreInfoOnError = this._snapshotCore(core, senderPublicKey, request.block.index)
 
+        const snapshotCore = this.store.get({ key: request.block.key })
+        await snapshotCore.ready()
+
+        const downloadBlocks = []
+
+        // monitoring block download
+        const onDownload = (index, byteLength, peer) => {
+          // do simple cap on blocks to log
+          if (downloadBlocks.length <= 20) {
+            downloadBlocks.push({
+              index,
+              byteLength,
+              peerPublicKey: IdEnc.normalize(peer.remotePublicKey),
+              ts: Date.now()
+            })
+          }
+        }
+        snapshotCore.on('download', onDownload)
+
+        // monitoring stream error
+        let streamError = null
+        const streamOnError = (error) => {
+          streamError = {
+            message: error.message,
+            code: error.code,
+            ts: Date.now()
+          }
+        }
+        stream.on('error', streamOnError)
+
         // temp, no semver guarantees
         setTimeout(async () => {
-          if (this.closing) return
-
           try {
-            const snapshotCore = this.store.get({ key: request.block.key })
-            await snapshotCore.ready()
+            if (this.closing) return
 
-            try {
-              const coreInfoAfterDelay = this._snapshotCore(
-                snapshotCore,
-                senderPublicKey,
-                request.block.index
-              )
+            const coreInfoAfterDelay = this._snapshotCore(
+              snapshotCore,
+              senderPublicKey,
+              request.block.index
+            )
 
-              // temp, no semver guarantees
-              this.emit('notification-error-snapshot', {
-                coreInfoBefore,
-                coreInfoOnError,
-                coreInfoAfterDelay
-              })
-            } finally {
-              await snapshotCore.close()
-            }
+            // temp, no semver guarantees
+            this.emit('notification-error-snapshot', {
+              streamError: streamError,
+              requestBlockIndex: request.block.index,
+              downloadedBlocks: downloadBlocks,
+              coreInfoBefore,
+              coreInfoOnError,
+              coreInfoAfterDelay
+            })
           } catch (e) {
             this.emit('warn', e)
+          } finally {
+            stream.off('error', streamOnError)
+            snapshotCore.off('download', onDownload)
+
+            await snapshotCore.close()
           }
         }, this.notificationErrorSnapshotDelay).unref()
 
@@ -1094,6 +1125,8 @@ class BlindPeer extends ReadyResource {
       )
 
       return {
+        ts: Date.now(),
+        localHasBlock: core.core.bitfield.get(requestBlockIndex),
         length: core.length,
         contiguousLength: core.contiguousLength,
         byteLength: core.byteLength,
@@ -1108,7 +1141,9 @@ class BlindPeer extends ReadyResource {
               remoteContiguousLength: senderPeer.remoteContiguousLength,
               remoteFork: senderPeer.remoteFork,
               remoteUploading: senderPeer.remoteUploading,
-              hasBlock: senderPeer.remoteBitfield.get(requestBlockIndex),
+              hasBlock:
+                requestBlockIndex < senderPeer.remoteContiguousLength ||
+                senderPeer.remoteBitfield.get(requestBlockIndex),
               lengthAcked: senderPeer.lengthAcked,
               inflight: senderPeer.inflight,
               maxInflight: senderPeer.getMaxInflight(),
@@ -1124,6 +1159,8 @@ class BlindPeer extends ReadyResource {
                 rawBytesWritten: senderPeer.stream.rawBytesWritten,
                 rawBytesRead: senderPeer.stream.rawBytesRead,
                 rawStream: {
+                  id: senderPeer.stream.rawStream.id,
+                  remoteId: senderPeer.stream.rawStream.remoteId,
                   destroying: senderPeer.stream.rawStream.destroying,
                   destroyed: senderPeer.stream.rawStream.destroyed,
                   mtu: senderPeer.stream.rawStream.mtu,
@@ -1131,7 +1168,12 @@ class BlindPeer extends ReadyResource {
                   cwnd: senderPeer.stream.rawStream.cwnd,
                   inflight: senderPeer.stream.rawStream.inflight,
                   rtoCount: senderPeer.stream.rawStream.rtoCount,
-                  retransmits: senderPeer.stream.rawStream.retransmits
+                  retransmits: senderPeer.stream.rawStream.retransmits,
+                  fastRecoveries: senderPeer.stream.rawStream.fastRecoveries,
+                  bytesTransmitted: senderPeer.stream.rawStream.bytesTransmitted,
+                  packetsTransmitted: senderPeer.stream.rawStream.packetsTransmitted,
+                  bytesReceived: senderPeer.stream.rawStream.bytesReceived,
+                  packetsReceived: senderPeer.stream.rawStream.packetsReceived
                 }
               }
             }
