@@ -4,7 +4,6 @@
   "description": "Blind peers help keep hypercores available",
   "main": "index.js",
   "dependencies": {
-    "autobase": "^7.0.18",
     "b4a": "^1.6.7",
     "blind-peer-encodings": "^3.3.0",
     "blind-peer-muxer": "^1.5.0",
@@ -31,7 +30,8 @@
     "scope-lock": "^1.2.4"
   },
   "devDependencies": {
-    "autobee": "^1.0.10",
+    "autobase": "^7.0.18",
+    "autobee": "^2.0.0",
     "bare-events": "^2.8.2",
     "bare-process": "^4.2.2",
     "bare-prom-client": "^15.1.3",

@@ -782,7 +782,7 @@ test('client can use a blind-peer to add an autobee', async (t) => {
   }
 })
 
-test('client can use a blind-peer to add an autobee with additionalViews', async (t) => {
+test('client can use a blind-peer to add an autobee', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { blindPeer } = await setupBlindPeer(t, bootstrap)
@@ -811,17 +811,18 @@ test('client can use a blind-peer to add an autobee with additionalViews', async
   }
   blindPeer.on('add-core', onaddcore)
 
-  const writerViews = await bee.getWriterViews(bee.getExternalWriters()[0])
-  await client.addAutobase(bee, { additionalViews: writerViews })
+  await client.addAutobase(bee)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  await bee.append(JSON.stringify({ addWriter: bee3.local.id }))
   await new Promise((resolve) => setTimeout(resolve, 500))
 
   // add all the writers, views of itself, and views of bee2 only, no bee3
   const expectedKeys = [
     b4a.toString(bee.key, 'hex'),
-    ...bee.getExternalWriters().map((x) => b4a.toString(x, 'hex')),
-    ...bee.views().map((x) => b4a.toString(x.key, 'hex')),
-    ...bee2.views().map((x) => b4a.toString(x.key, 'hex'))
+    b4a.toString(bee.bee.core.key, 'hex'),
+    b4a.toString(bee.system.bee.core.key, 'hex')
   ]
+
   t.alike(addedKeys.sort(), expectedKeys.sort(), 'correct cores were added')
 })
 
@@ -3205,7 +3206,11 @@ async function loadAutobee(t, store, key = null) {
     }
   }
 
-  const bee = new Autobee(store.namespace('autobee'), key, { apply })
+  const bee = new Autobee(store.namespace('autobee'), key, {
+    isTrusted: (key) => true,
+    mostRecentTrusted: () => ({ key: bee.local.key, length: bee.local.length }),
+    apply
+  })
   t.teardown(async () => await bee.close())
   await bee.ready()
 
