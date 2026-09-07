@@ -1023,8 +1023,7 @@ class BlindPeer extends ReadyResource {
         await this._activateCore(stream, record)
       }
 
-      const senderPublicKey = stream.remotePublicKey
-      const coreInfoBefore = this._snapshotCore(core, senderPublicKey, request.block.index)
+      const coreInfoBefore = this._snapshotCore(core, stream.remotePublicKey, request.block.index)
 
       let payload = null
       try {
@@ -1037,36 +1036,10 @@ class BlindPeer extends ReadyResource {
           timeout: this.notificationTimeout
         })
       } catch (e) {
-        const coreInfoOnError = this._snapshotCore(core, senderPublicKey, request.block.index)
-
-        // temp, no semver guarantees
-        setTimeout(async () => {
-          if (this.closing) return
-
-          try {
-            const snapshotCore = this.store.get({ key: request.block.key })
-            await snapshotCore.ready()
-
-            try {
-              const coreInfoAfterDelay = this._snapshotCore(
-                snapshotCore,
-                senderPublicKey,
-                request.block.index
-              )
-
-              // temp, no semver guarantees
-              this.emit('notification-error-snapshot', {
-                coreInfoBefore,
-                coreInfoOnError,
-                coreInfoAfterDelay
-              })
-            } finally {
-              await snapshotCore.close()
-            }
-          } catch (e) {
-            this.emit('warn', e)
-          }
-        }, this.notificationErrorSnapshotDelay).unref()
+        // we want to catch everything here to prevent bugs in the debug flow from crashing the process
+        this._delaySnapshotOnNotificationError(coreInfoBefore, stream, request).catch((e) =>
+          this.emit('warn', e)
+        )
 
         throw e
       }
@@ -1087,6 +1060,70 @@ class BlindPeer extends ReadyResource {
     }
   }
 
+  // temp, no semver guarantees
+  async _delaySnapshotOnNotificationError(coreInfoBefore, stream, request) {
+    const core = this.store.get({ key: request.block.key })
+    await core.ready()
+
+    // monitoring block download
+    const downloadBlocks = []
+    const onDownload = (index, byteLength, peer) => {
+      // do simple cap on blocks to log
+      if (downloadBlocks.length <= 20) {
+        downloadBlocks.push({
+          index,
+          byteLength,
+          peerPublicKey: IdEnc.normalize(peer.remotePublicKey),
+          ts: Date.now()
+        })
+      }
+    }
+    core.on('download', onDownload)
+
+    // monitoring stream error
+    let streamError = null
+    const streamOnError = (error) => {
+      streamError = {
+        message: error.message,
+        code: error.code,
+        ts: Date.now()
+      }
+    }
+    stream.on('error', streamOnError)
+
+    try {
+      const coreInfoOnError = this._snapshotCore(core, stream.remotePublicKey, request.block.index)
+
+      // wait briefly, then capture the snapshot again
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.notificationErrorSnapshotDelay).unref()
+      )
+
+      if (this.closing) return
+
+      const coreInfoAfterDelay = this._snapshotCore(
+        core,
+        stream.remotePublicKey,
+        request.block.index
+      )
+
+      // temp, no semver guarantees
+      this.emit('notification-error-snapshot', {
+        streamError: streamError,
+        requestBlockIndex: request.block.index,
+        downloadedBlocks: downloadBlocks,
+        coreInfoBefore,
+        coreInfoOnError,
+        coreInfoAfterDelay
+      })
+    } finally {
+      stream.off('error', streamOnError)
+      core.off('download', onDownload)
+
+      await core.close()
+    }
+  }
+
   _snapshotCore(core, senderPublicKey, requestBlockIndex) {
     try {
       const senderPeer = core.peers.find((peer) =>
@@ -1094,6 +1131,8 @@ class BlindPeer extends ReadyResource {
       )
 
       return {
+        ts: Date.now(),
+        hasBlock: core.core.bitfield.get(requestBlockIndex),
         length: core.length,
         contiguousLength: core.contiguousLength,
         byteLength: core.byteLength,
@@ -1108,7 +1147,9 @@ class BlindPeer extends ReadyResource {
               remoteContiguousLength: senderPeer.remoteContiguousLength,
               remoteFork: senderPeer.remoteFork,
               remoteUploading: senderPeer.remoteUploading,
-              hasBlock: senderPeer.remoteBitfield.get(requestBlockIndex),
+              remoteHasBlock:
+                requestBlockIndex < senderPeer.remoteContiguousLength ||
+                senderPeer.remoteBitfield.get(requestBlockIndex),
               lengthAcked: senderPeer.lengthAcked,
               inflight: senderPeer.inflight,
               maxInflight: senderPeer.getMaxInflight(),
@@ -1124,6 +1165,8 @@ class BlindPeer extends ReadyResource {
                 rawBytesWritten: senderPeer.stream.rawBytesWritten,
                 rawBytesRead: senderPeer.stream.rawBytesRead,
                 rawStream: {
+                  id: senderPeer.stream.rawStream.id,
+                  remoteId: senderPeer.stream.rawStream.remoteId,
                   destroying: senderPeer.stream.rawStream.destroying,
                   destroyed: senderPeer.stream.rawStream.destroyed,
                   mtu: senderPeer.stream.rawStream.mtu,
@@ -1131,7 +1174,12 @@ class BlindPeer extends ReadyResource {
                   cwnd: senderPeer.stream.rawStream.cwnd,
                   inflight: senderPeer.stream.rawStream.inflight,
                   rtoCount: senderPeer.stream.rawStream.rtoCount,
-                  retransmits: senderPeer.stream.rawStream.retransmits
+                  retransmits: senderPeer.stream.rawStream.retransmits,
+                  fastRecoveries: senderPeer.stream.rawStream.fastRecoveries,
+                  bytesTransmitted: senderPeer.stream.rawStream.bytesTransmitted,
+                  packetsTransmitted: senderPeer.stream.rawStream.packetsTransmitted,
+                  bytesReceived: senderPeer.stream.rawStream.bytesReceived,
+                  packetsReceived: senderPeer.stream.rawStream.packetsReceived
                 }
               }
             }
