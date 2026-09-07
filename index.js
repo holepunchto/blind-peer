@@ -1023,8 +1023,7 @@ class BlindPeer extends ReadyResource {
         await this._activateCore(stream, record)
       }
 
-      const senderPublicKey = stream.remotePublicKey
-      const coreInfoBefore = this._snapshotCore(core, senderPublicKey, request.block.index)
+      const coreInfoBefore = this._snapshotCore(core, stream.remotePublicKey, request.block.index)
 
       let payload = null
       try {
@@ -1037,77 +1036,10 @@ class BlindPeer extends ReadyResource {
           timeout: this.notificationTimeout
         })
       } catch (e) {
-        const coreInfoOnError = this._snapshotCore(core, senderPublicKey, request.block.index)
-
-        const snapshotCore = this.store.get({ key: request.block.key })
-        try {
-          await snapshotCore.ready()
-        } catch (readyError) {
-          this.emit('warn', readyError)
-          // throw the original error instead
-          throw e
-        }
-
-        const downloadBlocks = []
-
-        // monitoring block download
-        const onDownload = (index, byteLength, peer) => {
-          // do simple cap on blocks to log
-          if (downloadBlocks.length <= 20) {
-            downloadBlocks.push({
-              index,
-              byteLength,
-              peerPublicKey: IdEnc.normalize(peer.remotePublicKey),
-              ts: Date.now()
-            })
-          }
-        }
-        snapshotCore.on('download', onDownload)
-
-        // monitoring stream error
-        let streamError = null
-        const streamOnError = (error) => {
-          streamError = {
-            message: error.message,
-            code: error.code,
-            ts: Date.now()
-          }
-        }
-        stream.on('error', streamOnError)
-
-        // temp, no semver guarantees
-        setTimeout(async () => {
-          try {
-            if (this.closing) return
-
-            const coreInfoAfterDelay = this._snapshotCore(
-              snapshotCore,
-              senderPublicKey,
-              request.block.index
-            )
-
-            // temp, no semver guarantees
-            this.emit('notification-error-snapshot', {
-              streamError: streamError,
-              requestBlockIndex: request.block.index,
-              downloadedBlocks: downloadBlocks,
-              coreInfoBefore,
-              coreInfoOnError,
-              coreInfoAfterDelay
-            })
-          } catch (e) {
-            this.emit('warn', e)
-          } finally {
-            stream.off('error', streamOnError)
-            snapshotCore.off('download', onDownload)
-
-            try {
-              await snapshotCore.close()
-            } catch (e) {
-              this.emit('warn', e)
-            }
-          }
-        }, this.notificationErrorSnapshotDelay).unref()
+        // we want to catch everything here to prevent bugs in the debug flow from crashing the process
+        this._delaySnapshotOnNotificationError(coreInfoBefore, stream, request).catch((e) =>
+          this.emit('warn', e)
+        )
 
         throw e
       }
@@ -1124,6 +1056,68 @@ class BlindPeer extends ReadyResource {
       this.stats.notificationsSent++
       this.emit('notification-sent', request, payload, stream, Date.now() - startTime)
     } finally {
+      await core.close()
+    }
+  }
+
+  // temp, no semver guarantees
+  async _delaySnapshotOnNotificationError(coreInfoBefore, stream, request) {
+    const core = this.store.get({ key: request.block.key })
+    await core.ready()
+
+    // monitoring block download
+    const downloadBlocks = []
+    const onDownload = (index, byteLength, peer) => {
+      // do simple cap on blocks to log
+      if (downloadBlocks.length <= 20) {
+        downloadBlocks.push({
+          index,
+          byteLength,
+          peerPublicKey: IdEnc.normalize(peer.remotePublicKey),
+          ts: Date.now()
+        })
+      }
+    }
+    core.on('download', onDownload)
+
+    // monitoring stream error
+    let streamError = null
+    const streamOnError = (error) => {
+      streamError = {
+        message: error.message,
+        code: error.code,
+        ts: Date.now()
+      }
+    }
+    stream.on('error', streamOnError)
+
+    try {
+      const coreInfoOnError = this._snapshotCore(core, stream.remotePublicKey, request.block.index)
+
+      // wait briefly, then capture the snapshot again
+      await new Promise((resolve) => setTimeout(resolve, this.notificationErrorSnapshotDelay))
+
+      if (this.closing) return
+
+      const coreInfoAfterDelay = this._snapshotCore(
+        core,
+        stream.remotePublicKey,
+        request.block.index
+      )
+
+      // temp, no semver guarantees
+      this.emit('notification-error-snapshot', {
+        streamError: streamError,
+        requestBlockIndex: request.block.index,
+        downloadedBlocks: downloadBlocks,
+        coreInfoBefore,
+        coreInfoOnError,
+        coreInfoAfterDelay
+      })
+    } finally {
+      stream.off('error', streamOnError)
+      core.off('download', onDownload)
+
       await core.close()
     }
   }
