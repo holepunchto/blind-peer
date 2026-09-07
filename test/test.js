@@ -768,6 +768,52 @@ test('client can use a blind-peer to add an autobee', async (t) => {
   }
 })
 
+// Reproduce the readiness gap for a legacy migration: ready() can resolve before Autobee
+// finishes its system boot, so an already-connected blind peer can call views() too early.
+test.solo('client addAutobase races deferred Autobee system boot after ready', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const client = new Client(swarm.dht, store, { keys: [blindPeer.publicKey] })
+  t.teardown(() => client.close())
+
+  // Prewarm the blind-peer connection so addAutobase flushes immediately.
+  // Without this, connection setup gives Autobee time to finish the unsafe part of its boot.
+  const prewarm = store.get({ name: 'migration-race/prewarm' })
+  await prewarm.append('connected')
+  await client.addCore(prewarm)
+
+  // Create legacy Autobase state so Autobee detects a migration. During a migration,
+  // Autobee ready() returns before its full system boot is complete.
+  const { base: legacy } = await loadAutobase(store, null, { namespace: 'migration-race' })
+  await legacy.append({ block: 0 })
+
+  const key = legacy.local.key
+  await legacy.close()
+
+  const { bee } = await loadAutobee(t, store.namespace('migration-race'), key)
+  t.teardown(() => bee.close())
+
+  await bee.ready()
+
+  /*
+    Throw
+      TypeError: Cannot read properties of null (reading 'key')
+        at Autobee.views (/Users/thangnv/Develop/holepunchto-dock-codex/blind-peer/node_modules/autobee/index.js:284:19)
+        at addViewCores (/Users/thangnv/Develop/holepunchto-dock-codex/blind-peer/node_modules/blind-peering/index.js:770:27)
+        at BlindPeer._flushAutobase (/Users/thangnv/Develop/holepunchto-dock-codex/blind-peer/node_modules/blind-peering/index.js:488:5)
+        at BlindPeer.addAutobase (/Users/thangnv/Develop/holepunchto-dock-codex/blind-peer/node_modules/blind-peering/index.js:675:12)
+        at BlindPeering.addAutobase (/Users/thangnv/Develop/holepunchto-dock-codex/blind-peer/node_modules/blind-peering/index.js:184:12)
+        at async /Users/thangnv/Develop/holepunchto-dock-codex/blind-peer/test/test.js:803:3
+        at async Test._run (/Users/thangnv/Develop/holepunchto-dock-codex/blind-peer/node_modules/brittle/index.js:597:7)
+  */
+  await client.addAutobase(bee)
+})
+
 test('client can use a blind-peer to add an autobee with additionalViews', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
