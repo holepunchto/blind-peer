@@ -1095,7 +1095,9 @@ class BlindPeer extends ReadyResource {
       const coreInfoOnError = this._snapshotCore(core, stream.remotePublicKey, request.block.index)
 
       // wait briefly, then capture the snapshot again
-      await new Promise((resolve) => setTimeout(resolve, this.notificationErrorSnapshotDelay))
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.notificationErrorSnapshotDelay).unref()
+      )
 
       if (this.closing) return
 
