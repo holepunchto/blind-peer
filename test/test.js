@@ -762,7 +762,8 @@ test('client can use a blind-peer to add an autobee', async (t) => {
 
   const expectedKeys = [
     b4a.toString(bee.key, 'hex'),
-    ...bee.views().map((x) => b4a.toString(x.key, 'hex'))
+    b4a.toString(bee.bee.core.key, 'hex'),
+    b4a.toString(bee.system.bee.core.key, 'hex')
   ]
   t.alike(addedKeys.sort(), expectedKeys.sort(), 'correct cores were added')
 
