@@ -734,6 +734,40 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
   }
 })
 
+test.solo('client adds views if autobee was initially empty (no views)', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await blindPeer.swarm.flush()
+
+  const { swarm, store, bee } = await setupAutobeeHolder(t, bootstrap)
+
+  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
+
+  const addedKeys = []
+  const onaddcore = (record) => {
+    addedKeys.push(b4a.toString(record.key, 'hex'))
+  }
+  blindPeer.on('add-core', onaddcore)
+
+  await client.addAutobase(bee)
+  await bee.append(JSON.stringify({ block: 1 }))
+
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
+  await client.close()
+  await bee.close()
+  await swarm.destroy()
+
+  const expectedKeys = [
+    b4a.toString(bee.key, 'hex'),
+    b4a.toString(bee.bee.core.key, 'hex'),
+    b4a.toString(bee.system.bee.core.key, 'hex')
+  ]
+  t.alike(addedKeys.sort(), expectedKeys.sort(), 'correct cores were added')
+})
+
 test('client can use a blind-peer to add an autobee', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
