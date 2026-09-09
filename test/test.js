@@ -3534,6 +3534,10 @@ test('adding a core does not switch it to active mode', async (t) => {
   let client = null
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap, { active: false })
+  const coreCopy = store.get({ key: core.key })
+  await coreCopy.ready()
+  swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
 
   client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   client.addCoreBackground(core)
@@ -3542,16 +3546,21 @@ test('adding a core does not switch it to active mode', async (t) => {
 
   {
     const { swarm, store } = await setupPeer(t, bootstrap, { active: false })
-    const coreCopy = store.get({ key: core.key })
-    await coreCopy.ready()
+    const coreCopy2 = store.get({ key: core.key })
+    await coreCopy2.ready()
     swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
 
     await new Promise((resolve) => setTimeout(resolve, 500))
 
     await t.exception(
+      () => coreCopy2.get(1, { timeout: 250 }),
+      /REQUEST_TIMEOUT/,
+      'did not gossip the core on new channel (blind peer still passive)'
+    )
+    await t.exception(
       () => coreCopy.get(1, { timeout: 250 }),
       /REQUEST_TIMEOUT/,
-      'did not gossip the core (blind peer still passive)'
+      'did not gossip the core on existing channel (blind peer still passive)'
     )
   }
 })
