@@ -3521,6 +3521,50 @@ async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair 
   return rpc
 }
 
+test('adding a core does not switch it to active mode', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.listen()
+  await new Promise((resolve) => setTimeout(resolve, 250))
+
+  const coreAddedProm = once(blindPeer, 'add-core')
+
+  coreAddedProm.catch(() => {})
+  let client = null
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap, { active: false })
+  const coreCopy = store2.get({ key: core.key })
+  await coreCopy.ready()
+  swarm2.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+  client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
+  client.addCoreBackground(core)
+
+  await new Promise((resolve) => setTimeout(resolve, 250))
+
+  {
+    const { swarm, store } = await setupPeer(t, bootstrap, { active: false })
+    const coreCopy2 = store.get({ key: core.key })
+    await coreCopy2.ready()
+    swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    await t.exception(
+      () => coreCopy2.get(1, { timeout: 250 }),
+      /REQUEST_TIMEOUT/,
+      'did not gossip the core on new channel (blind peer still passive)'
+    )
+    await t.exception(
+      () => coreCopy.get(1, { timeout: 250 }),
+      /REQUEST_TIMEOUT/,
+      'did not gossip the core on existing channel (blind peer still passive)'
+    )
+  }
+})
+
 async function setupPushGateway(t, bootstrap) {
   const sentMessages = []
   const dht = new HyperDHT({ bootstrap })
