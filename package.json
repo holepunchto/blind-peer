@@ -9,6 +9,7 @@
     "blind-peer-encodings": "^3.3.0",
     "blind-peer-muxer": "^1.5.0",
     "blind-push": "^1.0.1",
+    "bucket-rate-limit": "holepunchto/bucket-rate-limit#try-acquire",
     "compact-encoding": "^3.0.0",
     "corestore": "^7.4.4",
     "hypercore": "^11.26.0",

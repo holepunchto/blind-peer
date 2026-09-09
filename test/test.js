@@ -3229,7 +3229,8 @@ async function setupBlindPeer(
     pushGatewayPoolOpts,
     notificationTimeout,
     notificationErrorSnapshotDelay,
-    retryRecordLookupTimeout
+    retryRecordLookupTimeout,
+    perKeyRateLimitParams
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -3251,7 +3252,8 @@ async function setupBlindPeer(
     activeCorestore,
     notificationTimeout,
     notificationErrorSnapshotDelay,
-    retryRecordLookupTimeout
+    retryRecordLookupTimeout,
+    perKeyRateLimitParams
   })
 
   const order = clientCounter++
@@ -3563,6 +3565,77 @@ test('adding a core does not switch it to active mode', async (t) => {
       'did not gossip the core on existing channel (blind peer still passive)'
     )
   }
+})
+
+test('per key rate limit sheds load', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const perKeyRateLimitParams = { capacity: 2, intervalMs: 100 }
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { perKeyRateLimitParams })
+
+  const { swarm, store } = await setupPeer(t, bootstrap)
+
+  const cores = []
+  for (let i = 0; i < 4; i++) {
+    const core = store.get({ name: `core${i}` })
+    await core.append('block1')
+    await core.ready()
+    cores.push(core)
+  }
+  const [core, core2, core3, core4] = cores
+
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+  for (let i = 0; i < 3; i++) {
+    muxer.addCores({
+      referrer: core.key,
+      cores: [{ key: core.key, length: core.length }]
+    })
+  }
+
+  await sleep(250)
+  t.is(blindPeer.stats.keyRateLimited, 1, 'rate limited')
+  t.is(blindPeer.stats.addCoresRx, 3)
+
+  // limit reset by now
+
+  for (let i = 0; i < 3; i++) {
+    muxer.addCores({
+      referrer: core.key,
+      cores: [{ key: core.key, length: core.length }]
+    })
+    muxer.addCores({
+      referrer: core2.key,
+      cores: [{ key: core2.key, length: core2.length }]
+    })
+  }
+
+  await sleep(250)
+  t.is(blindPeer.stats.keyRateLimited, 3, 'rate limits keys separately')
+  t.is(blindPeer.stats.addCoresRx, 9)
+
+  // limit reset by now
+
+  muxer.addCores({
+    referrer: core.key,
+    cores: [{ key: core.key, length: core.length }]
+  })
+  muxer.addCores({
+    referrer: core.key,
+    cores: [{ key: core3.key, length: core3.length }]
+  })
+  muxer.addCores({
+    referrer: core.key,
+    cores: [{ key: core4.key, length: core3.length }]
+  })
+
+  await sleep(250)
+  t.is(blindPeer.stats.keyRateLimited, 4, 'rate limited')
+  t.is(blindPeer.stats.addCoresRx, 12)
+  t.is(await blindPeer.db.hasCore(core3.key), true, 'core 3 got added')
+  t.is(await blindPeer.db.hasCore(core4.key), false, 'core 3 got skipped due to rate limit')
+
+  await sleep(250)
+
+  t.is(blindPeer.perKeyRateLimit.limiters.size, 0, 'gc works')
 })
 
 async function setupPushGateway(t, bootstrap) {

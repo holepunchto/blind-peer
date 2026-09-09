@@ -30,6 +30,7 @@ const { ForwardPushRequest } = require('blind-push/encodings')
 const BlindPeerDB = require('./lib/db.js')
 const TopKWindow = require('./lib/top-k.js')
 const BlindPeerError = require('./lib/errors.js')
+const PerKeyRateLimit = require('./lib/per-key-rate-limit.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
@@ -237,7 +238,8 @@ class BlindPeer extends ReadyResource {
       notificationTimeout = 30_000,
       // temp, no semver guarantees
       notificationErrorSnapshotDelay = 30_000,
-      retryRecordLookupTimeout = 5000
+      retryRecordLookupTimeout = 5000,
+      perKeyRateLimitParams
     } = {}
   ) {
     super()
@@ -271,6 +273,9 @@ class BlindPeer extends ReadyResource {
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
+    this.perKeyRateLimit = perKeyRateLimitParams
+      ? new PerKeyRateLimit(perKeyRateLimitParams.capacity, perKeyRateLimitParams.intervalMs)
+      : null
     this._retryRecordLookupTimeout = retryRecordLookupTimeout
     this._coresPerConnection = new Map()
 
@@ -297,6 +302,7 @@ class BlindPeer extends ReadyResource {
       coreTrackersCreated: 0,
       coreTrackersDestroyed: 0,
       coreResetDownload: 0,
+      keyRateLimited: 0,
       gc: {
         prio0Gcd: 0,
         prio1Gcd: 0,
@@ -818,6 +824,13 @@ class BlindPeer extends ReadyResource {
       throw new Error('Timed out')
     }
     this.stats.addCoresRx++
+
+    if (this.perKeyRateLimit && request.referrer) {
+      if (!this.perKeyRateLimit.tryAcquire(b4a.toString(request.referrer, 'hex'))) {
+        this.stats.keyRateLimited++
+        return
+      }
+    }
 
     const { cores, referrer } = request
     if (referrer) {
