@@ -2255,6 +2255,7 @@ test('Prometheus metrics', async (t) => {
     t.ok(metrics.includes('blind_peer_rocks_read_batches'), 'blind_peer_rocks_read_batches')
     t.ok(metrics.includes('blind_peer_rocks_write_batches'), 'blind_peer_rocks_write_batches')
     t.ok(metrics.includes('blind_peer_add_cores_rx 0'), 'blind_peer_add_cores_rx')
+    t.ok(metrics.includes('blind_peer_referrer_rate_limited 0'), 'blind_peer_referrer_rate_limited')
     t.ok(metrics.includes('blind_peer_muxer_paired 0'), 'blind_peer_muxer_paired')
     t.ok(metrics.includes('blind_peer_muxer_errors 0'), 'blind_peer_muxer_error')
     t.ok(metrics.includes('blind_peer_corestore_active 0'), 'blind_peer_corestore_active')
@@ -3230,7 +3231,7 @@ async function setupBlindPeer(
     notificationTimeout,
     notificationErrorSnapshotDelay,
     retryRecordLookupTimeout,
-    perKeyRateLimitParams
+    perReferrerRateLimitParams
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -3253,7 +3254,7 @@ async function setupBlindPeer(
     notificationTimeout,
     notificationErrorSnapshotDelay,
     retryRecordLookupTimeout,
-    perKeyRateLimitParams
+    perReferrerRateLimitParams
   })
 
   const order = clientCounter++
@@ -3567,10 +3568,10 @@ test('adding a core does not switch it to active mode', async (t) => {
   }
 })
 
-test('per key rate limit sheds load', async (t) => {
+test('per referrer rate limit sheds load', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  const perKeyRateLimitParams = { capacity: 2, intervalMs: 100 }
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { perKeyRateLimitParams })
+  const perReferrerRateLimitParams = { capacity: 2, intervalMs: 100 }
+  const { blindPeer } = await setupBlindPeer(t, bootstrap, { perReferrerRateLimitParams })
 
   const { swarm, store } = await setupPeer(t, bootstrap)
 
@@ -3592,7 +3593,7 @@ test('per key rate limit sheds load', async (t) => {
   }
 
   await sleep(250)
-  t.is(blindPeer.stats.keyRateLimited, 1, 'rate limited')
+  t.is(blindPeer.stats.referrerRateLimited, 1, 'rate limited')
   t.is(blindPeer.stats.addCoresRx, 3)
 
   // limit reset by now
@@ -3609,7 +3610,7 @@ test('per key rate limit sheds load', async (t) => {
   }
 
   await sleep(250)
-  t.is(blindPeer.stats.keyRateLimited, 3, 'rate limits keys separately')
+  t.is(blindPeer.stats.referrerRateLimited, 3, 'rate limits keys separately')
   t.is(blindPeer.stats.addCoresRx, 9)
 
   // limit reset by now
@@ -3628,14 +3629,14 @@ test('per key rate limit sheds load', async (t) => {
   })
 
   await sleep(250)
-  t.is(blindPeer.stats.keyRateLimited, 4, 'rate limited')
+  t.is(blindPeer.stats.referrerRateLimited, 4, 'rate limited')
   t.is(blindPeer.stats.addCoresRx, 12)
   t.is(await blindPeer.db.hasCore(core3.key), true, 'core 3 got added')
   t.is(await blindPeer.db.hasCore(core4.key), false, 'core 4 got skipped due to rate limit')
 
   await sleep(250)
 
-  t.is(blindPeer.perKeyRateLimit.tokens.size, 0, 'gc works')
+  t.is(blindPeer.perReferrerRateLimit.tokens.size, 0, 'gc works')
 })
 
 async function setupPushGateway(t, bootstrap) {

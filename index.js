@@ -239,7 +239,7 @@ class BlindPeer extends ReadyResource {
       // temp, no semver guarantees
       notificationErrorSnapshotDelay = 30_000,
       retryRecordLookupTimeout = 5000,
-      perKeyRateLimitParams
+      perReferrerRateLimitParams
     } = {}
   ) {
     super()
@@ -273,8 +273,11 @@ class BlindPeer extends ReadyResource {
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
-    this.perKeyRateLimit = perKeyRateLimitParams
-      ? new PerKeyRateLimit(perKeyRateLimitParams.capacity, perKeyRateLimitParams.intervalMs)
+    this.perReferrerRateLimit = perReferrerRateLimitParams
+      ? new PerKeyRateLimit(
+          perReferrerRateLimitParams.capacity,
+          perReferrerRateLimitParams.intervalMs
+        )
       : null
     this._retryRecordLookupTimeout = retryRecordLookupTimeout
     this._coresPerConnection = new Map()
@@ -302,7 +305,7 @@ class BlindPeer extends ReadyResource {
       coreTrackersCreated: 0,
       coreTrackersDestroyed: 0,
       coreResetDownload: 0,
-      keyRateLimited: 0,
+      referrerRateLimited: 0,
       gc: {
         prio0Gcd: 0,
         prio1Gcd: 0,
@@ -825,9 +828,11 @@ class BlindPeer extends ReadyResource {
     }
     this.stats.addCoresRx++
 
-    if (this.perKeyRateLimit && request.referrer) {
-      if (!this.perKeyRateLimit.tryAcquire(b4a.toString(request.referrer, 'hex'))) {
-        this.stats.keyRateLimited++
+    if (this.perReferrerRateLimit && request.referrer) {
+      const referrerKey = b4a.toString(request.referrer, 'hex')
+      if (!this.perReferrerRateLimit.tryAcquire(referrerKey)) {
+        this.stats.referrerRateLimited++
+        this.emit('per-referrer-rate-limited', referrerKey)
         return
       }
     }
@@ -1205,7 +1210,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
-    if (this.perKeyRateLimit) this.perKeyRateLimit.destroy()
+    if (this.perReferrerRateLimit) this.perReferrerRateLimit.destroy()
     if (this.routerPool) {
       await this.routerPool.destroy()
     }
@@ -1379,6 +1384,14 @@ class BlindPeer extends ReadyResource {
       help: 'The amount of add-cores requests received',
       collect() {
         this.set(self.stats.addCoresRx)
+      }
+    })
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_referrer_rate_limited',
+      help: 'The number of requests rejected by the per-referrer rate limit',
+      collect() {
+        this.set(self.stats.referrerRateLimited)
       }
     })
     new promClient.Gauge({
