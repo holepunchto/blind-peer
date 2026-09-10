@@ -434,6 +434,7 @@ class BlindPeer extends ReadyResource {
     await this.topKByReferrer.ready()
     await this.topKByIp.ready()
     if (this.adminRouter) await this.adminRouter.ready()
+    if (this.perReferrerRateLimit) await this.perReferrerRateLimit.ready()
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -1210,7 +1211,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
-    if (this.perReferrerRateLimit) this.perReferrerRateLimit.destroy()
+    if (this.perReferrerRateLimit) await this.perReferrerRateLimit.close()
     if (this.routerPool) {
       await this.routerPool.destroy()
     }
