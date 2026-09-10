@@ -30,6 +30,7 @@ const { ForwardPushRequest } = require('blind-push/encodings')
 const BlindPeerDB = require('./lib/db.js')
 const TopKWindow = require('./lib/top-k.js')
 const BlindPeerError = require('./lib/errors.js')
+const PerKeyRateLimit = require('./lib/per-key-rate-limit.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
@@ -237,7 +238,8 @@ class BlindPeer extends ReadyResource {
       notificationTimeout = 30_000,
       // temp, no semver guarantees
       notificationErrorSnapshotDelay = 30_000,
-      retryRecordLookupTimeout = 5000
+      retryRecordLookupTimeout = 5000,
+      perReferrerRateLimitParams
     } = {}
   ) {
     super()
@@ -271,6 +273,12 @@ class BlindPeer extends ReadyResource {
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
     this.replicationLagThreshold = replicationLagThreshold
+    this.perReferrerRateLimit = perReferrerRateLimitParams
+      ? new PerKeyRateLimit(
+          perReferrerRateLimitParams.capacity,
+          perReferrerRateLimitParams.intervalMs
+        )
+      : null
     this._retryRecordLookupTimeout = retryRecordLookupTimeout
     this._coresPerConnection = new Map()
 
@@ -297,6 +305,7 @@ class BlindPeer extends ReadyResource {
       coreTrackersCreated: 0,
       coreTrackersDestroyed: 0,
       coreResetDownload: 0,
+      referrerRateLimited: 0,
       gc: {
         prio0Gcd: 0,
         prio1Gcd: 0,
@@ -425,6 +434,7 @@ class BlindPeer extends ReadyResource {
     await this.topKByReferrer.ready()
     await this.topKByIp.ready()
     if (this.adminRouter) await this.adminRouter.ready()
+    if (this.perReferrerRateLimit) await this.perReferrerRateLimit.ready()
 
     this._announceCores().catch(safetyCatch) // announcing cores asynchronously
     this.flushInterval = setInterval(this.flush.bind(this), 10_000)
@@ -819,6 +829,15 @@ class BlindPeer extends ReadyResource {
     }
     this.stats.addCoresRx++
 
+    if (this.perReferrerRateLimit && request.referrer) {
+      const referrerKey = b4a.toString(request.referrer, 'hex')
+      if (!this.perReferrerRateLimit.tryAcquire(referrerKey)) {
+        this.stats.referrerRateLimited++
+        this.emit('per-referrer-rate-limited', referrerKey)
+        return
+      }
+    }
+
     const { cores, referrer } = request
     if (referrer) {
       this.topKByReferrer.hit(IdEnc.normalize(referrer))
@@ -1192,6 +1211,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
+    if (this.perReferrerRateLimit) await this.perReferrerRateLimit.close()
     if (this.routerPool) {
       await this.routerPool.destroy()
     }
@@ -1365,6 +1385,14 @@ class BlindPeer extends ReadyResource {
       help: 'The amount of add-cores requests received',
       collect() {
         this.set(self.stats.addCoresRx)
+      }
+    })
+    new promClient.Gauge({
+      // eslint-disable-line no-new
+      name: 'blind_peer_referrer_rate_limited',
+      help: 'The number of requests rejected by the per-referrer rate limit',
+      collect() {
+        this.set(self.stats.referrerRateLimited)
       }
     })
     new promClient.Gauge({
