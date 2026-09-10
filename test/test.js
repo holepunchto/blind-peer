@@ -3624,18 +3624,18 @@ test('per key rate limit sheds load', async (t) => {
   })
   muxer.addCores({
     referrer: core.key,
-    cores: [{ key: core4.key, length: core3.length }]
+    cores: [{ key: core4.key, length: core4.length }]
   })
 
   await sleep(250)
   t.is(blindPeer.stats.keyRateLimited, 4, 'rate limited')
   t.is(blindPeer.stats.addCoresRx, 12)
   t.is(await blindPeer.db.hasCore(core3.key), true, 'core 3 got added')
-  t.is(await blindPeer.db.hasCore(core4.key), false, 'core 3 got skipped due to rate limit')
+  t.is(await blindPeer.db.hasCore(core4.key), false, 'core 4 got skipped due to rate limit')
 
   await sleep(250)
 
-  t.is(blindPeer.perKeyRateLimit.limiters.size, 0, 'gc works')
+  t.is(blindPeer.perKeyRateLimit.tokens.size, 0, 'gc works')
 })
 
 async function setupPushGateway(t, bootstrap) {

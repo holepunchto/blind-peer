@@ -1205,6 +1205,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _close() {
+    if (this.perKeyRateLimit) this.perKeyRateLimit.destroy()
     if (this.routerPool) {
       await this.routerPool.destroy()
     }
