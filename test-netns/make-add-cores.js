@@ -9,9 +9,14 @@ const BlindPeerMuxer = require('blind-peer-muxer')
 const IdEnc = require('hypercore-id-encoding')
 
 async function main() {
-  const bootstrap = JSON.parse(process.argv[2])
+  const bootstrap = JSON.parse(process.argv[2], (key, value) =>
+    key === '__proto__' || key === 'constructor' ? undefined : value
+  )
   const blindPeerPublicKey = IdEnc.decode(process.argv[3])
   const requestCount = Number(process.argv[4])
+  if (!Number.isInteger(requestCount) || requestCount < 0 || requestCount > 100000) {
+    throw new Error('requestCount must be an integer between 0 and 100000')
+  }
 
   const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'blind-peer-netns-'))
   goodbye(() => fs.rm(storage, { recursive: true, force: true }), 0)
