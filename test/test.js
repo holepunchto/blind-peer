@@ -834,7 +834,9 @@ test('client adds views if autobee was initially empty (no views)', async (t) =>
   await client.addAutobase(bee)
   await sleep(500)
   await bee.append(JSON.stringify({ block: 1 }))
-  await sleep(2000)
+  // TODO: the sleep here should be lowered once we update
+  // blind-peering to not delay `onmigrate` for autobee
+  await sleep(1500)
 
   const expectedKeys = [
     b4a.toString(bee.key, 'hex'),
