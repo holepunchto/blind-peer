@@ -228,7 +228,7 @@ test('client can ask a blind-peer to create and forward a push notification', as
   t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
 
-test.solo('sendNotification distributes requests across connected blind peers', async (t) => {
+test('sendNotification distributes requests across connected blind peers', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
 
@@ -244,7 +244,8 @@ test.solo('sendNotification distributes requests across connected blind peers', 
 
   const client = createClient(t, swarm.dht, store, {
     keys: [blindPeer1.publicKey, blindPeer2.publicKey],
-    pick: 2
+    pick: 2,
+    notificationRateLimit: null
   })
 
   await Promise.all([
