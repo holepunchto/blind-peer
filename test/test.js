@@ -818,7 +818,7 @@ test('client can use a blind-peer to add an autobee (multiple writers)', async (
   t.alike(addedKeys.sort(), expectedKeys.sort(), 'correct cores were added')
 })
 
-test.solo('client adds views if autobee was initially empty (no views)', async (t) => {
+test('client adds views if autobee was initially empty (no views)', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { swarm, store, bee } = await setupAutobeeHolder(t, bootstrap)
