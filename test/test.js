@@ -3468,7 +3468,7 @@ test('destroying a peer in blind-peering clears core listeners', async (t) => {
   t.is(peer.cores.size, 0, 'destroy() clears the cores map of the peer')
 })
 
-test.solo('destroying peer in blind-peering clears autobase listeners', async (t) => {
+test('destroying peer in blind-peering clears autobase listeners', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
