@@ -228,6 +228,58 @@ test('client can ask a blind-peer to create and forward a push notification', as
   t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
 })
 
+test('sendNotification distributes requests across connected blind peers', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
+
+  const { blindPeer: blindPeer1 } = await initBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+  const { blindPeer: blindPeer2 } = await initBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gateway.publicKey]
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  await core.setUserData('referrer', core.key)
+
+  const client = createClient(t, swarm.dht, store, {
+    keys: [blindPeer1.publicKey, blindPeer2.publicKey],
+    pick: 2,
+    notificationRateLimit: null
+  })
+
+  await Promise.all([
+    once(blindPeer1, 'add-cores-done'),
+    once(blindPeer2, 'add-cores-done'),
+    client.addCore(core)
+  ])
+
+  t.is(client.blindPeers.size, 2, 'client has two blind peers')
+  t.ok(
+    Array.from(client.blindPeers.values()).every((peer) => peer.connected),
+    'both blind peers are connected'
+  )
+
+  for (let i = 0; i < 64; i++) {
+    client.sendNotificationBackground(core)
+
+    await Promise.race([
+      once(blindPeer1, 'notification-sent'),
+      once(blindPeer2, 'notification-sent')
+    ])
+  }
+
+  t.ok(blindPeer1.stats.notificationsSent > 0, 'first blind peer sent a notification')
+  t.ok(blindPeer2.stats.notificationsSent > 0, 'second blind peer sent a notification')
+  t.is(
+    blindPeer1.stats.notificationsSent + blindPeer2.stats.notificationsSent,
+    64,
+    'each request used one blind peer'
+  )
+  t.is(sentMessages.length, 64, 'gateway received every notification')
+  t.is(client.stats.notificationsTx, 64, 'client counted every notification')
+})
+
 test('sendNotification does not leak core sessions', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
@@ -3421,10 +3473,7 @@ test('destroying a peer in blind-peering clears core listeners', async (t) => {
 
 test('destroying peer in blind-peering clears autobase listeners', async (t) => {
   const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.swarm.flush()
-
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { swarm, store, base } = await setupAutobaseHolder(t, bootstrap)
   t.teardown(() => base.close())
   await base.append({ hello: 'world' })
@@ -3432,13 +3481,17 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
 
   t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners initially')
-  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" liteners initially')
-  t.is(base.core.listenerCount('migrate'), 0, 'base core 0 "migrate" liteners initially')
+  t.is(base.listenerCount('writer'), 0, 'base 0 "writer" listeners initially')
+  t.is(base.listenerCount('anchor'), 0, 'base 0 "anchor" listeners initially')
+  t.is(base.listenerCount('appending'), 0, 'base 0 "appending" listeners initially')
+  t.is(base.core.listenerCount('migrate'), 0, 'base core 0 "migrate" listeners initially')
 
   await client.addAutobase(base)
 
   t.is(base.listenerCount('close'), 1, 'base 1 "close" listener after adding')
-  t.is(base.listenerCount('writer'), 1, 'base 1 "writer" liteners after adding')
+  t.is(base.listenerCount('writer'), 1, 'base 1 "writer" listeners after adding')
+  t.is(base.listenerCount('anchor'), 1, 'base 1 "anchor" listeners after adding')
+  t.is(base.listenerCount('appending'), 1, 'base 1 "appending" listeners after adding')
   t.is(base.core.listenerCount('migrate'), 1, 'base core 1 "migrate" listener after adding')
 
   const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
@@ -3448,6 +3501,8 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   t.is(peer.destroyed, true, 'closing blind-peering destroyed the peer')
   t.is(base.listenerCount('close'), 0, 'base 0 "close" listeners after peer is destroyed')
   t.is(base.listenerCount('writer'), 0, 'base 0 "writer" listeners after peer is destroyed')
+  t.is(base.listenerCount('anchor'), 0, 'base 0 "anchor" listeners after peer is destroyed')
+  t.is(base.listenerCount('appending'), 0, 'base 0 "appending" listeners after peer is destroyed')
   t.is(
     base.core.listenerCount('migrate'),
     0,
