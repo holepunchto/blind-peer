@@ -9,7 +9,7 @@
     "blind-peer-muxer": "^1.5.0",
     "blind-push": "^1.0.1",
     "compact-encoding": "^3.0.0",
-    "corestore": "^7.4.4",
+    "corestore": "^7.13.0",
     "hypercore": "^11.26.0",
     "hypercore-crypto": "^3.5.0",
     "hypercore-id-encoding": "^1.3.0",
