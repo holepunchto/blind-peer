@@ -3719,6 +3719,13 @@ test('per referrer rate limit sheds load', async (t) => {
   t.is(blindPeer.perReferrerRateLimit.tokens.size, 0, 'gc works')
 })
 
+test('enables alwaysLatestBlock on corestore', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+  await blindPeer.ready()
+  t.is(blindPeer.store.alwaysLatestBlock, true)
+})
+
 async function setupPushGateway(t, bootstrap) {
   const sentMessages = []
   const dht = new HyperDHT({ bootstrap })
