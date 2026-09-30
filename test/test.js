@@ -3572,7 +3572,7 @@ test('db flush updates correctly for existing records', async (t) => {
   }
 })
 
-test('client sends blindPeeringVersion in handshake', async (t) => {
+test('client sends handshake', async (t) => {
   t.plan(3)
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
