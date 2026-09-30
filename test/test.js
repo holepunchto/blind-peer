@@ -3573,16 +3573,21 @@ test('db flush updates correctly for existing records', async (t) => {
 })
 
 test('client sends blindPeeringVersion in handshake', async (t) => {
-  t.plan(1)
+  t.plan(3)
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   blindPeer.on('add-core', (_, __, stream) => {
     const handshake = stream.userData.getLastChannel({ protocol: 'blind-peer' }).handshake
     t.is(typeof handshake?.blindPeeringVersion, 'string')
+    t.is(handshake?.clientName, 'app')
+    t.is(handshake?.clientVersion, '3.2.1')
   })
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
+  const client = createClient(t, swarm.dht, store, {
+    keys: [blindPeer.publicKey],
+    client: { name: 'app', version: '3.2.1' }
+  })
   client.addCoreBackground(core)
 })
 
