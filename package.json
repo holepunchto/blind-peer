@@ -38,7 +38,7 @@
     "blind-peer-router": "^0.2.2",
     "blind-peering": "^2.10.0",
     "blind-push-gateway": "^1.0.0",
-    "brittle": "^3.7.0",
+    "brittle": "^4.0.0",
     "debounceify": "^1.1.0",
     "graceful-goodbye": "^1.3.3",
     "hyperdht-address": "^1.0.1",
@@ -55,9 +55,9 @@
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npm run format:check && lunte &&  brittle test/index.js",
-    "test:netns": "brittle test-netns/*.test.js",
-    "test:bare": "bare test/index.js"
+    "test": "npm run format:check && lunte &&  brittle-node test/index.js",
+    "test:netns": "brittle-node test-netns/*.test.js",
+    "test:bare": "brittle-bare test/index.js"
   },
   "repository": {
     "type": "git",
