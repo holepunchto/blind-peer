@@ -1,0 +1,35 @@
+name: Mine Tests
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: Platforms to mine on
+        type: string
+        default: '["windows-latest"]'
+      files:
+        description: Test files to mine
+        type: string
+        default: '["test/autobase.js", "test/autobee.js", "test/client.js", "test/core.js", "test/gc.js", "test/metrics.js", "test/notifications.js", "test/trusted-peers.js"]'
+      miners:
+        description: Number of mining processes per job
+        type: number
+        default: 4
+permissions:
+  contents: read
+jobs:
+  mine:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        file: ${{ fromJSON(inputs.files) }}
+    name: Mine ${{ matrix.file }} (${{ matrix.os }})
+    steps:
+      - uses: holepunchto/actions/bare-base@v1
+      - shell: bash
+        env:
+          FILE: ${{ matrix.file }}
+          MINERS: ${{ inputs.miners }}
+        run: timeout 15m ./node_modules/.bin/brittle-bare -m "$MINERS" "$FILE" || [ $? -eq 124 ]

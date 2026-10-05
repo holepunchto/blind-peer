@@ -57,7 +57,7 @@
     "format:check": "prettier --check .",
     "test": "npm run format:check && lunte &&  brittle-node test/index.mjs",
     "test:netns": "brittle-node test-netns/*.test.js",
-    "test:bare": "brittle-bare -j 8 test/index.mjs"
+    "test:bare": "brittle-bare -j 4 test/index.mjs"
   },
   "repository": {
     "type": "git",
