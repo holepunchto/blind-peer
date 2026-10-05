@@ -22,8 +22,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.os) }}
-        file: ${{ fromJSON(inputs.files) }}
+        os: ${{ fromJSON(inputs.os || '["ubuntu-latest", "windows-latest"]') }}
+        file: ${{ fromJSON(inputs.files || '["test/autobase.js", "test/autobee.js", "test/client.js", "test/core.js", "test/gc.js", "test/metrics.js", "test/notifications.js", "test/trusted-peers.js"]') }}
     name: Mine ${{ matrix.file }} (${{ matrix.os }})
     steps:
       - uses: holepunchto/actions/bare-base@v1
