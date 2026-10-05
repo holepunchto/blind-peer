@@ -5,29 +5,31 @@ on:
       os:
         description: Platforms to mine on
         type: string
-        default: '["ubuntu-latest", "windows-latest"]'
+        default: '["windows-latest"]'
       files:
         description: Test files to mine
         type: string
         default: '["test/autobase.js", "test/autobee.js", "test/client.js", "test/core.js", "test/gc.js", "test/metrics.js", "test/notifications.js", "test/trusted-peers.js"]'
-  pull_request:
-    paths:
-      - .github/workflows/mine.yml
+      miners:
+        description: Number of mining processes per job
+        type: number
+        default: 8
 permissions:
   contents: read
 jobs:
   mine:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.os || '["windows-latest"]') }}
-        file: ${{ fromJSON(inputs.files || '["test/autobase.js", "test/autobee.js", "test/client.js", "test/core.js", "test/gc.js", "test/metrics.js", "test/notifications.js", "test/trusted-peers.js"]') }}
+        os: ${{ fromJSON(inputs.os) }}
+        file: ${{ fromJSON(inputs.files) }}
     name: Mine ${{ matrix.file }} (${{ matrix.os }})
     steps:
       - uses: holepunchto/actions/bare-base@v1
       - shell: bash
         env:
           FILE: ${{ matrix.file }}
-        run: timeout 10m ./node_modules/.bin/brittle-bare -m 8 "$FILE" || [ $? -eq 124 ]
+          MINERS: ${{ inputs.miners }}
+        run: timeout 15m ./node_modules/.bin/brittle-bare -m "$MINERS" "$FILE" || [ $? -eq 124 ]
