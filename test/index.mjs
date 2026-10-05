@@ -13,6 +13,7 @@ async function runTests() {
   await test.load(import.meta.resolve('./core.js'))
   await test.load(import.meta.resolve('./gc.js'))
   await test.load(import.meta.resolve('./metrics.js'))
+  await test.load(import.meta.resolve('./muxer-request.js'))
   await test.load(import.meta.resolve('./notifications.js'))
   await test.load(import.meta.resolve('./trusted-peers.js'))
 
