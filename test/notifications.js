@@ -180,9 +180,9 @@ test.solo('sets up core replication on notification if not present and the core 
   // needs both sides to have a passive corestore, otherwise this side will
   // set up hypercore replication for the core always
   const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap, { active: false })
-  await new Promise((resolve) => setTimeout(resolve, 500))
-  swarm2.joinPeer(swarm.keyPair.publicKey)
   const coreCopy = store2.get(core.key)
+  await coreCopy.ready()
+  swarm2.joinPeer(swarm.keyPair.publicKey)
   coreCopy.download({ start: 0, end: -1 })
 
   const initClient = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
