@@ -411,7 +411,7 @@ test('client picks blind peers from different groups', async (t) => {
   t.alike(lengths, [2, 0, 0, 2], 'added the core to one blind peer of each group')
 })
 
-test('client balances blind peers across groups when picking more than there are groups', async (t) => {
+test.solo('client balances blind peers across groups when picking more than there are groups', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const blindPeers = await setupBlindPeers(t, bootstrap, 6)
 
