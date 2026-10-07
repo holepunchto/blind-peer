@@ -411,35 +411,60 @@ test('client picks blind peers from different groups', async (t) => {
   t.alike(lengths, [2, 0, 0, 2], 'added the core to one blind peer of each group')
 })
 
-test.solo('client balances blind peers across groups when picking more than there are groups', async (t) => {
-  const { bootstrap } = await getTestnet(t)
-  const blindPeers = await setupBlindPeers(t, bootstrap, 6)
+test.solo(
+  'client balances blind peers across groups when picking more than there are groups',
+  async (t) => {
+    const start = Date.now()
+    const log = (msg) => console.log(`[${Date.now() - start}ms] ${msg}`)
+    const state = (r) => (r.closed ? 'closed' : r.closing ? 'closing' : 'open')
+    let blindPeers = []
+    let holder = null
 
-  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-  const client = createClient(t, swarm.dht, store, {
-    blindPeers: [
-      { key: blindPeers[0].publicKey, group: 'a' },
-      { key: blindPeers[1].publicKey, group: 'a' },
-      { key: blindPeers[2].publicKey, group: 'a' },
-      { key: blindPeers[3].publicKey, group: 'b' },
-      { key: blindPeers[4].publicKey, group: 'b' },
-      { key: blindPeers[5].publicKey, group: 'b' }
-    ]
-  })
+    const dump = setTimeout(() => {
+      log(
+        `blind peers: ${blindPeers.map((b) => `${state(b)}/swarm ${b.swarm.destroyed}`).join(', ')}`
+      )
+      if (holder) log(`holder: swarm ${holder.swarm.destroyed}, store ${state(holder.store)}`)
+    }, 28000)
+    dump.unref()
 
-  await client.addCore(core, { pick: 4, target: blindPeers[0].publicKey })
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+    const { bootstrap } = await getTestnet(t)
+    log('testnet ready')
+    blindPeers = await setupBlindPeers(t, bootstrap, 6)
+    log('blind peers ready')
 
-  const lengths = await Promise.all(
-    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
-  )
-  const groupA = lengths.slice(0, 3).filter((length) => length > 0)
-  const groupB = lengths.slice(3).filter((length) => length > 0)
+    holder = await setupCoreHolder(t, bootstrap)
+    const { core, swarm, store } = holder
+    log('core holder ready')
 
-  t.ok(lengths[0] > 0, 'targeted blind peer picked')
-  t.is(groupA.length, 2, 'added the core to two blind peers of group a')
-  t.is(groupB.length, 2, 'added the core to two blind peers of group b')
-})
+    const client = createClient(t, swarm.dht, store, {
+      blindPeers: [
+        { key: blindPeers[0].publicKey, group: 'a' },
+        { key: blindPeers[1].publicKey, group: 'a' },
+        { key: blindPeers[2].publicKey, group: 'a' },
+        { key: blindPeers[3].publicKey, group: 'b' },
+        { key: blindPeers[4].publicKey, group: 'b' },
+        { key: blindPeers[5].publicKey, group: 'b' }
+      ]
+    })
+
+    await client.addCore(core, { pick: 4, target: blindPeers[0].publicKey })
+    log('addCore done')
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const lengths = await Promise.all(
+      blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+    )
+    log('lengths read')
+    const groupA = lengths.slice(0, 3).filter((length) => length > 0)
+    const groupB = lengths.slice(3).filter((length) => length > 0)
+
+    t.ok(lengths[0] > 0, 'targeted blind peer picked')
+    t.is(groupA.length, 2, 'added the core to two blind peers of group a')
+    t.is(groupB.length, 2, 'added the core to two blind peers of group b')
+    log('assertions done')
+  }
+)
 
 test('repeated addCore when not connected does not result in repeated infos and cores', async (t) => {
   const { bootstrap } = await getTestnet(t)
