@@ -543,3 +543,23 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   )
   t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
 })
+
+test.solo('client can opt out from connection metadata', async (t) => {
+  t.plan(3)
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  blindPeer.on('add-core', (_, __, stream) => {
+    const handshake = stream.userData.getLastChannel({ protocol: 'blind-peer' }).handshake
+    t.is(handshake.blindPeeringVersion, null)
+    t.is(handshake.clientName, null)
+    t.is(handshake.clientVersion, null)
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = createClient(t, swarm.dht, store, {
+    keys: [blindPeer.publicKey],
+    client: { name: 'app', version: '3.2.1' },
+    skipConnectionMetadata: true
+  })
+  client.addCoreBackground(core)
+})
