@@ -20,11 +20,21 @@ jobs:
         os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Disable Defender real-time scanning
+      - name: Put temp dirs on a Dev Drive
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: pwsh
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        run: |
+          $vhd = Join-Path $env:RUNNER_TEMP 'dev-drive.vhdx'
+          $volume = New-VHD -Path $vhd -SizeBytes 50GB -Dynamic |
+            Mount-VHD -Passthru |
+            Initialize-Disk -PartitionStyle GPT -PassThru |
+            New-Partition -AssignDriveLetter -UseMaximumSize |
+            Format-Volume -DevDrive -Confirm:$false -Force
+          $tmp = "$($volume.DriveLetter):\tmp"
+          New-Item -ItemType Directory -Path $tmp | Out-Null
+          "TMP=$tmp" >> $env:GITHUB_ENV
+          "TEMP=$tmp" >> $env:GITHUB_ENV
       - uses: holepunchto/actions/bare-base@v1
       - run: npm test
       - run: npm run test:bare
