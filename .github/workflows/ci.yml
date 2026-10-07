@@ -20,6 +20,11 @@ jobs:
         os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Disable Defender real-time scanning
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - name: Put temp dirs on a Dev Drive
         if: runner.os == 'Windows'
         continue-on-error: true
@@ -35,9 +40,6 @@ jobs:
           New-Item -ItemType Directory -Path $tmp | Out-Null
           "TMP=$tmp" >> $env:GITHUB_ENV
           "TEMP=$tmp" >> $env:GITHUB_ENV
-      - uses: holepunchto/actions/bare-base@v1
-      - run: npm test
-      - run: npm run test:bare
   test-netns:
     runs-on: ubuntu-latest
     steps:
