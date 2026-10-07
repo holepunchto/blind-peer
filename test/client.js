@@ -544,7 +544,7 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
 })
 
-test.solo('client can opt out from connection metadata', async (t) => {
+test('client can opt out from connection metadata', async (t) => {
   t.plan(3)
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
