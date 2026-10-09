@@ -619,7 +619,7 @@ class BlindPeer extends ReadyResource {
       new BlindPeerMuxer(conn, {
         async oncores(request) {
           try {
-            await self._onaddcores(conn, request)
+            return await self._onaddcores(conn, request)
           } catch (e) {
             self.stats.muxerErrors++
             self.emit('muxer-error', e, conn)
@@ -628,13 +628,10 @@ class BlindPeer extends ReadyResource {
         },
         async onnotification(request) {
           try {
-            await self._onnotification(conn, request)
+            return await self._onnotification(conn, request)
           } catch (e) {
             self.stats.notificationErrors++
             self.emit('notification-error', e, conn, request)
-            if (e.code === 'REQUEST_TIMEOUT') return
-            if (e.code === 'UNKNOWN_CORE') return
-            if (e.code === 'TOO_MANY_RETRIES') return
             throw e // unexpected error: crash the connection
           }
         }
@@ -836,7 +833,7 @@ class BlindPeer extends ReadyResource {
       if (!this.perReferrerRateLimit.tryAcquire(referrerKey)) {
         this.stats.referrerRateLimited++
         this.emit('per-referrer-rate-limited', referrerKey)
-        return
+        throw BlindPeerError.RATE_LIMITED()
       }
     }
 
@@ -962,7 +959,12 @@ class BlindPeer extends ReadyResource {
     await Promise.all(activateProms)
 
     this.emit('add-cores-done', stream, request)
-    return null
+
+    const response = []
+    for (const entry of overview.values()) {
+      response.push({ key: entry.key, length: entry.ownLength, activated: entry.needsActivation })
+    }
+    return { cores: response }
   }
 
   async _ondeletecore(stream, { key }) {
