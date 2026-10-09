@@ -28,6 +28,8 @@ jobs:
     name: Mine ${{ matrix.file }} (${{ matrix.os }})
     steps:
       - uses: holepunchto/actions/bare-base@v1
+        with:
+          allow-git: root
       - shell: bash
         env:
           FILE: ${{ matrix.file }}
