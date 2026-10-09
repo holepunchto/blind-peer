@@ -15,7 +15,7 @@ const {
   createClient
 } = require('./helpers')
 
-test('Prometheus metrics', async (t) => {
+test.solo('Prometheus metrics', async (t) => {
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
