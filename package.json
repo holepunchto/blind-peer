@@ -38,7 +38,7 @@
     "blind-peer-router": "^0.2.2",
     "blind-peering": "^2.10.1",
     "blind-push-gateway": "^1.0.0",
-    "brittle": "^4.0.0",
+    "brittle": "github:volstas/brittle#dont-die-on-process-kill",
     "debounceify": "^1.1.0",
     "graceful-goodbye": "^1.3.3",
     "hyperdht-address": "^1.0.1",
