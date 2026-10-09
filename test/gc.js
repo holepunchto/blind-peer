@@ -11,7 +11,7 @@ const {
   waitForCoresDownloaded
 } = require('./helpers')
 
-test.solo('garbage collection when space limit reached', async (t) => {
+test('garbage collection when space limit reached', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
@@ -325,7 +325,7 @@ test('gc stats', async (t) => {
   t.is(blindPeer.stats.gc.firstTimeCoresGcd, 3, 'firstTimeCoresGcd')
 })
 
-test.solo('can gc core that is not currently active', async (t) => {
+test('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting

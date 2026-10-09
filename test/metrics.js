@@ -16,7 +16,7 @@ const {
   waitForCoresDownloaded
 } = require('./helpers')
 
-test.solo('Prometheus metrics', async (t) => {
+test('Prometheus metrics', async (t) => {
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
