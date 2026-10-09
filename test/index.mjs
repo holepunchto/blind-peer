@@ -15,6 +15,7 @@ async function runTests() {
   await test.load(import.meta.resolve('./metrics.js'))
   await test.load(import.meta.resolve('./notifications.js'))
   await test.load(import.meta.resolve('./trusted-peers.js'))
+  await test.load(import.meta.resolve('./subprocess-kill.js'))
 
   test.resume()
 }
