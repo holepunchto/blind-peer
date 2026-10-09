@@ -9,16 +9,16 @@ const {
   setupMuxer,
   createClient,
   waitForCoresDownloaded,
-  runGc
+  runGc,
+  initBlindPeer,
+  sleep
 } = require('./helpers')
 
-test.solo('garbage collection when space limit reached', async (t) => {
+test('garbage collection when space limit reached', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
 
   const nrCores = 10
   const nrBlocks = 200
@@ -59,7 +59,7 @@ test.solo('garbage collection when space limit reached', async (t) => {
   }
 
   await cores[gcdCoreI].append('Block-200')
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await sleep(1000)
 
   const updatedRecord = await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)
 
@@ -326,13 +326,11 @@ test('gc stats', async (t) => {
   t.is(blindPeer.stats.gc.firstTimeCoresGcd, 3, 'firstTimeCoresGcd')
 })
 
-test.solo('can gc core that is not currently active', async (t) => {
+test('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { enableGc, maxBytes: 10_000 })
 
   const nrCores = 10
   const nrBlocks = 200
@@ -357,7 +355,7 @@ test.solo('can gc core that is not currently active', async (t) => {
   await swarm.destroy()
   await store.close()
   // TODO: expose corestore gc tick time (it takes 4 ticks to gc weak cores)
-  await new Promise((resolve) => setTimeout(resolve, 10000))
+  await sleep(10000)
 
   t.is(blindPeer.activeReplication.size, 0, 'sanity check (core not active)')
   t.ok(blindPeer.digest.bytesAllocated > 10_000, 'sanity check')
