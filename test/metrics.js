@@ -13,10 +13,11 @@ const {
   setupPeer,
   setupMuxer,
   createClient,
-  waitForCoresDownloaded
+  waitForCoresDownloaded,
+  runGc
 } = require('./helpers')
 
-test('Prometheus metrics', async (t) => {
+test.solo('Prometheus metrics', async (t) => {
   // DEVNOTE: mostly copies the 'garbage collection when space limit reached' test
   const { bootstrap } = await getTestnet(t)
 
@@ -110,7 +111,7 @@ test('Prometheus metrics', async (t) => {
 
   await waitForCoresDownloaded(blindPeer, cores)
 
-  const [[{ bytesCleared }]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+  const [[{ bytesCleared }]] = await runGc(blindPeer)
 
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
