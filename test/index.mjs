@@ -16,6 +16,7 @@ async function runTests() {
   await test.load(import.meta.resolve('./muxer-request.js'))
   await test.load(import.meta.resolve('./notifications.js'))
   await test.load(import.meta.resolve('./trusted-peers.js'))
+  await test.load(import.meta.resolve('./subprocess-kill.js'))
 
   test.resume()
 }
