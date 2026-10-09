@@ -6,7 +6,7 @@
   "dependencies": {
     "b4a": "^1.6.7",
     "blind-peer-encodings": "^3.3.0",
-    "blind-peer-muxer": "github:holepunchto/blind-peer-muxer#protomux-request",
+    "blind-peer-muxer": "^1.7.0",
     "blind-push": "^1.0.1",
     "compact-encoding": "^3.0.0",
     "corestore": "^7.13.0",
