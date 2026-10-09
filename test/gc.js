@@ -7,10 +7,11 @@ const {
   getTestnet,
   setupPeer,
   setupMuxer,
-  createClient
+  createClient,
+  waitForCoresDownloaded
 } = require('./helpers')
 
-test('garbage collection when space limit reached', async (t) => {
+test.solo('garbage collection when space limit reached', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
@@ -36,8 +37,7 @@ test('garbage collection when space limit reached', async (t) => {
     }
   }
 
-  // TODO: some event to ensure they're fully downloaded
-  await new Promise((resolve) => setTimeout(resolve, 2000))
+  await waitForCoresDownloaded(blindPeer, cores)
   const initBytes = blindPeer.digest.bytesAllocated
 
   const [[{ bytesCleared }]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
@@ -325,7 +325,7 @@ test('gc stats', async (t) => {
   t.is(blindPeer.stats.gc.firstTimeCoresGcd, 3, 'firstTimeCoresGcd')
 })
 
-test('can gc core that is not currently active', async (t) => {
+test.solo('can gc core that is not currently active', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
@@ -351,8 +351,7 @@ test('can gc core that is not currently active', async (t) => {
     }
   }
 
-  // TODO: some event to ensure they're fully downloaded
-  await new Promise((resolve) => setTimeout(resolve, 2000))
+  await waitForCoresDownloaded(blindPeer, cores)
 
   await swarm.destroy()
   await store.close()

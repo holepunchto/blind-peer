@@ -12,7 +12,8 @@ const {
   getTestnet,
   setupPeer,
   setupMuxer,
-  createClient
+  createClient,
+  waitForCoresDownloaded
 } = require('./helpers')
 
 test.solo('Prometheus metrics', async (t) => {
@@ -107,8 +108,7 @@ test.solo('Prometheus metrics', async (t) => {
     }
   }
 
-  // TODO: some event to ensure they're fully downloaded
-  await new Promise((resolve) => setTimeout(resolve, 2000))
+  await waitForCoresDownloaded(blindPeer, cores)
 
   const [[{ bytesCleared }]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
 

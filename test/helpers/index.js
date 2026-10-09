@@ -348,6 +348,17 @@ function sleep(delay = 1000) {
   return new Promise((resolve) => setTimeout(resolve, delay))
 }
 
+async function waitForCoresDownloaded(blindPeer, cores) {
+  await Promise.all(
+    cores.map(async ({ key, length }) => {
+      const core = blindPeer.store.get({ key })
+      await core.ready()
+      while (core.contiguousLength < length) await once(core, 'download')
+      await core.close()
+    })
+  )
+}
+
 module.exports = {
   DEBUG,
   clientOpts,
@@ -358,6 +369,7 @@ module.exports = {
   initBlindPeer,
   setupBlindPeers,
   getBlindPeerCoreLength,
+  waitForCoresDownloaded,
   setupAdminClient,
   setupPushGateway,
   getTestnet,
