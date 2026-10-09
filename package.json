@@ -5,6 +5,7 @@
   "main": "index.js",
   "dependencies": {
     "b4a": "^1.6.7",
+    "bare-subprocess": "^6.2.1",
     "blind-peer-encodings": "^3.3.0",
     "blind-peer-muxer": "^1.6.0",
     "blind-push": "^1.0.1",
@@ -77,6 +78,14 @@
     "prom-client": {
       "bare": "bare-prom-client",
       "default": "prom-client"
+    },
+    "process": {
+      "bare": "bare-process",
+      "default": "process"
+    },
+    "child_process": {
+      "bare": "bare-subprocess",
+      "default": "child_process"
     }
   }
 }
