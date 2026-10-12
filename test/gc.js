@@ -41,7 +41,7 @@ test('garbage collection when space limit reached', async (t) => {
   await waitForCoresDownloaded(blindPeer, cores)
   const initBytes = blindPeer.digest.bytesAllocated
 
-  const [[{ bytesCleared }]] = await runGc(blindPeer)
+  const { bytesCleared } = await runGc(blindPeer)
 
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
@@ -113,7 +113,7 @@ test('gc correctly counts cleared bytes for cores that were gced before', async 
   }
   // first gc, clears coreA, freeing 10 bytes
   {
-    const [[{ bytesCleared }]] = await runGc(blindPeer)
+    const { bytesCleared } = await runGc(blindPeer)
     t.is(blindPeer.digest.bytesAllocated, 10, 'digest bytesAllocated 10 after 1 gc')
     t.is(bytesCleared, 10, 'bytesCleared 10')
     const recordA = await blindPeer.db.getCoreRecord(coreA.key)
@@ -145,7 +145,7 @@ test('gc correctly counts cleared bytes for cores that were gced before', async 
   // second gc, clearing just coreA is not enough now
   // it would free 1 byte, still above max bytes of 15
   {
-    const [[{ bytesCleared }]] = await runGc(blindPeer)
+    const { bytesCleared } = await runGc(blindPeer)
     t.is(blindPeer.digest.bytesAllocated, 0, 'digest bytesAllocated 0 after 2 gc')
     t.is(bytesCleared, 17, 'clear all 17 bytes')
     const recordA = await blindPeer.db.getCoreRecord(coreA.key)

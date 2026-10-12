@@ -354,7 +354,8 @@ async function runGc(blindPeer) {
   while (true) if (await blindPeer.lock.lock()) break
 
   try {
-    return await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+    const [[result]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+    return result
   } finally {
     blindPeer.lock.unlock()
   }

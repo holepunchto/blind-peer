@@ -111,7 +111,7 @@ test('Prometheus metrics', async (t) => {
 
   await waitForCoresDownloaded(blindPeer, cores)
 
-  const [[{ bytesCleared }]] = await runGc(blindPeer)
+  const { bytesCleared } = await runGc(blindPeer)
 
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
