@@ -348,6 +348,31 @@ function sleep(delay = 1000) {
   return new Promise((resolve) => setTimeout(resolve, delay))
 }
 
+async function runGc(blindPeer) {
+  // blind-peer uses a lock with debouncing
+  // so we keep trying to get the lock until it is available
+  while (true) if (await blindPeer.lock.lock()) break
+
+  try {
+    const [[result]] = await Promise.all([once(blindPeer, 'gc-done'), blindPeer._gc()])
+    return result
+  } finally {
+    blindPeer.lock.unlock()
+  }
+}
+
+async function waitForCoresDownloaded(blindPeer, cores) {
+  await Promise.all(
+    cores.map(async ({ key, length }) => {
+      const core = blindPeer.store.get({ key })
+      await core.ready()
+      while (core.contiguousLength < length) await once(core, 'download')
+      await core.close()
+    })
+  )
+  await blindPeer.flush()
+}
+
 module.exports = {
   DEBUG,
   clientOpts,
@@ -358,6 +383,8 @@ module.exports = {
   initBlindPeer,
   setupBlindPeers,
   getBlindPeerCoreLength,
+  waitForCoresDownloaded,
+  runGc,
   setupAdminClient,
   setupPushGateway,
   getTestnet,
