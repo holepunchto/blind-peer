@@ -327,32 +327,42 @@ test('adding autobase cores only results in replication sessions if there are le
   }
 })
 
-test('blind-peering respects max batch options for the writer cores', async (t) => {
-  const { bootstrap } = await getTestnet(t)
+test.solo('blind-peering respects max batch options for the writer cores', async (t) => {
+  const start = Date.now()
+  const log = (msg) => console.log(`[${Date.now() - start}ms] ${msg}`)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { bootstrap } = await getTestnet(t)
+  t.teardown(() => log('teardown start'), { order: -Infinity })
+  t.teardown(() => log('teardown end'), { order: Infinity })
+  log('testnet ready')
+
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  log('blind peer ready')
 
   let {
     swarm: indexerSwarm,
     base: indexer,
     store: indexerStore
   } = await setupAutobaseHolder(t, bootstrap)
+  log('indexer ready')
   await indexerSwarm.flush()
+  log('indexer flushed')
+  t.is(indexer.activeWriters.map.size, 1, 'sanity check: first active writer is itself')
 
   const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
 
   const peers = []
   for (let i = 0; i < 6; i++) {
     peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+    log(`writer ${i} ready`)
   }
-  t.is(indexer.activeWriters.map.size, 6, 'all active writers (sanity check)')
 
   // Give some time for them to gossip their lengths
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await sleep(500)
+  log('gossip wait done')
+  t.is(indexer.activeWriters.map.size, 7, 'sanity check: all active writers')
+  t.is(blindPeer.stats.activations, 0, 'sanity check: blind peer has no activations')
   const initLengths = getLengths(indexer)
-  t.is(blindPeer.stats.activations, 0, 'sanity check')
 
   // A first writer adds the autobase
   {
@@ -362,11 +372,13 @@ test('blind-peering respects max batch options for the writer cores', async (t) 
       maxBatchMax: 4
     })
     await client.addAutobase(indexer)
+    log('addAutobase done')
 
     await new Promise((resolve) => setTimeout(resolve, 500))
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
     t.is(blindPeer.stats.activations, 7, '3 views and 4 indexer cores activated')
   }
+  log('body done')
 })
 
 test('wakeup', async (t) => {
