@@ -290,23 +290,27 @@ test('client addCore dedups inactive cores when needed', async (t) => {
 
 test('client does not spam reconnect when connection closes immediately after opening', async (t) => {
   const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  // fully connect first time
+  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+
+  const [clientBp] = client.blindPeers.values()
+  t.is(clientBp.connects, 1, 'sanity: 1 initial connect')
+
+  // start a disconnect spam
   blindPeer.swarm.on('connection', (conn) => conn.destroy())
-  const client = createClient(t, swarm.dht, store, {
-    keys: [blindPeer.publicKey]
-  })
+  const [conn] = blindPeer.swarm.connections
+  conn.destroy()
 
-  await client.addCore(core)
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  // wait until first reconnect starts
+  while (clientBp.connects < 2) await sleep(10)
+  // give it time to see if it spams more reconnects
+  await sleep(200)
 
-  // 1 connect for the first attempt. It retries when the connection closes
-  // so 2 connects. Then it hangs on the backoff, so it doesn't increment more
-  t.is([...client.blindPeers.values()][0].connects, 2, 'did not reconnect spam')
+  t.is(clientBp.connects, 2, 'did not reconnect spam')
 })
 
 test('backoff decreases after successful connect', async (t) => {
