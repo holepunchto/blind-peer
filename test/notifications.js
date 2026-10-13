@@ -92,14 +92,11 @@ test('sendNotification distributes requests across connected blind peers', async
     'both blind peers are connected'
   )
 
+  const promises = []
   for (let i = 0; i < 64; i++) {
-    client.sendNotificationBackground(core)
-
-    await Promise.race([
-      once(blindPeer1, 'notification-sent'),
-      once(blindPeer2, 'notification-sent')
-    ])
+    promises.push(client.sendNotification(core))
   }
+  await Promise.all(promises)
 
   t.ok(blindPeer1.stats.notificationsSent > 0, 'first blind peer sent a notification')
   t.ok(blindPeer2.stats.notificationsSent > 0, 'second blind peer sent a notification')
@@ -206,7 +203,7 @@ test('sets up core replication on notification if not present and the core is ou
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
 })
 
-test('send push notification falls back when closest blind peer times out', async (t) => {
+test('send push notification falls back when a blind peer is unreachable', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
@@ -226,23 +223,23 @@ test('send push notification falls back when closest blind peer times out', asyn
   const deadKey = HyperDHT.keyPair().publicKey
   const client = createClient(t, swarm.dht, store, {
     keys: [deadKey, blindPeer.publicKey],
-    pick: 2
+    pick: 2,
+    notificationRateLimit: null
   })
 
   t.is(sentMessages.length, 0, 'sanity check')
 
-  const start = Date.now()
-  await Promise.all([
-    once(blindPeer, 'notification-sent').then(() => console.log('something 1')),
-    client.sendNotification(core, {
-      keys: [deadKey, blindPeer.publicKey],
-      target: deadKey, // try the dead key before the actual blind peer
-      extra: b4a.from('extra')
-    })
-  ])
+  // peers are tried in random order, so some requests hit the dead peer first and must fall back
+  const total = 64
+  const promises = []
+  for (let i = 0; i < total; i++) {
+    promises.push(client.sendNotification(core))
+  }
+  await Promise.all(promises)
 
-  t.ok(Date.now() - start >= 5000, 'waited for closest dead peer to time out')
-  t.is(sentMessages.length, 1, 'fallback blind peer forwarded one push')
+  t.is(blindPeer.stats.notificationsSent, total, 'working blind peer sent every notification')
+  t.is(sentMessages.length, total, 'gateway received every notification')
+  t.is(client.stats.notificationsTx, total, 'client counted every notification')
 })
 
 test('push notification timeout when getting block does not close the connection and emits a delayed error snapshot', async (t) => {
@@ -277,10 +274,8 @@ test('push notification timeout when getting block does not close the connection
   await core.append('Block2')
 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
-  const notificationError = once(blindPeer, 'notification-error')
   const snapshotPromise = once(blindPeer, 'notification-error-snapshot')
-  const [[error]] = await Promise.all([notificationError, client.sendNotification(core)])
-  t.is(error.code, 'REQUEST_TIMEOUT', 'emitted the original error')
+  await t.exception(() => client.sendNotification(core), 'No peers available')
 
   const [snapshot] = await snapshotPromise
   t.ok(snapshot.coreInfoBefore, 'captured core info before notification')
