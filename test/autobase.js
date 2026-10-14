@@ -332,8 +332,6 @@ test.solo('blind-peering respects max batch options for the writer cores', async
   const log = (msg) => console.log(`[${Date.now() - start}ms] ${msg}`)
 
   const { bootstrap } = await getTestnet(t)
-  t.teardown(() => log('teardown start'), { order: -Infinity })
-  t.teardown(() => log('teardown end'), { order: Infinity })
   log('testnet ready')
 
   const { blindPeer } = await initBlindPeer(t, bootstrap)
@@ -343,11 +341,10 @@ test.solo('blind-peering respects max batch options for the writer cores', async
     swarm: indexerSwarm,
     base: indexer,
     store: indexerStore
-  } = await setupAutobaseHolder(t, bootstrap)
+  } = await setupAutobaseHolder(t, bootstrap, null, { ackInterval: 0 })
   log('indexer ready')
   await indexerSwarm.flush()
   log('indexer flushed')
-  t.is(indexer.activeWriters.map.size, 1, 'sanity check: first active writer is itself')
 
   const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
 
@@ -356,11 +353,11 @@ test.solo('blind-peering respects max batch options for the writer cores', async
     peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
     log(`writer ${i} ready`)
   }
-
-  // Give some time for them to gossip their lengths
-  await sleep(500)
-  log('gossip wait done')
+  // 6 newly added plus indexer
   t.is(indexer.activeWriters.map.size, 7, 'sanity check: all active writers')
+  // Give some time for them to gossip their lengths
+  while (indexer.view.length !== 6) await once(indexer, 'update')
+  log('gossip wait done')
   t.is(blindPeer.stats.activations, 0, 'sanity check: blind peer has no activations')
   const initLengths = getLengths(indexer)
 
@@ -374,7 +371,7 @@ test.solo('blind-peering respects max batch options for the writer cores', async
     await client.addAutobase(indexer)
     log('addAutobase done')
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await sleep(500)
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
     t.is(blindPeer.stats.activations, 7, '3 views and 4 indexer cores activated')
   }

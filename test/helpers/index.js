@@ -53,7 +53,7 @@ function createClient(t, dht, store, opts) {
 async function loadAutobase(
   store,
   autobaseBootstrap = null,
-  { addIndexers = true, namespace = 'base' } = {}
+  { addIndexers = true, namespace = 'base', autobaseOpts = {} } = {}
 ) {
   const open = (store) => {
     return store.get('view', { valueEncoding: 'json' })
@@ -76,7 +76,8 @@ async function loadAutobase(
     apply,
     valueEncoding: 'json',
     ackInterval: 10,
-    ackThreshold: 0
+    ackThreshold: 0,
+    ...autobaseOpts
   })
   await base.ready()
 
@@ -305,9 +306,9 @@ async function setupMuxer(t, swarm, store, publicKey) {
   return muxer
 }
 
-async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null) {
+async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null, autobaseOpts = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap)
-  const { wakeup, base } = await loadAutobase(store, autobaseBootstrap)
+  const { wakeup, base } = await loadAutobase(store, autobaseBootstrap, { autobaseOpts })
   swarm.join(base.discoveryKey)
 
   return { swarm, store, base, wakeup }
@@ -334,7 +335,7 @@ async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   ])
 
   const nr = writerI++
-  await base.append(`Message from writer ${nr}`)
+  await Promise.all([once(indexer, 'writer'), base.append(`Message from writer ${nr}`)])
   const client = createClient(t, swarm.dht, store, {
     ...clientOpts,
     wakeup: base.wakeupProtocol,
