@@ -327,37 +327,27 @@ test('adding autobase cores only results in replication sessions if there are le
   }
 })
 
-test.solo('blind-peering respects max batch options for the writer cores', async (t) => {
-  const start = Date.now()
-  const log = (msg) => console.log(`[${Date.now() - start}ms] ${msg}`)
-
+test('blind-peering respects max batch options for the writer cores', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  log('testnet ready')
-
   const { blindPeer } = await initBlindPeer(t, bootstrap)
-  log('blind peer ready')
-
   let {
     swarm: indexerSwarm,
     base: indexer,
     store: indexerStore
   } = await setupAutobaseHolder(t, bootstrap, null, { ackInterval: 0 })
-  log('indexer ready')
   await indexerSwarm.flush()
-  log('indexer flushed')
 
   const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
 
   const peers = []
   for (let i = 0; i < 4; i++) {
     peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
-    log(`writer ${i} ready`)
   }
   // 4 newly added plus indexer
   t.is(indexer.activeWriters.map.size, 5, 'sanity check: all active writers')
-  // Give some time for them to gossip their lengths
+
+  // Wait until they gossip their lengths
   while (indexer.view.length !== 4) await once(indexer, 'update')
-  log('gossip wait done')
   t.is(blindPeer.stats.activations, 0, 'sanity check: blind peer has no activations')
   const initLengths = getLengths(indexer)
 
@@ -369,13 +359,11 @@ test.solo('blind-peering respects max batch options for the writer cores', async
       maxBatchMax: 3
     })
     await client.addAutobase(indexer)
-    log('addAutobase done')
 
     await sleep(500)
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
     t.is(blindPeer.stats.activations, 6, '3 views and 3 indexer cores activated')
   }
-  log('body done')
 })
 
 test('wakeup', async (t) => {
