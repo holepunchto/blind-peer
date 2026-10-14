@@ -345,6 +345,19 @@ async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   return { client, base, store, swarm, wakeup: base.wakeupProtocol }
 }
 
+function waitForEvents(emitter, name, times) {
+  return new Promise((resolve) => {
+    const events = []
+    const onevent = (...args) => {
+      events.push(args)
+      if (events.length < times) return
+      emitter.off(name, onevent)
+      resolve(events)
+    }
+    emitter.on(name, onevent)
+  })
+}
+
 function sleep(delay = 1000) {
   return new Promise((resolve) => setTimeout(resolve, delay))
 }
@@ -396,5 +409,6 @@ module.exports = {
   setupAutobeeHolder,
   getWakeupPeer,
   sleep,
+  waitForEvents,
   createClient
 }

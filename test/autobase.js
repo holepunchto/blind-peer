@@ -3,7 +3,6 @@ const { once } = require('events')
 const b4a = require('b4a')
 const Hyperswarm = require('hyperswarm')
 const crypto = require('hypercore-crypto')
-const rrp = require('resolve-reject-promise')
 const {
   DEBUG,
   clientOpts,
@@ -16,6 +15,7 @@ const {
   setupAutobaseHolder,
   getWakeupPeer,
   sleep,
+  waitForEvents,
   createClient
 } = require('./helpers')
 
@@ -280,17 +280,7 @@ test('adding autobase cores only results in replication sessions if there are le
   {
     const client = createClient(t, indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
 
-    const { promise, resolve } = rrp()
-    let addCoresDone = 0
-    const onaddcores = () => {
-      addCoresDone++
-      if (addCoresDone === 2) {
-        resolve()
-        blindPeer.off('add-cores-done', onaddcores)
-      }
-    }
-    blindPeer.on('add-cores-done', onaddcores)
-    await Promise.all([promise, client.addAutobase(indexer)])
+    await Promise.all([waitForEvents(blindPeer, 'add-cores-done', 2), client.addAutobase(indexer)])
 
     t.is(blindPeer.stats.activations, 6, '3 views and all 3 indexer core activated')
     await new Promise((resolve) => setTimeout(resolve, 500)) // Give time to download the cores
@@ -358,9 +348,8 @@ test.solo('blind-peering respects max batch options for the writer cores', async
       maxBatchMin: 1,
       maxBatchMax: 3
     })
-    await client.addAutobase(indexer)
+    await Promise.all([waitForEvents(blindPeer, 'add-cores-done', 2), client.addAutobase(indexer)])
 
-    await sleep(500)
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
     t.is(blindPeer.stats.activations, 6, '3 views and 3 indexer cores activated')
   }
