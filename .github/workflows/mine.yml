@@ -27,11 +27,6 @@ jobs:
         file: ${{ fromJSON(inputs.files) }}
     name: Mine ${{ matrix.file }} (${{ matrix.os }})
     steps:
-      - name: Disable Defender real-time scanning
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - name: Put temp dirs on a Dev Drive
         if: runner.os == 'Windows'
         continue-on-error: true
