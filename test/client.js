@@ -290,23 +290,21 @@ test('client addCore dedups inactive cores when needed', async (t) => {
 
 test('client does not spam reconnect when connection closes immediately after opening', async (t) => {
   const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   blindPeer.swarm.on('connection', (conn) => conn.destroy())
   const client = createClient(t, swarm.dht, store, {
     keys: [blindPeer.publicKey]
   })
 
-  await client.addCore(core)
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  client.addCoreBackground(core)
+  await sleep(500)
 
-  // 1 connect for the first attempt. It retries when the connection closes
-  // so 2 connects. Then it hangs on the backoff, so it doesn't increment more
-  t.is([...client.blindPeers.values()][0].connects, 2, 'did not reconnect spam')
+  // connects is 1 or 2 depending on blindPeer connection destruction timing
+  // 1 - first connection loop, stays at this if blindPeer destroys connection before client opens the socket
+  // 2 - goes to 2nd connection loop at most, if after 1st success, the reconnect loop started.
+  // 2nd loop should never succeed because it's at the backoff after the 1st loop.
+  t.ok([...client.blindPeers.values()][0].connects <= 2, 'did not reconnect spam')
 })
 
 test('backoff decreases after successful connect', async (t) => {
