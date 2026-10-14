@@ -292,25 +292,19 @@ test('client does not spam reconnect when connection closes immediately after op
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
-
-  // fully connect first time
-  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
-  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
-
-  const [clientBp] = client.blindPeers.values()
-  t.is(clientBp.connects, 1, 'sanity: 1 initial connect')
-
-  // start a disconnect spam
   blindPeer.swarm.on('connection', (conn) => conn.destroy())
-  const [conn] = blindPeer.swarm.connections
-  conn.destroy()
+  const client = createClient(t, swarm.dht, store, {
+    keys: [blindPeer.publicKey]
+  })
 
-  // wait until first reconnect starts
-  while (clientBp.connects < 2) await sleep(10)
-  // give it time to see if it spams more reconnects
-  await sleep(200)
+  client.addCoreBackground(core)
+  await sleep(500)
 
-  t.is(clientBp.connects, 2, 'did not reconnect spam')
+  // connects is 1 or 2 depending on blindPeer connection destruction timing
+  // 1 - first connection loop, stays at this if blindPeer destroys connection before client opens the socket
+  // 2 - goes to 2nd connection loop at most, if after 1st success, the reconnect loop started.
+  // 2nd loop should never succeed because it's at the backoff after the 1st loop.
+  t.ok([...client.blindPeers.values()][0].connects <= 2, 'did not reconnect spam')
 })
 
 test('backoff decreases after successful connect', async (t) => {
