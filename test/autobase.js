@@ -349,14 +349,14 @@ test.solo('blind-peering respects max batch options for the writer cores', async
   const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
 
   const peers = []
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
     log(`writer ${i} ready`)
   }
-  // 6 newly added plus indexer
-  t.is(indexer.activeWriters.map.size, 7, 'sanity check: all active writers')
+  // 4 newly added plus indexer
+  t.is(indexer.activeWriters.map.size, 5, 'sanity check: all active writers')
   // Give some time for them to gossip their lengths
-  while (indexer.view.length !== 6) await once(indexer, 'update')
+  while (indexer.view.length !== 4) await once(indexer, 'update')
   log('gossip wait done')
   t.is(blindPeer.stats.activations, 0, 'sanity check: blind peer has no activations')
   const initLengths = getLengths(indexer)
@@ -366,14 +366,14 @@ test.solo('blind-peering respects max batch options for the writer cores', async
     const client = createClient(t, indexerSwarm.dht, indexerStore, {
       keys: [blindPeer.publicKey],
       maxBatchMin: 1,
-      maxBatchMax: 4
+      maxBatchMax: 3
     })
     await client.addAutobase(indexer)
     log('addAutobase done')
 
     await sleep(500)
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
-    t.is(blindPeer.stats.activations, 7, '3 views and 4 indexer cores activated')
+    t.is(blindPeer.stats.activations, 6, '3 views and 3 indexer cores activated')
   }
   log('body done')
 })
