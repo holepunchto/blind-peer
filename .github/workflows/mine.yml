@@ -28,34 +28,8 @@ jobs:
     name: Mine ${{ matrix.file }} (${{ matrix.os }})
     steps:
       - uses: holepunchto/actions/bare-base@v1
-      - name: Dependency versions
-        shell: bash
-        run: |
-          bare --version || true
-          npm ls bare-subprocess udx-native rocksdb-native sodium-native hyperdht hyperswarm corestore hypercore autobase blind-peering || true
-      - name: Enable crash dumps
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
-          New-Item -Path $key -Force | Out-Null
-          New-ItemProperty -Path $key -Name DumpFolder -Value "$env:RUNNER_TEMP\dumps" -PropertyType ExpandString -Force | Out-Null
-          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
-          New-ItemProperty -Path $key -Name DumpCount -Value 5 -PropertyType DWord -Force | Out-Null
-      - name: Mine
-        shell: bash
+      - shell: bash
         env:
           FILE: ${{ matrix.file }}
           MINERS: ${{ inputs.miners }}
         run: timeout 15m ./node_modules/.bin/brittle-bare -m "$MINERS" "$FILE" || [ $? -eq 124 ]
-      - name: Windows crash events
-        if: failure() && runner.os == 'Windows'
-        shell: pwsh
-        run: Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error', 'Windows Error Reporting' } -MaxEvents 20 -ErrorAction SilentlyContinue | Format-List TimeCreated, Id, ProviderName, Message
-      - name: Upload crash dumps
-        if: failure() && runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: crash-dumps-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/dumps
-          if-no-files-found: ignore
