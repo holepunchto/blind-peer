@@ -327,27 +327,75 @@ test('adding autobase cores only results in replication sessions if there are le
   }
 })
 
-test('blind-peering respects max batch options for the writer cores', async (t) => {
+test.solo('blind-peering respects max batch options for the writer cores', async (t) => {
+  const start = Date.now()
+  const log = (msg) => console.log(`[${Date.now() - start}ms] ${msg}`)
+  const pid = global.Bare ? require('bare-os').pid() : process.pid
+  log(`pid ${pid}`)
+
   const { bootstrap } = await getTestnet(t)
+  t.teardown(() => log('teardown start'), { order: -Infinity })
+  log('testnet ready')
+
   const { blindPeer } = await initBlindPeer(t, bootstrap)
+  log('blind peer ready')
+
   let {
     swarm: indexerSwarm,
     base: indexer,
     store: indexerStore
   } = await setupAutobaseHolder(t, bootstrap, null, { ackInterval: 0 })
+  log('indexer ready')
   await indexerSwarm.flush()
+  log('indexer flushed')
+
+  indexerSwarm.on('connection', (conn) => {
+    log('indexer: connection opened')
+    conn.on('close', () => log('indexer: connection closed'))
+  })
 
   const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
 
+  const addWriter = async (i) => {
+    const { store, swarm } = await setupPeer(t, bootstrap)
+    log(`writer ${i}: peer set up`)
+    swarm.on('connection', (conn) => {
+      log(`writer ${i}: connection opened`)
+      conn.on('close', () => log(`writer ${i}: connection closed`))
+    })
+
+    const { base } = await loadAutobase(store, indexer.local.key, { addIndexers: false })
+    log(`writer ${i}: autobase loaded`)
+    swarm.join(base.discoveryKey)
+
+    await Promise.all([
+      indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
+      once(base, 'writable')
+    ])
+    log(`writer ${i}: writable`)
+
+    await Promise.all([once(indexer, 'writer'), base.append(`Message from writer ${i}`)])
+    log(`writer ${i}: message reached indexer`)
+
+    createClient(t, swarm.dht, store, {
+      ...clientOpts,
+      wakeup: base.wakeupProtocol,
+      keys: [blindPeer.publicKey]
+    })
+    return { base, store, swarm }
+  }
+
   const peers = []
   for (let i = 0; i < 4; i++) {
-    peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
+    peers.push(await addWriter(i))
+    log(`writer ${i} ready`)
   }
   // 4 newly added plus indexer
   t.is(indexer.activeWriters.map.size, 5, 'sanity check: all active writers')
 
   // Wait until they gossip their lengths
   while (indexer.view.length !== 4) await once(indexer, 'update')
+  log('view has all messages')
   t.is(blindPeer.stats.activations, 0, 'sanity check: blind peer has no activations')
   const initLengths = getLengths(indexer)
 
@@ -359,11 +407,13 @@ test('blind-peering respects max batch options for the writer cores', async (t) 
       maxBatchMax: 3
     })
     await client.addAutobase(indexer)
+    log('addAutobase done')
 
     await sleep(500)
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
     t.is(blindPeer.stats.activations, 6, '3 views and 3 indexer cores activated')
   }
+  log('body done')
 })
 
 test('wakeup', async (t) => {
