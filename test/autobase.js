@@ -3,7 +3,6 @@ const { once } = require('events')
 const b4a = require('b4a')
 const Hyperswarm = require('hyperswarm')
 const crypto = require('hypercore-crypto')
-const rrp = require('resolve-reject-promise')
 const {
   DEBUG,
   clientOpts,
@@ -16,6 +15,7 @@ const {
   setupAutobaseHolder,
   getWakeupPeer,
   sleep,
+  waitForEvents,
   createClient
 } = require('./helpers')
 
@@ -280,17 +280,7 @@ test('adding autobase cores only results in replication sessions if there are le
   {
     const client = createClient(t, indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
 
-    const { promise, resolve } = rrp()
-    let addCoresDone = 0
-    const onaddcores = () => {
-      addCoresDone++
-      if (addCoresDone === 2) {
-        resolve()
-        blindPeer.off('add-cores-done', onaddcores)
-      }
-    }
-    blindPeer.on('add-cores-done', onaddcores)
-    await Promise.all([promise, client.addAutobase(indexer)])
+    await Promise.all([waitForEvents(blindPeer, 'add-cores-done', 2), client.addAutobase(indexer)])
 
     t.is(blindPeer.stats.activations, 6, '3 views and all 3 indexer core activated')
     await new Promise((resolve) => setTimeout(resolve, 500)) // Give time to download the cores
@@ -329,43 +319,39 @@ test('adding autobase cores only results in replication sessions if there are le
 
 test('blind-peering respects max batch options for the writer cores', async (t) => {
   const { bootstrap } = await getTestnet(t)
-
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
-
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
   let {
     swarm: indexerSwarm,
     base: indexer,
     store: indexerStore
-  } = await setupAutobaseHolder(t, bootstrap)
+  } = await setupAutobaseHolder(t, bootstrap, null, { ackInterval: 0 })
   await indexerSwarm.flush()
 
   const getLengths = (base) => [...base.activeWriters.map.values()].map((b) => b.core.length)
 
   const peers = []
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     peers.push(await getWakeupPeer(t, bootstrap, indexer, blindPeer))
   }
-  t.is(indexer.activeWriters.map.size, 6, 'all active writers (sanity check)')
+  // 4 newly added plus indexer
+  t.is(indexer.activeWriters.map.size, 5, 'sanity check: all active writers')
 
-  // Give some time for them to gossip their lengths
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  // Wait until they gossip their lengths
+  while (indexer.view.length !== 4) await once(indexer, 'update')
+  t.is(blindPeer.stats.activations, 0, 'sanity check: blind peer has no activations')
   const initLengths = getLengths(indexer)
-  t.is(blindPeer.stats.activations, 0, 'sanity check')
 
   // A first writer adds the autobase
   {
     const client = createClient(t, indexerSwarm.dht, indexerStore, {
       keys: [blindPeer.publicKey],
       maxBatchMin: 1,
-      maxBatchMax: 4
+      maxBatchMax: 3
     })
-    await client.addAutobase(indexer)
+    await Promise.all([waitForEvents(blindPeer, 'add-cores-done', 2), client.addAutobase(indexer)])
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
     t.alike(getLengths(indexer), initLengths, 'sanity check: autobase cores did not change')
-    t.is(blindPeer.stats.activations, 7, '3 views and 4 indexer cores activated')
+    t.is(blindPeer.stats.activations, 6, '3 views and 3 indexer cores activated')
   }
 })
 
