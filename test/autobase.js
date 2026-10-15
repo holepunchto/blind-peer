@@ -317,7 +317,7 @@ test('adding autobase cores only results in replication sessions if there are le
   }
 })
 
-test.solo('blind-peering respects max batch options for the writer cores', async (t) => {
+test('blind-peering respects max batch options for the writer cores', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   let {
