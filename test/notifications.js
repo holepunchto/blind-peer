@@ -7,6 +7,8 @@ const Hyperswarm = require('hyperswarm')
 const crypto = require('hypercore-crypto')
 const HyperDHTAddress = require('hyperdht-address')
 const blindPush = require('blind-push')
+const { performance } = require('perf_hooks')
+
 const {
   setupCoreHolder,
   setupBlindPeer,
@@ -410,10 +412,10 @@ test('notification for an unknown core errors', async (t) => {
     }
   }
 
-  const start = Date.now()
+  const start = performance.now()
   await Promise.all([once(blindPeer, 'notification-error'), muxer.sendNotification(request)])
 
-  t.ok(Date.now() - start >= 500, 'waited the retry timeout before erroring')
+  t.ok(performance.now() - start >= 500, 'waited the retry timeout before erroring')
   t.is(sentMessages.length, 0, 'nothing forwarded for an unknown core')
 })
 

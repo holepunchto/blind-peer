@@ -33,6 +33,7 @@
     "autobase": "^7.0.18",
     "autobee": "^2.0.0",
     "bare-events": "^2.8.2",
+    "bare-performance": "^2.1.1",
     "bare-process": "^4.2.2",
     "bare-prom-client": "^15.1.3",
     "blind-peer-router": "^0.2.2",
@@ -77,6 +78,10 @@
     "prom-client": {
       "bare": "bare-prom-client",
       "default": "prom-client"
+    },
+    "perf_hooks": {
+      "bare": "bare-performance",
+      "default": "perf_hooks"
     }
   }
 }
