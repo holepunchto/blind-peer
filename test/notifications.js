@@ -387,7 +387,7 @@ test('notification racing an in-flight add-cores waits for the core instead of e
   t.is(sentMessages.length, 1, 'notification forwarded after the core landed')
 })
 
-test('notification for an unknown core errors', async (t) => {
+test.solo('notification for an unknown core errors', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
