@@ -542,8 +542,28 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
 })
 
-test('client can opt out from connection metadata', async (t) => {
-  t.plan(3)
+test.solo('client sends handshake', async (t) => {
+  t.plan(4)
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  blindPeer.on('add-core', (_, __, stream) => {
+    const handshake = stream.userData.getLastChannel({ protocol: 'blind-peer' }).handshake
+    t.is(typeof handshake?.blindPeeringVersion, 'string')
+    t.is(handshake?.clientName, 'app')
+    t.is(handshake?.clientVersion, '3.2.1')
+    t.ok(['linux', 'win32', 'darwin'].includes(handshake?.osPlatform))
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const client = createClient(t, swarm.dht, store, {
+    keys: [blindPeer.publicKey],
+    client: { name: 'app', version: '3.2.1' }
+  })
+  client.addCoreBackground(core)
+})
+
+test.solo('client can opt out from connection metadata', async (t) => {
+  t.plan(4)
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
   blindPeer.on('add-core', (_, __, stream) => {
@@ -551,6 +571,7 @@ test('client can opt out from connection metadata', async (t) => {
     t.is(handshake.blindPeeringVersion, null)
     t.is(handshake.clientName, null)
     t.is(handshake.clientVersion, null)
+    t.is(handshake.osPlatform, null)
   })
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
