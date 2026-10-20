@@ -415,7 +415,8 @@ test('notification for an unknown core errors', async (t) => {
   const start = performance.now()
   await Promise.all([once(blindPeer, 'notification-error'), muxer.sendNotification(request)])
 
-  t.ok(performance.now() - start >= 500, 'waited the retry timeout before erroring')
+  // timeouts can fire up to 0.99ms early, for the test case setting it to 490
+  t.ok(performance.now() - start >= 490, 'waited the retry timeout before erroring')
   t.is(sentMessages.length, 0, 'nothing forwarded for an unknown core')
 })
 
