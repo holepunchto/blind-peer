@@ -2,6 +2,7 @@ const test = require('brittle')
 const { once } = require('events')
 const b4a = require('b4a')
 const rrp = require('resolve-reject-promise')
+const os = require('os')
 const {
   setupCoreHolder,
   setupBlindPeer,
@@ -542,7 +543,7 @@ test('destroying peer in blind-peering clears autobase listeners', async (t) => 
   t.is(peer.bases.size, 0, 'destroy() clears the bases map of the peer')
 })
 
-test.solo('client sends handshake', async (t) => {
+test('client sends handshake', async (t) => {
   t.plan(4)
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
@@ -551,7 +552,7 @@ test.solo('client sends handshake', async (t) => {
     t.is(typeof handshake?.blindPeeringVersion, 'string')
     t.is(handshake?.clientName, 'app')
     t.is(handshake?.clientVersion, '3.2.1')
-    t.ok(['linux', 'win32', 'darwin'].includes(handshake?.osPlatform))
+    t.is(handshake?.osPlatform, os.platform())
   })
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
@@ -562,7 +563,7 @@ test.solo('client sends handshake', async (t) => {
   client.addCoreBackground(core)
 })
 
-test.solo('client can opt out from connection metadata', async (t) => {
+test('client can opt out from connection metadata', async (t) => {
   t.plan(4)
   const { bootstrap } = await getTestnet(t)
   const { blindPeer } = await initBlindPeer(t, bootstrap)
