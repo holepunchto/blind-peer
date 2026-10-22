@@ -149,8 +149,8 @@ test('client gc accounts for pending notifications', async (t) => {
 
   // block mid-sendNotification to test state mid-flight
   const { promise, resolve } = rrp()
-  const send = peer.channel.sendNotification.bind(peer.channel)
-  peer.channel.sendNotification = async (request) => {
+  const send = peer.channel.requestSendNotification.bind(peer.channel)
+  peer.channel.requestSendNotification = async (request) => {
     await promise
     return send(request)
   }
