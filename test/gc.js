@@ -136,13 +136,15 @@ test('gc correctly counts cleared bytes for cores that were gced before', async 
   await appendBlocks(coreA, 1)
   await appendBlocks(coreB, 6)
 
+  await waitUntil(
+    t,
+    async () =>
+      (await blindPeer.db.getCoreRecord(coreA.key)).bytesAllocated > 0 &&
+      (await blindPeer.db.getCoreRecord(coreB.key)).bytesAllocated > 10,
+    'the blind peer recorded the appended blocks'
+  )
   {
-    await assertUntilIs(
-      t,
-      () => blindPeer.digest.bytesAllocated,
-      17,
-      'digest bytesAllocated 17 after cores append'
-    )
+    t.is(blindPeer.digest.bytesAllocated, 17, 'digest bytesAllocated 17 after cores append')
     const recordA = await blindPeer.db.getCoreRecord(coreA.key)
     const recordB = await blindPeer.db.getCoreRecord(coreB.key)
     t.is(recordA.bytesAllocated, 1, 'coreA bytesAllocated 1 after gc and readd')
