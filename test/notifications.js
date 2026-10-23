@@ -17,7 +17,7 @@ const {
   getTestnet,
   setupPeer,
   setupMuxer,
-  sleep,
+  assertUntilIs,
   createClient
 } = require('./helpers')
 
@@ -338,11 +338,8 @@ test('client sendNotification gets rate limited', async (t) => {
   client.sendNotificationBackground(core)
   const lastSend = client.sendNotification(core)
 
-  await sleep(500)
-  t.is(client.stats.notificationsTx, 2, 'burst 2')
-
-  await sleep(500)
-  t.is(client.stats.notificationsTx, 3, 'send 1 for passed interval')
+  await assertUntilIs(t, () => client.stats.notificationsTx, 2, 'burst 2')
+  await assertUntilIs(t, () => client.stats.notificationsTx, 3, 'send 1 for passed interval')
 
   await t.exception(async () => await lastSend, /Timed out/, 'throw for time out')
 })

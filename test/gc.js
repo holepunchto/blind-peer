@@ -11,7 +11,8 @@ const {
   waitForCoresDownloaded,
   runGc,
   initBlindPeer,
-  sleep
+  waitUntil,
+  assertUntilIs
 } = require('./helpers')
 
 test('garbage collection when space limit reached', async (t) => {
@@ -59,7 +60,11 @@ test('garbage collection when space limit reached', async (t) => {
   }
 
   await cores[gcdCoreI].append('Block-200')
-  await sleep(1000)
+  await waitUntil(
+    t,
+    async () => (await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)).bytesAllocated > 0,
+    'the blind peer recorded the new block'
+  )
 
   const updatedRecord = await blindPeer.db.getCoreRecord(cores[gcdCoreI].key)
 
@@ -99,7 +104,7 @@ test('gc correctly counts cleared bytes for cores that were gced before', async 
   await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(coreA, { priority: 0 })])
   await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(coreB, { priority: 1 })])
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitForCoresDownloaded(blindPeer, [coreA, coreB])
 
   {
     t.is(blindPeer.digest.bytesAllocated, 20, 'digest bytesAllocated 20 initially')
@@ -131,7 +136,13 @@ test('gc correctly counts cleared bytes for cores that were gced before', async 
   await appendBlocks(coreA, 1)
   await appendBlocks(coreB, 6)
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitUntil(
+    t,
+    async () =>
+      (await blindPeer.db.getCoreRecord(coreA.key)).bytesAllocated > 0 &&
+      (await blindPeer.db.getCoreRecord(coreB.key)).bytesAllocated > 10,
+    'the blind peer recorded the appended blocks'
+  )
   {
     t.is(blindPeer.digest.bytesAllocated, 17, 'digest bytesAllocated 17 after cores append')
     const recordA = await blindPeer.db.getCoreRecord(coreA.key)
@@ -184,8 +195,7 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
     })
   ])
 
-  // wait a bit for downloading blocks
-  await new Promise((resolve) => setTimeout(resolve, 1_000))
+  await waitForCoresDownloaded(blindPeer, [core])
 
   const expectedBytes = core.byteLength
   {
@@ -207,7 +217,7 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   {
     const blindCore = blindPeer.store.get({ key: core.key })
     await blindCore.ready()
-    t.is(blindCore.contiguousLength, 0, 'block content is gone after gc')
+    await assertUntilIs(t, () => blindCore.contiguousLength, 0, 'block content is gone after gc')
     await blindCore.close()
   }
 
@@ -229,12 +239,15 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
     t.is(blindPeer.stats.coreResetDownload, 1, 'core got reset')
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 1_000))
-
   {
     const blindCore = blindPeer.store.get({ key: core.key })
     await blindCore.ready()
-    t.is(blindCore.contiguousLength, 10, 'block content comeback after priority 2')
+    await assertUntilIs(
+      t,
+      () => blindCore.contiguousLength,
+      10,
+      'block content comeback after priority 2'
+    )
     await blindCore.close()
   }
 
@@ -277,8 +290,7 @@ test('gc stats', async (t) => {
   client.addCoreBackground(cores[1], { priority: 1 })
   client.addCoreBackground(cores[0], { priority: 0 })
 
-  // time to download
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitForCoresDownloaded(blindPeer, [cores[0], cores[1]])
 
   t.is(blindPeer.digest.bytesAllocated, 12, 'sanity check on bytes allocated')
   await runGc(blindPeer)
@@ -295,8 +307,11 @@ test('gc stats', async (t) => {
 
   await cores[0].append(blocks)
 
-  // time to download
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitUntil(
+    t,
+    () => blindPeer.digest.bytesAllocated === 12,
+    'the blind peer saw the new blocks'
+  )
 
   await runGc(blindPeer)
   t.is(blindPeer.digest.bytesAllocated, 6, 'sanity check 1 core got gcd')
@@ -306,8 +321,8 @@ test('gc stats', async (t) => {
   t.is(blindPeer.stats.gc.firstTimeCoresGcd, 1, 'firstTimeCoresGcd')
 
   client.addCoreBackground(cores[2], { priority: 2 })
-  // time to download
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  await waitUntil(t, () => blindPeer.digest.bytesAllocated === 12, 'the blind peer added the core')
 
   await runGc(blindPeer)
   t.is(blindPeer.stats.gc.prio0Gcd, 2, 'prio0')
@@ -317,8 +332,12 @@ test('gc stats', async (t) => {
   t.is(blindPeer.stats.gc.firstTimeCoresGcd, 2, 'firstTimeCoresGcd')
 
   await cores[2].append(blocks)
-  // time to download
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  await waitUntil(
+    t,
+    () => blindPeer.digest.bytesAllocated === 12,
+    'the blind peer saw the new blocks'
+  )
 
   await runGc(blindPeer)
   t.is(blindPeer.stats.gc.prio2Gcd, 1, 'prio2')
@@ -355,9 +374,15 @@ test('can gc core that is not currently active', async (t) => {
   await swarm.destroy()
   await store.close()
   // TODO: expose corestore gc tick time (it takes 4 ticks to gc weak cores)
-  await sleep(10000)
-
-  t.is(blindPeer.activeReplication.size, 0, 'sanity check (core not active)')
+  await assertUntilIs(
+    t,
+    () => blindPeer.activeReplication.size,
+    0,
+    'sanity check (core not active)',
+    {
+      timeout: 15_000
+    }
+  )
   t.ok(blindPeer.digest.bytesAllocated > 10_000, 'sanity check')
 
   await runGc(blindPeer)

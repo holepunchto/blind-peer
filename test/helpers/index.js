@@ -4,6 +4,7 @@ const Corestore = require('corestore')
 const tmpDir = require('test-tmp')
 const { once } = require('events')
 const b4a = require('b4a')
+const crypto = require('hypercore-crypto')
 const Client = require('blind-peering')
 const BlindPeerMuxer = require('blind-peer-muxer')
 const Hyperswarm = require('hyperswarm')
@@ -195,6 +196,24 @@ async function getBlindPeerCoreLength(blindPeer, key) {
   return core.length
 }
 
+async function getBlindPeerStoredLength(blindPeer, key) {
+  const [info] = await blindPeer.store.storage.getInfos([crypto.discoveryKey(key)])
+  return info?.head?.length ?? 0
+}
+
+function waitUntilStoredOn(t, blindPeers, core, count) {
+  return waitUntil(
+    t,
+    async () => {
+      const lengths = await Promise.all(
+        blindPeers.map((blindPeer) => getBlindPeerStoredLength(blindPeer, core.key))
+      )
+      return lengths.filter((length) => length === core.length).length === count
+    },
+    `the core is stored on ${count} blind peers`
+  )
+}
+
 async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair }) {
   const dht = new HyperDHT({ bootstrap, keyPair })
   t.teardown(() => dht.destroy(), { order: 4000 })
@@ -309,6 +328,7 @@ async function setupMuxer(t, swarm, store, publicKey) {
 async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null, autobaseOpts = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap)
   const { wakeup, base } = await loadAutobase(store, autobaseBootstrap, { autobaseOpts })
+  t.teardown(() => base.close(), { order: -1 })
   swarm.join(base.discoveryKey)
 
   return { swarm, store, base, wakeup }
@@ -328,6 +348,7 @@ async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   const { store, swarm } = await setupPeer(t, bootstrap)
 
   const { base } = await loadAutobase(store, indexer.local.key, { addIndexers: false })
+  t.teardown(() => base.close(), { order: -1 })
   swarm.join(base.discoveryKey)
   await Promise.all([
     indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
@@ -360,6 +381,34 @@ function waitForEvents(emitter, name, times) {
 
 function sleep(delay = 1000) {
   return new Promise((resolve) => setTimeout(resolve, delay))
+}
+
+async function poll(condition, timeout) {
+  const deadline = Date.now() + timeout
+  while (!(await condition())) {
+    if (Date.now() >= deadline) return false
+    await sleep(10)
+  }
+  return true
+}
+
+async function waitUntil(t, condition, message, { timeout = 10_000 } = {}) {
+  if (await poll(condition, timeout)) return true
+  t.fail(`timed out waiting until ${message}`)
+  return false
+}
+
+async function assertUntilOk(t, condition, message, { timeout = 10_000 } = {}) {
+  const ok = await poll(condition, timeout)
+  t.ok(ok, message)
+  return ok
+}
+
+async function assertUntilIs(t, actual, expected, message, { timeout = 10_000 } = {}) {
+  let value
+  const ok = await poll(async () => (value = await actual()) === expected, timeout)
+  t.is(value, expected, message)
+  return ok
 }
 
 async function runGc(blindPeer) {
@@ -397,6 +446,8 @@ module.exports = {
   initBlindPeer,
   setupBlindPeers,
   getBlindPeerCoreLength,
+  getBlindPeerStoredLength,
+  waitUntilStoredOn,
   waitForCoresDownloaded,
   runGc,
   setupAdminClient,
@@ -410,5 +461,8 @@ module.exports = {
   getWakeupPeer,
   sleep,
   waitForEvents,
+  waitUntil,
+  assertUntilOk,
+  assertUntilIs,
   createClient
 }

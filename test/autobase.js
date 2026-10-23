@@ -14,8 +14,13 @@ const {
   setupPeer,
   setupAutobaseHolder,
   getWakeupPeer,
+  getBlindPeerStoredLength,
+  waitForCoresDownloaded,
   sleep,
   waitForEvents,
+  waitUntil,
+  assertUntilOk,
+  assertUntilIs,
   createClient
 } = require('./helpers')
 
@@ -150,11 +155,12 @@ test('client can change blind-peer for an autobase', async (t) => {
   await client.addAutobase(indexer)
   await indexer.append({ block: 1 })
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  const view = { key: indexer.views()[0].key, length: 2 }
+  await waitForCoresDownloaded(blindPeer, [view])
 
   client.setKeys([blindPeer2.publicKey])
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitForCoresDownloaded(blindPeer2, [view])
 
   await client.close()
   await indexerSwarm.destroy()
@@ -172,8 +178,7 @@ test('client can change blind-peer for an autobase', async (t) => {
     const core = readerStore.get({ key: indexer.views()[0].key, valueEncoding: 'json' })
     await core.ready()
     readerSwarm.joinPeer(blindPeerKey, { dht: readerSwarm.dht })
-
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await waitUntil(t, () => core.peers.length > 0, 'connected to the blind peer')
 
     const block = await core.get(1)
     t.alike(block, { block: 1 }, `${message} - alike`)
@@ -230,6 +235,7 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
 
   async function initAutobase(namespace = 'base') {
     const { base } = await loadAutobase(store, null, { namespace })
+    t.teardown(() => base.close(), { order: -1 })
     await base.append({ block: 0 })
     await base.append({ block: 1 })
 
@@ -290,6 +296,7 @@ test('adding autobase cores only results in replication sessions if there are le
     await indexer.close()
     {
       const { base } = await loadAutobase(indexerStore, null)
+      t.teardown(() => base.close(), { order: -1 })
       indexer = base
     }
 
@@ -303,17 +310,20 @@ test('adding autobase cores only results in replication sessions if there are le
     await indexer.close()
     {
       const { base } = await loadAutobase(indexerStore, null)
+      t.teardown(() => base.close(), { order: -1 })
       indexer = base
     }
 
     await indexer.append({ 'a new': 'length' })
 
     await Promise.all([once(blindPeer, 'add-cores-done'), client.addAutobase(indexer)])
-    await new Promise((resolve) => setTimeout(resolve, 500)) // Give time to finish gossiping lengths (normally redundant)
 
-    const lengthAtEnd = (await blindPeer.store.storage.getInfos([indexer.local.discoveryKey]))[0]
-      .head.length
-    t.is(lengthAtEnd, indexer.local.length, 'after add core they both know the same length')
+    await assertUntilIs(
+      t,
+      () => getBlindPeerStoredLength(blindPeer, indexer.local.key),
+      indexer.local.length,
+      'after add core they both know the same length'
+    )
   }
 })
 
@@ -337,7 +347,7 @@ test('blind-peering respects max batch options for the writer cores', async (t) 
   t.is(indexer.activeWriters.map.size, 5, 'sanity check: all active writers')
 
   // Wait until they gossip their lengths
-  while (indexer.view.length !== 4) await once(indexer, 'update')
+  await waitUntil(t, () => indexer.view.length === 4, 'the indexer applied every message')
   t.is(blindPeer.stats.activations, 0, 'sanity check: blind peer has no activations')
   const initLengths = getLengths(indexer)
 
@@ -363,7 +373,7 @@ test('wakeup', async (t) => {
   await blindPeer.swarm.flush()
 
   const { base: indexer, swarm: indexerSwarm } = await setupAutobaseHolder(t, bootstrap)
-  await new Promise((resolve) => setTimeout(resolve, 250)) // flush
+  await indexerSwarm.flush()
 
   const peers = []
   const nrPeers = 3
@@ -375,10 +385,14 @@ test('wakeup', async (t) => {
   for (const { client, base } of peers) {
     await client.addAutobase(base)
   }
-  await new Promise((resolve) => setTimeout(resolve, 1000))
 
+  await assertUntilOk(
+    t,
+    () => blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx,
+    'sent announce message'
+  )
+  await sleep(500) // no second session should get opened
   t.is(blindPeer.wakeup.stats.sessionsOpened, 1)
-  t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initWireAnnounceTx, 'sent announce message')
 
   // Add non-swarming user
   {
@@ -418,16 +432,16 @@ test('wakeup', async (t) => {
 
   await indexerSwarm.destroy()
   await Promise.all(peers.map((p) => p.swarm.destroy()))
-  // Give topic time to gc
-  await new Promise((resolve) => setTimeout(resolve, 1000))
 
-  t.is(
-    blindPeer.wakeup.stats.sessionsClosed,
+  await assertUntilIs(
+    t,
+    () => blindPeer.wakeup.stats.sessionsClosed,
     1,
     'session closed after all peers close their channel'
   )
-  t.is(
-    blindPeer.wakeup.stats.topicsGcd,
+  await assertUntilIs(
+    t,
+    () => blindPeer.wakeup.stats.topicsGcd,
     1,
     'topic garbage collected after all peers close their channel'
   )
@@ -447,8 +461,7 @@ test('add autobase calls router to resolve peers', async (t) => {
   await blindPeer.swarm.flush()
 
   await setupRouter(t, swarmRouter, [blindPeer])
-
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  await swarmRouter.flush()
 
   const {
     swarm: indexerSwarm,

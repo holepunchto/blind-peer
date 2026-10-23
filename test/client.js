@@ -9,9 +9,12 @@ const {
   initBlindPeer,
   setupBlindPeers,
   getBlindPeerCoreLength,
+  waitUntilStoredOn,
+  waitForCoresDownloaded,
   getTestnet,
   setupAutobaseHolder,
   sleep,
+  assertUntilIs,
   createClient
 } = require('./helpers')
 
@@ -33,14 +36,13 @@ test('client suspend/resume logic', async (t) => {
   await base.append('something')
 
   {
-    const coreAddedProm = once(blindPeer, 'add-core')
-    coreAddedProm.catch(() => {})
-    await client.addCore(core, { announce: false })
-
-    const [record] = await coreAddedProm
+    const [[record]] = await Promise.all([
+      once(blindPeer, 'add-core'),
+      once(blindPeer, 'add-cores-done'),
+      client.addCore(core, { announce: false })
+    ])
     t.alike(record.key, coreKey, 'added the core')
   }
-  await once(blindPeer, 'add-cores-done') // finish request
 
   {
     let nrHandled = 0
@@ -114,11 +116,10 @@ test('client gc logic', async (t) => {
   const coreKey = core.key
 
   {
-    const coreAddedProm = once(blindPeer, 'add-core')
-    coreAddedProm.catch(() => {})
-    await client.addCore(core, { announce: false })
-
-    const [record] = await coreAddedProm
+    const [[record]] = await Promise.all([
+      once(blindPeer, 'add-core'),
+      client.addCore(core, { announce: false })
+    ])
     t.alike(record.key, coreKey, 'added the core')
   }
 
@@ -126,9 +127,8 @@ test('client gc logic', async (t) => {
   t.is(client.blindPeers.size, 1, 'not yet gcd (sanity check')
   t.is(ref.cores.size, 1, 'client has 1 core (sanity check')
   await core.close()
-  await new Promise((resolve) => setTimeout(resolve, 1000))
 
-  t.is(client.blindPeers.size, 0, 'gcd after sufficient gc ticks')
+  await assertUntilIs(t, () => client.blindPeers.size, 0, 'gcd after sufficient gc ticks')
   t.is(ref.cores.size, 0, 'client no longer has the core')
 
   await swarm.destroy()
@@ -160,9 +160,8 @@ test('client gc accounts for pending notifications', async (t) => {
   t.ok(client._gc.has(peer), 'peer entered gc after core was closed')
 
   const sendNotification = client.sendNotification(store.get({ name: 'core' }))
-  await sleep(100)
 
-  t.is(peer.pendingNotifications, 1, 'peer has pending notification')
+  await assertUntilIs(t, () => peer.pendingNotifications, 1, 'peer has pending notification')
   t.absent(client._gc.has(peer), 'peer left gc')
 
   resolve()
@@ -206,15 +205,15 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   t.teardown(() => client.close())
 
-  await client.addCore(core)
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
   t.is(client.stats.addCore, 1, 'one add')
   t.is(client.stats.addCoresTx, 1, 'one tx')
   t.is(blindPeer.stats.addCoresRx, 1, 'one rx')
   t.is(blindPeer.stats.activations, 1, 'one activation')
 
+  await waitForCoresDownloaded(blindPeer, [core])
+
   await client.addCore(core)
-  await new Promise((resolve) => setTimeout(resolve, 500))
   t.is(client.stats.addCore, 1, 'dedups active add')
   t.is(client.stats.addCoresTx, 1, 'no duplicate tx')
   t.is(blindPeer.stats.addCoresRx, 1, 'no duplicate rx')
@@ -222,10 +221,9 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   // simulate reconnect
   await client.suspend()
-  await client.resume()
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.resume()])
 
   await client.addCore(core)
-  await new Promise((resolve) => setTimeout(resolve, 500))
   t.is(client.stats.addCore, 1, 'dedups after reconnect')
   t.is(client.stats.addCoresTx, 2, 'reconnect tx')
   t.is(blindPeer.stats.addCoresRx, 2, 'reconnect rx')
@@ -233,8 +231,7 @@ test('client addCore dedups repeated adds but only when needed', async (t) => {
 
   await core.append('additional block')
 
-  await client.addCore(core)
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
   t.is(client.stats.addCore, 2, 'adds changed core')
   t.is(client.stats.addCoresTx, 3, 'changed core tx')
   t.is(blindPeer.stats.addCoresRx, 3, 'changed core rx')
@@ -253,9 +250,7 @@ test('client addCore dedups new cores on existing connection', async (t) => {
   // existing blind-peer connection, but newly added core
   // with consecutive addCore not giving time to start replication
   const core2 = store.get({ name: 'core2' })
-  client.addCoreBackground(core2)
-  client.addCoreBackground(core2)
-  await sleep(500)
+  await Promise.all([client.addCore(core2), client.addCore(core2)])
 
   t.is(client.stats.addCoresTx, 2, 'dedup new core')
 })
@@ -311,9 +306,7 @@ test('client does not spam reconnect when connection closes immediately after op
 test('backoff decreases after successful connect', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
@@ -329,15 +322,15 @@ test('backoff decreases after successful connect', async (t) => {
   })
 
   await client.addCore(core)
-  await new Promise((resolve) => setTimeout(resolve, 100))
 
   const bp = [...client.blindPeers.values()][0]
   t.ok(bp.backoff.count > 0, 'not reset yet')
 
   // We need to wait for the backoff to finish (max 1.5s) and the reset to kick (200ms)
   // This time the connection stays open, so the reset happens
-  await new Promise((resolve) => setTimeout(resolve, 2000))
-  t.is(bp.backoff.count, 0, 'reset now')
+  await assertUntilIs(t, () => bp.backoff.count, 0, 'reset now', {
+    timeout: 2000
+  })
 })
 
 test('client picks blind peers when they have no groups', async (t) => {
@@ -355,7 +348,7 @@ test('client picks blind peers when they have no groups', async (t) => {
   })
 
   await client.addCore(core, { pick: 2 })
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitUntilStoredOn(t, blindPeers, core, 2)
 
   const lengths = await Promise.all(
     blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
@@ -379,7 +372,7 @@ test('client picks the blind peer closest to the target when they have no groups
 
   // a blind peer is always the closest one to its own key
   await client.addCore(core, { pick: 1, target: blindPeers[3].publicKey })
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitUntilStoredOn(t, blindPeers, core, 1)
 
   const lengths = await Promise.all(
     blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
@@ -402,7 +395,7 @@ test('client picks blind peers from different groups', async (t) => {
   })
 
   await client.addCore(core, { pick: 2, target: blindPeers[0].publicKey })
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitUntilStoredOn(t, blindPeers, core, 2)
 
   const lengths = await Promise.all(
     blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
@@ -427,7 +420,7 @@ test('client balances blind peers across groups when picking more than there are
   })
 
   await client.addCore(core, { pick: 4, target: blindPeers[0].publicKey })
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitUntilStoredOn(t, blindPeers, core, 4)
 
   const lengths = await Promise.all(
     blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
@@ -456,7 +449,7 @@ test('repeated addCore when not connected does not result in repeated infos and 
   // We do it here to have an easy assertion later
   client.addCoreBackground(core, { pick: 10 })
   await once(blindPeer, 'add-cores-done')
-  await new Promise((resolve) => setTimeout(resolve, 100)) // Give some more time for (incorrect) extra requests
+  await sleep(100) // Give some more time for (incorrect) extra requests
 
   const peer = client.blindPeers.get(b4a.toString(blindPeer.publicKey, 'hex'))
 
