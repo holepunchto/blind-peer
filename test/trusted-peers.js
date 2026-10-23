@@ -7,6 +7,8 @@ const {
   setupBlindPeer,
   getTestnet,
   setupPeer,
+  waitForCoresDownloaded,
+  waitUntil,
   createClient
 } = require('./helpers')
 
@@ -21,25 +23,22 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const coreAddedProm = once(blindPeer, 'add-core')
-  coreAddedProm.catch(() => {})
-
   t.is(blindPeer.activeReplication.size, 0, 'sanity check (no cores yet)')
 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
-  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core, { announce: true })])
-
-  const [record] = await coreAddedProm
+  const [[record]] = await Promise.all([
+    once(blindPeer, 'add-core'),
+    once(blindPeer, 'add-cores-done'),
+    client.addCore(core, { announce: true })
+  ])
   t.alike(record.key, coreKey, 'added the core')
   t.is(record.priority, 0, '0 Default priority')
   t.is(record.announce, true, 'announce set')
 
   t.is(blindPeer.activeReplication.size, 1, 'added to active replication set')
 
-  // TODO: expose an event in blind-peer which allows us to detect
-  // when a core has updated
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitForCoresDownloaded(blindPeer, [core])
   await client.close()
   await swarm.destroy() // So the core holder stops announcing the core
 
@@ -48,10 +47,7 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
     const core = store.get({ key: coreKey })
     await core.ready()
     swarm.join(core.discoveryKey)
-
-    // TODO: revert to flushing when swarm.flush issue solved
-    // await swarm.flush()
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await waitUntil(t, () => core.peers.length > 0, 'found the blind peer on the core topic')
 
     const block = await core.get(1)
     t.is(
@@ -71,24 +67,21 @@ test('Untrusted peers cannot set announce: true', async (t) => {
   await blindPeer.listen()
   await blindPeer.swarm.flush()
 
-  const coreAddedProm = once(blindPeer, 'add-core')
-  coreAddedProm.catch(() => {})
-
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
-  await client.addCore(core, { announce: true })
+  const [[record]] = await Promise.all([
+    once(blindPeer, 'add-core'),
+    client.addCore(core, { announce: true })
+  ])
 
   // TODO: a flow for the client to figure out if it got downgraded
 
-  const [record] = await coreAddedProm
   t.alike(record.key, coreKey, 'added the core')
   t.is(record.priority, 0, '0 Default priority')
   t.is(record.announce, false, 'announce corrected to false')
-  await swarm.destroy() // So the core holder stops announcing the core
 
-  // TODO: expose an event in blind-peer which allows us to detect
-  // when a core has updated
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitForCoresDownloaded(blindPeer, [core])
+  await swarm.destroy() // So the core holder stops announcing the core
   await client.close()
 
   {
@@ -126,18 +119,16 @@ test('records with announce: true are announced upon startup', async (t) => {
     await blindPeer.listen()
     await blindPeer.swarm.flush()
 
-    const coreAddedProm = once(blindPeer, 'add-core')
-    coreAddedProm.catch(() => {})
-
     const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
     coreKey = core.key
-    client.addCoreBackground(core, { announce: true })
-
-    const [record] = await coreAddedProm
+    const [[record]] = await Promise.all([
+      once(blindPeer, 'add-core'),
+      client.addCore(core, { announce: true })
+    ])
     t.is(record.announce, true, 'announce set (sanity check)')
 
     // TODO: debug why, without this, we get an unhandled rejection
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await waitForCoresDownloaded(blindPeer, [core])
 
     replicatedDiscKeys = [...blindPeer.activeReplication.keys()]
     t.alike(replicatedDiscKeys, [b4a.toString(core.discoveryKey, 'hex')])
@@ -197,22 +188,20 @@ test('Trusted peers can update an existing record to start announcing it', async
   const coreKey = core.key
 
   {
-    const coreAddedProm = once(blindPeer, 'add-core')
-    coreAddedProm.catch(() => {})
-    await client.addCore(core, { announce: false })
-
-    const [record] = await coreAddedProm
+    const [[record]] = await Promise.all([
+      once(blindPeer, 'add-core'),
+      client.addCore(core, { announce: false })
+    ])
     t.alike(record.key, coreKey, 'added the core')
     t.is(record.priority, 0, '0 Default priority')
     t.is(record.announce, false, 'announce not set')
   }
 
   {
-    const coreAddedProm = once(blindPeer, 'add-core')
-    coreAddedProm.catch(() => {})
-    await client.addCore(store.get({ key: core.key }), { announce: true })
-
-    const [record] = await coreAddedProm
+    const [[record]] = await Promise.all([
+      once(blindPeer, 'add-core'),
+      client.addCore(store.get({ key: core.key }), { announce: true })
+    ])
     t.is(record.announce, true, 'announce set in db')
     t.is((await blindPeer.db.getCoreRecord(record.key)).announce, true)
   }
@@ -251,19 +240,16 @@ test.skip('Trusted peers can delete a core', async (t) => {
     tEvents.alike(key, core.key, 'delete-core-end key')
     tEvents.is(announced, true, 'delete-core-end announced')
   })
-  const coreAddedProm = once(blindPeer, 'add-core')
-  coreAddedProm.catch(() => {})
-
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
-  await client.addCore(core, { announce: true })
-
-  const [record] = await coreAddedProm
+  const [[record]] = await Promise.all([
+    once(blindPeer, 'add-core'),
+    client.addCore(core, { announce: true })
+  ])
   t.alike(record.key, coreKey, 'added the core')
   t.is(await blindPeer.db.hasCore(coreKey), true, 'core in db')
 
-  // give it time to download
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await waitForCoresDownloaded(blindPeer, [core])
 
   t.is(blindPeer.db.digest.cores, 1, '1 core in digest (sanity check)')
   t.is(blindPeer.db.digest.bytesAllocated > 0, true, 'digest has bytes allocated of the core')
@@ -299,14 +285,9 @@ test.skip('Untrusted peers cannot delete a core', async (t) => {
     t.alike(key, core.key, 'delete-blocked key')
   })
 
-  const coreAddedProm = once(blindPeer, 'add-core')
-  coreAddedProm.catch(() => {})
-
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
-  await client.addCore(core, coreKey)
-
-  const [record] = await coreAddedProm
+  const [[record]] = await Promise.all([once(blindPeer, 'add-core'), client.addCore(core, coreKey)])
   t.alike(record.key, coreKey, 'added the core')
   t.is(await blindPeer.db.hasCore(coreKey), true, 'core in db')
 
