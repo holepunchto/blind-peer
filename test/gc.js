@@ -215,7 +215,7 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   {
     const blindCore = blindPeer.store.get({ key: core.key })
     await blindCore.ready()
-    t.is(blindCore.contiguousLength, 0, 'block content is gone after gc')
+    await assertUntilIs(t, () => blindCore.contiguousLength, 0, 'block content is gone after gc')
     await blindCore.close()
   }
 
