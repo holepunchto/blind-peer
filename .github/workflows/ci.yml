@@ -20,7 +20,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: holepunchto/actions/setup-windows-dev-drive@v1
+      - uses: holepunchto/actions/setup-windows-dev-drive@main
       - uses: holepunchto/actions/bare-base@v1
       - run: npm test
       - run: npm run test:bare
