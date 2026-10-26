@@ -1039,6 +1039,7 @@ class BlindPeer extends ReadyResource {
           roomKey: request.destination.key,
           roomDiscoveryKey: request.destination.discoveryKey,
           index: request.block.index,
+          upgradeLength: request.upgradeLength,
           version: request.version,
           extra: request.extra,
           timeout: this.notificationTimeout
