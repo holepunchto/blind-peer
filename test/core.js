@@ -178,7 +178,7 @@ test('other clients help upload a core even if they did not add it', async (t) =
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   client.addCoreBackground(core)
 
-  await Promise.all([once(blindPeer, 'add-core'), client.addCore(core)])
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
 
   // The second client is also talking to the blind peer, for its own cores
   const client2 = createClient(t, swarm2.dht, store2, { keys: [blindPeer.publicKey] })
