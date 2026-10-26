@@ -328,7 +328,13 @@ async function setupMuxer(t, swarm, store, publicKey, { replicate = true } = {})
 async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null, autobaseOpts = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap)
   const { wakeup, base } = await loadAutobase(store, autobaseBootstrap, { autobaseOpts })
-  t.teardown(() => base.close(), { order: -1 })
+  t.teardown(
+    async () => {
+      if (!base.closing) await base.update()
+      await base.close()
+    },
+    { order: -1 }
+  )
   swarm.join(base.discoveryKey)
 
   return { swarm, store, base, wakeup }
@@ -348,7 +354,13 @@ async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   const { store, swarm } = await setupPeer(t, bootstrap)
 
   const { base } = await loadAutobase(store, indexer.local.key, { addIndexers: false })
-  t.teardown(() => base.close(), { order: -1 })
+  t.teardown(
+    async () => {
+      if (!base.closing) await base.update()
+      await base.close()
+    },
+    { order: -1 }
+  )
   swarm.join(base.discoveryKey)
   await Promise.all([
     indexer.append({ add: b4a.toString(base.local.key, 'hex') }),
