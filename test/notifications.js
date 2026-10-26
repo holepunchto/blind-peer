@@ -11,12 +11,12 @@ const { performance } = require('perf_hooks')
 
 const {
   setupCoreHolder,
-  setupBlindPeer,
   initBlindPeer,
   setupPushGateway,
   getTestnet,
   setupPeer,
   setupMuxer,
+  sleep,
   assertUntilIs,
   createClient
 } = require('./helpers')
@@ -25,11 +25,9 @@ test('client can ask a blind-peer to create and forward a push notification', as
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   await core.setUserData('referrer', core.key)
@@ -115,11 +113,9 @@ test('sendNotification does not leak core sessions', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
@@ -140,11 +136,9 @@ test('send push notification when not yet connected to blind peer', async (t) =>
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   await core.setUserData('referrer', core.key)
@@ -168,11 +162,9 @@ test('sets up core replication on notification if not present and the core is ou
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
@@ -209,11 +201,9 @@ test('send push notification falls back when a blind peer is unreachable', async
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   await core.setUserData('referrer', core.key)
@@ -248,13 +238,11 @@ test('push notification timeout when getting block does not close the connection
   const { bootstrap } = await getTestnet(t)
 
   const { gateway } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey],
     notificationTimeout: 1000,
     notificationErrorSnapshotDelay: 100
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm: initSwarm, store: initStore } = await setupCoreHolder(t, bootstrap)
 
@@ -285,7 +273,7 @@ test('push notification timeout when getting block does not close the connection
   t.ok(snapshot.coreInfoAfterDelay, 'captured core info after snapshot delay')
 
   // some time for swarm error to trigger if any
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await sleep(500)
 
   t.pass('notification error emitted, but conn did not close')
 
@@ -348,12 +336,10 @@ test('notification racing an in-flight add-cores waits for the core instead of e
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey],
     retryRecordLookupTimeout: 500
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   await core.setUserData('referrer', core.key)
@@ -385,12 +371,10 @@ test('notification for an unknown core errors', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const { gateway, sentMessages } = await setupPushGateway(t, bootstrap)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey],
     retryRecordLookupTimeout: 500
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
@@ -418,12 +402,10 @@ test('notification errors when no push service available, but does not crash the
 
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: ['a'.repeat(64)],
     pushGatewayPoolOpts: { rpcTimeout: 100 }
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
@@ -469,11 +451,9 @@ test('sendNotification does not create a second ref to an already-added blind pe
 
   const { gateway } = await setupPushGateway(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: [gateway.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 

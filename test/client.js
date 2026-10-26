@@ -23,11 +23,9 @@ test('client suspend/resume logic', async (t) => {
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
@@ -106,11 +104,9 @@ test('client gc logic', async (t) => {
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey], gcWait: 10 })
   const coreKey = core.key
@@ -174,9 +170,7 @@ test('client gc accounts for pending notifications', async (t) => {
 test('client destroys pending timeouts on close', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { swarm, base, store } = await setupAutobaseHolder(t, bootstrap)
 
@@ -436,8 +430,7 @@ test('client balances blind peers across groups when picking more than there are
 test('repeated addCore when not connected does not result in repeated infos and cores', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
@@ -465,8 +458,7 @@ test('repeated addCore when not connected does not result in repeated infos and 
 test('destroying a peer in blind-peering clears core listeners', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { swarm, store, core } = await setupCoreHolder(t, bootstrap)
   const core2 = store.get({ name: 'core2' })

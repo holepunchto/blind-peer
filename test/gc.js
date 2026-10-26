@@ -3,7 +3,6 @@ const { once } = require('events')
 const b4a = require('b4a')
 const {
   setupCoreHolder,
-  setupBlindPeer,
   getTestnet,
   setupPeer,
   setupMuxer,
@@ -86,12 +85,10 @@ test('gc correctly counts cleared bytes for cores that were gced before', async 
   }
 
   const { bootstrap } = await getTestnet(t)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     enableGc: false,
     maxBytes: 15
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { swarm, store } = await setupPeer(t, bootstrap)
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
@@ -175,9 +172,7 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 1 })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { enableGc, maxBytes: 1 })
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   for (let i = 2; i < 10; i++) {
@@ -271,9 +266,7 @@ test('gc stats', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
   const enableGc = false // We trigger it manually, so we can test the accounting
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { enableGc, maxBytes: 10 })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { enableGc, maxBytes: 10 })
 
   const { swarm, store } = await setupCoreHolder(t, bootstrap)
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })

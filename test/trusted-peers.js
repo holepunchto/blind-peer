@@ -5,8 +5,10 @@ const IdEnc = require('hypercore-id-encoding')
 const {
   setupCoreHolder,
   setupBlindPeer,
+  initBlindPeer,
   getTestnet,
   setupPeer,
+  sleep,
   waitForCoresDownloaded,
   waitUntil,
   createClient
@@ -17,11 +19,9 @@ test('Trusted peers can set announce: true to have the blind peer announce it', 
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   t.is(blindPeer.activeReplication.size, 0, 'sanity check (no cores yet)')
 
@@ -63,9 +63,7 @@ test('Untrusted peers cannot set announce: true', async (t) => {
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys: [] })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { trustedPubKeys: [] })
 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
@@ -92,7 +90,7 @@ test('Untrusted peers cannot set announce: true', async (t) => {
 
     // TODO: revert to flushing when swarm.flush issue solved
     // await swarm.flush()
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await sleep(1000)
 
     await t.exception(
       async () => {
@@ -113,11 +111,8 @@ test('records with announce: true are announced upon startup', async (t) => {
   let coreKey = null
   let replicatedDiscKeys = null
   {
-    const { blindPeer, storage } = await setupBlindPeer(t, bootstrap, { trustedPubKeys })
+    const { blindPeer, storage } = await initBlindPeer(t, bootstrap, { trustedPubKeys })
     blindPeerStorage = storage
-
-    await blindPeer.listen()
-    await blindPeer.swarm.flush()
 
     const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
     coreKey = core.key
@@ -178,11 +173,9 @@ test('Trusted peers can update an existing record to start announcing it', async
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     trustedPubKeys: [swarm.dht.defaultKeyPair.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
   const coreKey = core.key
@@ -220,9 +213,7 @@ test.skip('Trusted peers can delete a core', async (t) => {
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
   const trustedPubKeys = [swarm.dht.defaultKeyPair.publicKey]
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { trustedPubKeys })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { trustedPubKeys })
 
   let firstDelete = true
   blindPeer.on('delete-core', (stream, { key, existing }) => {
@@ -274,11 +265,9 @@ test.skip('Untrusted peers cannot delete a core', async (t) => {
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     trustedPubKeys: [IdEnc.decode('a'.repeat(64))]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   blindPeer.once('delete-blocked', (stream, { key }) => {
     t.alike(stream.remotePublicKey, swarm.dht.defaultKeyPair.publicKey, 'delete-blocked stream')

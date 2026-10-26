@@ -7,7 +7,6 @@ const {
   DEBUG,
   clientOpts,
   loadAutobase,
-  setupBlindPeer,
   initBlindPeer,
   getTestnet,
   setupRouter,
@@ -30,9 +29,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
 
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const {
     swarm: indexerSwarm,
@@ -59,7 +56,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     await base.append({ other: 'thing' })
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 1000)) // Give time to stabilise the signed lengths
+  await sleep(1000) // Give time to stabilise the signed lengths
   t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
 
   const nrCoresInAutobase = 6 // could change if autobase internals change
@@ -100,7 +97,7 @@ test('client can use a blind-peer to add an autobase', async (t) => {
     await tFirstAdd
 
     // Give some time to sync
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await sleep(500)
     blindPeer.off('add-core', onaddcore)
   }
 
@@ -132,13 +129,9 @@ test('client can use a blind-peer to add an autobase', async (t) => {
 test('client can change blind-peer for an autobase', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
-  const { blindPeer: blindPeer2 } = await setupBlindPeer(t, bootstrap)
-  await blindPeer2.listen()
-  await blindPeer2.swarm.flush()
+  const { blindPeer: blindPeer2 } = await initBlindPeer(t, bootstrap)
 
   const {
     swarm: indexerSwarm,
@@ -246,9 +239,7 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
 test('adding autobase cores only results in replication sessions if there are length differences', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   let {
     swarm: indexerSwarm,
@@ -275,7 +266,7 @@ test('adding autobase cores only results in replication sessions if there are le
     await base.append({ some: 'thing' })
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 1000)) // Stabilise the views
+  await sleep(1000) // Stabilise the views
   t.is(indexer.activeWriters.map.size, 3, '3 active writers (sanity check)')
 
   await Promise.all(bases.map(({ base }) => base.close())) // To avoid length updates due to acks etc.
@@ -289,7 +280,7 @@ test('adding autobase cores only results in replication sessions if there are le
     await Promise.all([waitForEvents(blindPeer, 'add-cores-done', 2), client.addAutobase(indexer)])
 
     t.is(blindPeer.stats.activations, 6, '3 views and all 3 indexer core activated')
-    await new Promise((resolve) => setTimeout(resolve, 500)) // Give time to download the cores
+    await sleep(500) // Give time to download the cores
 
     // 2nd time, everything is already known (no change in autobase state)
     // Re-opening needed, else it won't be added again by the client
@@ -301,7 +292,7 @@ test('adding autobase cores only results in replication sessions if there are le
     }
 
     await Promise.all([once(blindPeer, 'add-cores-done'), client.addAutobase(indexer)])
-    await new Promise((resolve) => setTimeout(resolve, 500)) // Give time to stabilise
+    await sleep(500) // Give time to stabilise
 
     t.is(blindPeer.stats.activations, 6, 'no cores changed so nothing activated')
 
@@ -368,9 +359,7 @@ test('blind-peering respects max batch options for the writer cores', async (t) 
 test('wakeup', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { base: indexer, swarm: indexerSwarm } = await setupAutobaseHolder(t, bootstrap)
   await indexerSwarm.flush()
@@ -456,9 +445,7 @@ test('add autobase calls router to resolve peers', async (t) => {
   // note that this assumes router key is the same as swarm public key
   const routerKey = swarmRouter.keyPair.publicKey
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { routerKey })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { routerKey })
 
   await setupRouter(t, swarmRouter, [blindPeer])
   await swarmRouter.flush()
@@ -487,12 +474,10 @@ test('resolve-peers-error emitted when router is unreachable', async (t) => {
 
   const routerKey = crypto.keyPair().publicKey // random key, not from any router
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     routerKey,
     routerPoolOpts: { totalTimeout: 1000, rpcTimeout: 500, retries: 1 }
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const {
     swarm: indexerSwarm,

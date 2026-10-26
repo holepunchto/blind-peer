@@ -1,13 +1,11 @@
 const test = require('brittle')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
-const { setupCoreHolder, setupBlindPeer, getTestnet, setupMuxer } = require('./helpers')
+const { setupCoreHolder, initBlindPeer, getTestnet, setupMuxer } = require('./helpers')
 
 test('muxer requestAddCores resolves with the per-core response', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
@@ -22,9 +20,7 @@ test('muxer requestAddCores resolves with the per-core response', async (t) => {
 test('muxer requestAddCores rejects with RATE_LIMITED when rate limited', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const perReferrerRateLimitParams = { capacity: 1, intervalMs: 10_000 }
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { perReferrerRateLimitParams })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { perReferrerRateLimitParams })
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
@@ -45,9 +41,7 @@ test('muxer requestAddCores rejects with RATE_LIMITED when rate limited', async 
 
 test('muxer requestSendNotification resolves once processed', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap)
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
@@ -63,11 +57,9 @@ test('muxer requestSendNotification resolves once processed', async (t) => {
 
 test('muxer requestSendNotification for an unknown core rejects without closing the channel', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     pushGatewayKeys: ['a'.repeat(64)]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
