@@ -306,9 +306,9 @@ async function setupPeer(t, bootstrap, { active } = {}) {
   return { swarm, store }
 }
 
-async function setupMuxer(t, swarm, store, publicKey) {
+async function setupMuxer(t, swarm, store, publicKey, { replicate = true } = {}) {
   const stream = swarm.dht.connect(publicKey)
-  store.replicate(stream)
+  if (replicate) store.replicate(stream)
 
   const muxer = new BlindPeerMuxer(stream)
   const order = clientCounter++

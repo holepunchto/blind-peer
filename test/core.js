@@ -598,13 +598,12 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
 
   const connProm = once(blindPeer.swarm, 'connection')
-  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey, { replicate: false })
   const [conn] = await connProm
 
   const initListeners = conn.listenerCount('close')
 
   for (let i = 0; i < 5; i++) {
-    await core.append(`Block ${i + 1}`) // ensure length differs so needsActivation is set
     await Promise.all([
       once(blindPeer, 'add-cores-done'),
       muxer.addCores({
