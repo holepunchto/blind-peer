@@ -1,6 +1,14 @@
 const test = require('brittle')
 const b4a = require('b4a')
-const { initBlindPeer, getTestnet, setupAutobeeHolder, sleep, createClient } = require('./helpers')
+const {
+  initBlindPeer,
+  getTestnet,
+  setupAutobeeHolder,
+  sleep,
+  waitUntil,
+  assertUntilIs,
+  createClient
+} = require('./helpers')
 
 test('client can use a blind-peer to add an autobee', async (t) => {
   const { bootstrap } = await getTestnet(t)
@@ -17,7 +25,8 @@ test('client can use a blind-peer to add an autobee', async (t) => {
   blindPeer.on('add-core', onaddcore)
 
   await client.addAutobase(bee)
-  await sleep(500)
+  await waitUntil(t, () => addedKeys.length >= 3, 'the blind peer added the cores')
+  await sleep(500) // no further cores should get added
 
   const expectedKeys = [
     b4a.toString(bee.key, 'hex'),
@@ -35,14 +44,19 @@ test('client can use a blind-peer to add an autobee', async (t) => {
     const { swarm, bee: reader } = await setupAutobeeHolder(t, bootstrap, bee.key)
     await swarm.flush()
 
-    let node = await reader.view.get(Buffer.from('latest'))
+    const node = await reader.view.get(Buffer.from('latest'))
     t.absent(node, 'no data before joining blind-peer')
 
     swarm.joinPeer(blindPeer.publicKey, { dht: swarm.dht })
-    await sleep(1000)
-
-    node = await reader.view.get(Buffer.from('latest'))
-    t.alike(JSON.parse(node.value), { block: 1 }, 'get data from blind-peer')
+    await assertUntilIs(
+      t,
+      async () => {
+        const node = await reader.view.get(Buffer.from('latest'))
+        return node && JSON.parse(node.value).block
+      },
+      1,
+      'get data from blind-peer'
+    )
   }
 })
 
@@ -68,7 +82,7 @@ test('client can use a blind-peer to add an autobee (multiple writers)', async (
   blindPeer.on('add-core', onaddcore)
 
   await client.addAutobase(bee)
-  await sleep(500)
+  await waitUntil(t, () => addedKeys.length >= 3, 'the blind peer added the cores')
 
   // bee3 joins after bee1 is added to blind-peer
   const { bee: bee3 } = await setupAutobeeHolder(t, bootstrap, bee.key)
@@ -100,11 +114,9 @@ test('client adds views if autobee was initially empty (no views)', async (t) =>
   blindPeer.on('add-core', onaddcore)
 
   await client.addAutobase(bee)
-  await sleep(500)
   await bee.append(JSON.stringify({ block: 1 }))
-  // TODO: the sleep here should be lowered once we update
-  // blind-peering to not delay `onmigrate` for autobee
-  await sleep(1500)
+  await waitUntil(t, () => addedKeys.length >= 3, 'the blind peer added the cores')
+  await sleep(500) // no further cores should get added
 
   const expectedKeys = [
     b4a.toString(bee.key, 'hex'),

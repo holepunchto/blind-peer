@@ -8,6 +8,7 @@ const TopKWindow = require('../lib/top-k.js')
 const {
   setupCoreHolder,
   setupBlindPeer,
+  initBlindPeer,
   setupAdminClient,
   getTestnet,
   setupPeer,
@@ -265,8 +266,7 @@ test('TopKWindow emits spike events during rotation only for entries that stay i
 test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const topK = { bucketCount: 6, bucketTime: 100, k: 5 }
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, { topK })
-  await blindPeer.swarm.flush()
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { topK })
   blindPeer.registerMetrics(promClient)
   t.teardown(() => {
     promClient.register.clear()
@@ -351,7 +351,7 @@ test('trusted peers can query top-k over admin RPC', async (t) => {
   await referrer.ready()
   await referrer.append('referrer block')
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     topK: {
       bucketCount: 2,
       bucketTime: 50,
@@ -359,8 +359,6 @@ test('trusted peers can query top-k over admin RPC', async (t) => {
     },
     trustedPubKeys: [adminKeyPair.publicKey]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
 
@@ -390,11 +388,9 @@ test('untrusted peers cannot query top-k over admin RPC', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const nonAdminKeyPair = crypto.keyPair()
 
-  const { blindPeer } = await setupBlindPeer(t, bootstrap, {
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
     trustedPubKeys: [IdEnc.decode('a'.repeat(64))]
   })
-  await blindPeer.listen()
-  await blindPeer.swarm.flush()
 
   const adminClient = await setupAdminClient(t, {
     bootstrap,
