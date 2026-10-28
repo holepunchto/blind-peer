@@ -52,6 +52,7 @@ function createClient(t, dht, store, opts) {
 }
 
 async function loadAutobase(
+  t,
   store,
   autobaseBootstrap = null,
   { addIndexers = true, namespace = 'base', autobaseOpts = {} } = {}
@@ -81,7 +82,13 @@ async function loadAutobase(
     ...autobaseOpts
   })
   await base.ready()
-
+  t.teardown(
+    async () => {
+      if (!base.closing) await base.update()
+      await base.close()
+    },
+    { order: -1 }
+  )
   return { base }
 }
 
@@ -327,14 +334,7 @@ async function setupMuxer(t, swarm, store, publicKey, { replicate = true } = {})
 
 async function setupAutobaseHolder(t, bootstrap, autobaseBootstrap = null, autobaseOpts = {}) {
   const { swarm, store } = await setupPeer(t, bootstrap)
-  const { wakeup, base } = await loadAutobase(store, autobaseBootstrap, { autobaseOpts })
-  t.teardown(
-    async () => {
-      if (!base.closing) await base.update()
-      await base.close()
-    },
-    { order: -1 }
-  )
+  const { wakeup, base } = await loadAutobase(t, store, autobaseBootstrap, { autobaseOpts })
   swarm.join(base.discoveryKey)
 
   return { swarm, store, base, wakeup }
@@ -353,14 +353,7 @@ let writerI
 async function getWakeupPeer(t, bootstrap, indexer, blindPeer) {
   const { store, swarm } = await setupPeer(t, bootstrap)
 
-  const { base } = await loadAutobase(store, indexer.local.key, { addIndexers: false })
-  t.teardown(
-    async () => {
-      if (!base.closing) await base.update()
-      await base.close()
-    },
-    { order: -1 }
-  )
+  const { base } = await loadAutobase(t, store, indexer.local.key, { addIndexers: false })
   swarm.join(base.discoveryKey)
   await Promise.all([
     indexer.append({ add: b4a.toString(base.local.key, 'hex') }),

@@ -227,8 +227,7 @@ test('client can change multiple blind-peers for multiple autobases', async (t) 
   }
 
   async function initAutobase(namespace = 'base') {
-    const { base } = await loadAutobase(store, null, { namespace })
-    t.teardown(() => base.close(), { order: -1 })
+    const { base } = await loadAutobase(t, store, null, { namespace })
     await base.append({ block: 0 })
     await base.append({ block: 1 })
 
@@ -286,8 +285,7 @@ test('adding autobase cores only results in replication sessions if there are le
     // Re-opening needed, else it won't be added again by the client
     await indexer.close()
     {
-      const { base } = await loadAutobase(indexerStore, null)
-      t.teardown(() => base.close(), { order: -1 })
+      const { base } = await loadAutobase(t, indexerStore, null)
       indexer = base
     }
 
@@ -300,8 +298,7 @@ test('adding autobase cores only results in replication sessions if there are le
     // Re-opening needed, else it won't be added again by the client
     await indexer.close()
     {
-      const { base } = await loadAutobase(indexerStore, null)
-      t.teardown(() => base.close(), { order: -1 })
+      const { base } = await loadAutobase(t, indexerStore, null)
       indexer = base
     }
 
@@ -387,7 +384,7 @@ test('wakeup', async (t) => {
   {
     const initAnnounceTx = blindPeer.wakeup.stats.wireAnnounce.tx
     const { store, swarm } = await setupPeer(t, bootstrap)
-    const { base } = await loadAutobase(store, indexer.local.key)
+    const { base } = await loadAutobase(t, store, indexer.local.key)
 
     // We want to test that the wakeup announce comes from
     // the blind-peer connection, so disable the wakeup protocol
