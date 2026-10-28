@@ -403,7 +403,7 @@ test('wakeup', async (t) => {
       keys: [blindPeer.publicKey]
     })
 
-    await Promise.all([client.addAutobase(base), once(blindPeer, 'add-cores-done')])
+    await Promise.all([client.addAutobase(base), waitForEvents(blindPeer, 'add-cores-done', 2)])
 
     t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announce')
     t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
