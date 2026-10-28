@@ -566,6 +566,7 @@ test('activating the same core repeatedly does not leak hypercore sessions and s
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap, { active: false })
 
   const connProm = once(blindPeer.swarm, 'connection')
+  // replicate: false because we want to ensure the blind peer doesn't pull in the updates
   const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey, { replicate: false })
   const [conn] = await connProm
 
