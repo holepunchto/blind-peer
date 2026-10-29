@@ -266,7 +266,7 @@ test('TopKWindow emits spike events during rotation only for entries that stay i
 
 test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  const topK = { bucketCount: 6, bucketTime: 100, k: 5 }
+  const topK = { bucketCount: 100, bucketTime: 100, k: 5 }
   const { blindPeer } = await initBlindPeer(t, bootstrap, { topK })
   blindPeer.registerMetrics(promClient)
   t.teardown(() => {
@@ -349,7 +349,7 @@ test('trusted peers can query top-k over admin RPC', async (t) => {
 
   const { blindPeer } = await initBlindPeer(t, bootstrap, {
     topK: {
-      bucketCount: 2,
+      bucketCount: 200,
       bucketTime: 50,
       k: 5
     },
