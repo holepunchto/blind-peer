@@ -197,12 +197,6 @@ async function setupBlindPeers(t, bootstrap, amount) {
   return blindPeers
 }
 
-async function getBlindPeerCoreLength(blindPeer, key) {
-  const core = blindPeer.store.get({ key })
-  await core.ready()
-  return core.length
-}
-
 async function getBlindPeerStoredLength(blindPeer, key) {
   const [info] = await blindPeer.store.storage.getInfos([crypto.discoveryKey(key)])
   return info?.head?.length ?? 0
@@ -450,7 +444,6 @@ module.exports = {
   setupBlindPeer,
   initBlindPeer,
   setupBlindPeers,
-  getBlindPeerCoreLength,
   getBlindPeerStoredLength,
   waitUntilStoredOn,
   waitForCoresDownloaded,

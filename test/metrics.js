@@ -15,6 +15,7 @@ const {
   setupMuxer,
   createClient,
   waitForCoresDownloaded,
+  waitForEvents,
   runGc
 } = require('./helpers')
 
@@ -265,7 +266,7 @@ test('TopKWindow emits spike events during rotation only for entries that stay i
 
 test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
   const { bootstrap } = await getTestnet(t)
-  const topK = { bucketCount: 6, bucketTime: 100, k: 5 }
+  const topK = { bucketCount: 100, bucketTime: 100, k: 5 }
   const { blindPeer } = await initBlindPeer(t, bootstrap, { topK })
   blindPeer.registerMetrics(promClient)
   t.teardown(() => {
@@ -299,31 +300,26 @@ test('Prometheus top-k metrics reflect add-cores traffic', async (t) => {
     once(blindPeer.topKByIp, 'rotated')
   ])
 
-  const allPromises = []
+  const received = waitForEvents(blindPeer, 'add-cores-received', totalRequests)
 
   for (let i = 0; i < nrPeers; i++) {
     for (let j = 0; j <= i; j++) {
       const { muxer, core } = muxers[i]
-      allPromises.push(
-        muxer.addCores({
-          referrer: core.key,
-          priority: 0,
-          announce: false,
-          cores: [{ key: core.key, length: core.length }]
-        })
-      )
+      muxer.addCores({
+        referrer: core.key,
+        priority: 0,
+        announce: false,
+        cores: [{ key: core.key, length: core.length }]
+      })
     }
   }
-
-  // wait for all the add cores to finish and the topK got rotated
-  allPromises.push(
+  // wait to ensure all addCores request received
+  await received
+  await Promise.all([
     once(blindPeer.topKByPeer, 'rotated'),
     once(blindPeer.topKByReferrer, 'rotated'),
     once(blindPeer.topKByIp, 'rotated')
-  )
-
-  // wait to ensure all addCores request finished
-  await Promise.all(allPromises)
+  ])
 
   const metrics = await promClient.register.metrics()
   const getMetricValue = (name) => {
@@ -353,7 +349,7 @@ test('trusted peers can query top-k over admin RPC', async (t) => {
 
   const { blindPeer } = await initBlindPeer(t, bootstrap, {
     topK: {
-      bucketCount: 2,
+      bucketCount: 200,
       bucketTime: 50,
       k: 5
     },

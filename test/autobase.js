@@ -276,10 +276,14 @@ test('adding autobase cores only results in replication sessions if there are le
   {
     const client = createClient(t, indexerSwarm.dht, indexerStore, { keys: [blindPeer.publicKey] })
 
+    const activated = []
+    const onaddcore = (entry) => activated.push({ key: entry.key, length: entry.remoteLength })
+    blindPeer.on('add-core', onaddcore)
     await Promise.all([waitForEvents(blindPeer, 'add-cores-done', 2), client.addAutobase(indexer)])
+    blindPeer.off('add-core', onaddcore)
 
     t.is(blindPeer.stats.activations, 6, '3 views and all 3 indexer core activated')
-    await sleep(500) // Give time to download the cores
+    await waitForCoresDownloaded(blindPeer, activated)
 
     // 2nd time, everything is already known (no change in autobase state)
     // Re-opening needed, else it won't be added again by the client
@@ -405,10 +409,14 @@ test('wakeup', async (t) => {
 
     await Promise.all([client.addAutobase(base), waitForEvents(blindPeer, 'add-cores-done', 2)])
 
+    await assertUntilOk(
+      t,
+      () => initAnnounceRxOther < base.wakeupProtocol.stats.wireAnnounce.rx,
+      'peer received announce'
+    )
     t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announce')
     t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
     t.is(blindPeer.wakeup.stats.topicsAdded, 1, 'still using the same topic')
-    t.ok(initAnnounceRxOther < base.wakeupProtocol.stats.wireAnnounce.rx, 'peer received announce')
 
     await client.close()
     await base.close()
