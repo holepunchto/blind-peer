@@ -8,7 +8,7 @@ const {
   setupBlindPeer,
   initBlindPeer,
   setupBlindPeers,
-  getBlindPeerCoreLength,
+  getBlindPeerStoredLength,
   waitUntilStoredOn,
   waitForCoresDownloaded,
   getTestnet,
@@ -345,7 +345,7 @@ test('client picks blind peers when they have no groups', async (t) => {
   await waitUntilStoredOn(t, blindPeers, core, 2)
 
   const lengths = await Promise.all(
-    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+    blindPeers.map((blindPeer) => getBlindPeerStoredLength(blindPeer, core.key))
   )
   t.is(lengths.filter((length) => length > 0).length, 2, 'added the core to two blind peers')
 })
@@ -369,7 +369,7 @@ test('client picks the blind peer closest to the target when they have no groups
   await waitUntilStoredOn(t, blindPeers, core, 1)
 
   const lengths = await Promise.all(
-    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+    blindPeers.map((blindPeer) => getBlindPeerStoredLength(blindPeer, core.key))
   )
   t.alike(lengths, [0, 0, 0, 2], 'added the core to the targeted blind peer only')
 })
@@ -392,7 +392,7 @@ test('client picks blind peers from different groups', async (t) => {
   await waitUntilStoredOn(t, blindPeers, core, 2)
 
   const lengths = await Promise.all(
-    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+    blindPeers.map((blindPeer) => getBlindPeerStoredLength(blindPeer, core.key))
   )
   t.alike(lengths, [2, 0, 0, 2], 'added the core to one blind peer of each group')
 })
@@ -417,7 +417,7 @@ test('client balances blind peers across groups when picking more than there are
   await waitUntilStoredOn(t, blindPeers, core, 4)
 
   const lengths = await Promise.all(
-    blindPeers.map((blindPeer) => getBlindPeerCoreLength(blindPeer, core.key))
+    blindPeers.map((blindPeer) => getBlindPeerStoredLength(blindPeer, core.key))
   )
   const groupA = lengths.slice(0, 3).filter((length) => length > 0)
   const groupB = lengths.slice(3).filter((length) => length > 0)

@@ -10,7 +10,7 @@ const {
   setupBlindPeer,
   initBlindPeer,
   setupBlindPeers,
-  getBlindPeerCoreLength,
+  getBlindPeerStoredLength,
   waitUntilStoredOn,
   waitForCoresDownloaded,
   getTestnet,
@@ -104,18 +104,18 @@ test('client can migrate multiple cores to multiple blind-peers and preserve set
   await waitUntilStoredOn(t, [blindPeer1, blindPeer2, blindPeer3], core2, 3)
 
   const core1Results = await Promise.all([
-    getBlindPeerCoreLength(blindPeer1, coreKey),
-    getBlindPeerCoreLength(blindPeer2, coreKey),
-    getBlindPeerCoreLength(blindPeer3, coreKey)
+    getBlindPeerStoredLength(blindPeer1, coreKey),
+    getBlindPeerStoredLength(blindPeer2, coreKey),
+    getBlindPeerStoredLength(blindPeer3, coreKey)
   ])
 
   // Sanity check that it is what we expect before keys change
   t.ok(core1Results.indexOf(2) === core1Results.lastIndexOf(2), '1 blindPeer swarmed for core1')
   t.ok(core1Results.indexOf(0) !== core1Results.lastIndexOf(0), '2 blindPeers not swarm for core1')
 
-  t.is(await getBlindPeerCoreLength(blindPeer1, coreKey2), 1, 'blindPeer1 swarmed for core2')
-  t.is(await getBlindPeerCoreLength(blindPeer2, coreKey2), 1, 'blindPeer2 swarmed for core2')
-  t.is(await getBlindPeerCoreLength(blindPeer3, coreKey2), 1, 'blindPeer3 swarmed for core2')
+  t.is(await getBlindPeerStoredLength(blindPeer1, coreKey2), 1, 'blindPeer1 swarmed for core2')
+  t.is(await getBlindPeerStoredLength(blindPeer2, coreKey2), 1, 'blindPeer2 swarmed for core2')
+  t.is(await getBlindPeerStoredLength(blindPeer3, coreKey2), 1, 'blindPeer3 swarmed for core2')
 
   const bp5AddsCore1 = t.test()
   bp5AddsCore1.plan(1)
@@ -141,13 +141,13 @@ test('client can migrate multiple cores to multiple blind-peers and preserve set
   await waitUntilStoredOn(t, [blindPeer5], core, 1)
   await waitUntilStoredOn(t, [blindPeer4, blindPeer5, blindPeer6], core2, 3)
 
-  t.is(await getBlindPeerCoreLength(blindPeer4, coreKey), 0, 'blindPeer4 not swarm for core1')
-  t.is(await getBlindPeerCoreLength(blindPeer5, coreKey), 2, 'blindPeer5 swarmed for core1')
-  t.is(await getBlindPeerCoreLength(blindPeer6, coreKey), 0, 'blindPeer6 not swarm for core1')
+  t.is(await getBlindPeerStoredLength(blindPeer4, coreKey), 0, 'blindPeer4 not swarm for core1')
+  t.is(await getBlindPeerStoredLength(blindPeer5, coreKey), 2, 'blindPeer5 swarmed for core1')
+  t.is(await getBlindPeerStoredLength(blindPeer6, coreKey), 0, 'blindPeer6 not swarm for core1')
 
-  t.is(await getBlindPeerCoreLength(blindPeer4, coreKey2), 1, 'blindPeer4 swarmed for core2')
-  t.is(await getBlindPeerCoreLength(blindPeer5, coreKey2), 1, 'blindPeer5 swarmed for core2')
-  t.is(await getBlindPeerCoreLength(blindPeer6, coreKey2), 1, 'blindPeer6 swarmed for core2')
+  t.is(await getBlindPeerStoredLength(blindPeer4, coreKey2), 1, 'blindPeer4 swarmed for core2')
+  t.is(await getBlindPeerStoredLength(blindPeer5, coreKey2), 1, 'blindPeer5 swarmed for core2')
+  t.is(await getBlindPeerStoredLength(blindPeer6, coreKey2), 1, 'blindPeer6 swarmed for core2')
 })
 
 test('blind-peer can set treeCache options for corestore', async (t) => {
