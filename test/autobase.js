@@ -405,10 +405,14 @@ test('wakeup', async (t) => {
 
     await Promise.all([client.addAutobase(base), waitForEvents(blindPeer, 'add-cores-done', 2)])
 
+    await assertUntilOk(
+      t,
+      () => initAnnounceRxOther < base.wakeupProtocol.stats.wireAnnounce.rx,
+      'peer received announce'
+    )
     t.ok(blindPeer.wakeup.stats.wireAnnounce.tx > initAnnounceTx, 'transmitted announce')
     t.is(blindPeer.wakeup.stats.sessionsOpened, 1, 'still using the same session')
     t.is(blindPeer.wakeup.stats.topicsAdded, 1, 'still using the same topic')
-    t.ok(initAnnounceRxOther < base.wakeupProtocol.stats.wireAnnounce.rx, 'peer received announce')
 
     await client.close()
     await base.close()
