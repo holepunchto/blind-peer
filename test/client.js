@@ -3,6 +3,7 @@ const { once } = require('events')
 const b4a = require('b4a')
 const rrp = require('resolve-reject-promise')
 const os = require('os')
+const crypto = require('hypercore-crypto')
 const {
   setupCoreHolder,
   setupBlindPeer,
@@ -567,4 +568,23 @@ test('client can opt out from connection metadata', async (t) => {
     skipConnectionMetadata: true
   })
   client.addCoreBackground(core)
+})
+
+test('clients sharing a dht connect with their own key pairs', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const keyPairs = [crypto.keyPair(), crypto.keyPair()]
+  for (const keyPair of keyPairs) {
+    const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey], keyPair })
+    client.addCoreBackground(core)
+  }
+
+  const connected = () =>
+    [...blindPeer.swarm.connections].filter((conn) =>
+      keyPairs.some((keyPair) => b4a.equals(conn.remotePublicKey, keyPair.publicKey))
+    ).length
+
+  await assertUntilIs(t, connected, 2, 'one connection per client')
 })
