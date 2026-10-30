@@ -190,6 +190,14 @@ test('Prometheus metrics include client labels when metricsOpts is set', async (
     promClient.register.clear()
   })
 
+  {
+    const metrics = await promClient.register.metrics()
+    t.ok(
+      metrics.includes('blind_peer_add_cores_rx{client_name="other",client_version="other"} 0'),
+      'labeled metrics are seeded with 0 before any client is seen'
+    )
+  }
+
   const clientOpts = [
     { client: { name: 'app1', version: '3.2.1' } },
     { client: { name: 'app1', version: '3.2.7' } }, // same minor as the first
