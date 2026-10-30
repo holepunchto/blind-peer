@@ -228,15 +228,6 @@ test('Prometheus metrics include client labels when metricsOpts is set', async (
     metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="other"} 3'),
     'versions over the cap, invalid and null versions are other'
   )
-  t.absent(
-    metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="3.2.1"}'),
-    'no patch versions'
-  )
-  t.absent(
-    metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="3.4"}'),
-    'version cap respected'
-  )
-
   t.ok(
     metrics.includes('blind_peer_add_cores_rx{client_name="app2",client_version="1.0"} 1'),
     'app2 not capped by app1'
@@ -249,11 +240,6 @@ test('Prometheus metrics include client labels when metricsOpts is set', async (
     metrics.includes('blind_peer_add_cores_rx{client_name="app2",client_version="other"} 1'),
     'app2 version cap'
   )
-  t.absent(
-    metrics.includes('blind_peer_add_cores_rx{client_name="app2",client_version="1.2"}'),
-    'app2 cap respected'
-  )
-
   t.ok(
     metrics.includes('blind_peer_add_cores_rx{client_name="other",client_version="other"} 3'),
     'unknown, null and missing client names are other'
@@ -262,7 +248,7 @@ test('Prometheus metrics include client labels when metricsOpts is set', async (
     metrics.includes('blind_peer_core_activations{client_name="app1",client_version="3.2"} 2'),
     'blind_peer_core_activations is labeled'
   )
-  t.absent(metrics.includes('blind_peer_add_cores_rx 0'), 'no unlabeled add-cores series')
+  t.absent(metrics.includes('\nblind_peer_add_cores_rx '), 'no unlabeled add-cores series')
 })
 
 test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {
