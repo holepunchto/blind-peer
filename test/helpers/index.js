@@ -135,7 +135,8 @@ async function setupBlindPeer(
     notificationTimeout,
     notificationErrorSnapshotDelay,
     retryRecordLookupTimeout,
-    perReferrerRateLimitParams
+    perReferrerRateLimitParams,
+    metricsOpts
   } = {}
 ) {
   if (!storage) storage = await tmpDir(t)
@@ -158,7 +159,8 @@ async function setupBlindPeer(
     notificationTimeout,
     notificationErrorSnapshotDelay,
     retryRecordLookupTimeout,
-    perReferrerRateLimitParams
+    perReferrerRateLimitParams,
+    metricsOpts
   })
 
   const order = clientCounter++

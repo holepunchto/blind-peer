@@ -118,10 +118,11 @@ test('Prometheus metrics', async (t) => {
   const nowBytes = blindPeer.digest.bytesAllocated
   t.is(nowBytes < 10_000, true, 'gcd till below limit')
 
+  const getMetricValue = (text, name) => {
+    return parseInt(text.split(`\n${name} `)[1].split('\n')[0]) // hack
+  }
+
   {
-    const getMetricValue = (text, name) => {
-      return parseInt(text.split(name)[3]) // hack
-    }
     const metrics = await promClient.register.metrics()
     t.is(getMetricValue(metrics, 'blind_peer_bytes_gcd'), bytesCleared, 'blind_peer_bytes_gcd')
     t.is(getMetricValue(metrics, 'blind_peer_cores_added'), nrCores, 'blind_peer_cores_added')
@@ -136,30 +137,27 @@ test('Prometheus metrics', async (t) => {
 
   {
     const metrics = await promClient.register.metrics()
-    const blindPeerRocksDeletes = getMetricValue('blind_peer_rocks_deletes')
+    const blindPeerRocksDeletes = getMetricValue(metrics, 'blind_peer_rocks_deletes')
     t.ok(blindPeerRocksDeletes > 0, `blind_peer_rocks_deletes ${blindPeerRocksDeletes}`)
-    const blindPeerRocksRangeDeletes = getMetricValue('blind_peer_rocks_range_deletes')
+    const blindPeerRocksRangeDeletes = getMetricValue(metrics, 'blind_peer_rocks_range_deletes')
     t.ok(
       blindPeerRocksRangeDeletes > 0,
       `blind_peer_rocks_range_deletes ${blindPeerRocksRangeDeletes}`
     )
-    const blindPeerRocksGets = getMetricValue('blind_peer_rocks_gets')
+    const blindPeerRocksGets = getMetricValue(metrics, 'blind_peer_rocks_gets')
     t.ok(blindPeerRocksGets > 0, `blind_peer_rocks_gets ${blindPeerRocksGets}`)
-    const blindPeerRocksPuts = getMetricValue('blind_peer_rocks_puts')
+    const blindPeerRocksPuts = getMetricValue(metrics, 'blind_peer_rocks_puts')
     t.ok(blindPeerRocksPuts > 0, `blind_peer_rocks_puts ${blindPeerRocksPuts}`)
-    const blindPeerRocksReadBatches = getMetricValue('blind_peer_rocks_read_batches')
+    const blindPeerRocksReadBatches = getMetricValue(metrics, 'blind_peer_rocks_read_batches')
     t.ok(
       blindPeerRocksReadBatches > 0,
       `blind_peer_rocks_read_batches ${blindPeerRocksReadBatches}`
     )
-    const blindPeerRocksWriteBatches = getMetricValue('blind_peer_rocks_write_batches')
+    const blindPeerRocksWriteBatches = getMetricValue(metrics, 'blind_peer_rocks_write_batches')
     t.ok(
       blindPeerRocksWriteBatches > 0,
       `blind_peer_rocks_write_batches ${blindPeerRocksWriteBatches}`
     )
-    function getMetricValue(name) {
-      return parseInt(metrics.split(`\n${name} `)[1].split('\n')[0]) // hack
-    }
   }
 })
 
@@ -180,6 +178,91 @@ test('push notification metrics include client pool stats when configured', asyn
   t.ok(metrics.includes('blind_peer_push_notifications_try_attempted'))
   t.ok(metrics.includes('blind_peer_push_notifications_try_failed'))
   t.ok(metrics.includes('blind_peer_push_notifications_try_succeeded'))
+})
+
+test('Prometheus metrics include client labels when metricsOpts is set', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
+    metricsOpts: { allowedClientNames: ['app1', 'app2'], maxUniqueClientVersions: 2 }
+  })
+  blindPeer.registerMetrics(promClient)
+  t.teardown(() => {
+    promClient.register.clear()
+  })
+
+  const clientOpts = [
+    { client: { name: 'app1', version: '3.2.1' } },
+    { client: { name: 'app1', version: '3.2.7' } }, // same minor as the first
+    { client: { name: 'app1', version: '3.3.0' } },
+    { client: { name: 'app1', version: '3.4.0' } }, // over the version cap
+    { client: { name: 'app1', version: 'abc' } }, // invalid semver
+    { client: { name: 'app1' } }, // null version
+    { client: { name: 'app2', version: '1.0.0' } }, // app2 has its own version set
+    { client: { name: 'app2', version: '1.1.0' } },
+    { client: { name: 'app2', version: '1.2.0' } }, // over the version cap
+    { client: { name: 'nope', version: '1.0.0' } }, // not an allowed name
+    {}, // null name and version
+    { client: { name: 'app1', version: '3.2.1' }, skipConnectionMetadata: true } // no metadata
+  ]
+
+  for (const opts of clientOpts) {
+    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+    const blindPeering = createClient(t, swarm.dht, store, {
+      keys: [blindPeer.publicKey],
+      ...opts
+    })
+    await Promise.all([once(blindPeer, 'add-cores-done'), blindPeering.addCore(core)])
+  }
+
+  const metrics = await promClient.register.metrics()
+
+  t.ok(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="3.2"} 2'),
+    'minor versions are merged'
+  )
+  t.ok(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="3.3"} 1'),
+    'second unique version'
+  )
+  t.ok(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="other"} 3'),
+    'versions over the cap, invalid and null versions are other'
+  )
+  t.absent(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="3.2.1"}'),
+    'no patch versions'
+  )
+  t.absent(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app1",client_version="3.4"}'),
+    'version cap respected'
+  )
+
+  t.ok(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app2",client_version="1.0"} 1'),
+    'app2 not capped by app1'
+  )
+  t.ok(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app2",client_version="1.1"} 1'),
+    'app2 second unique version'
+  )
+  t.ok(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app2",client_version="other"} 1'),
+    'app2 version cap'
+  )
+  t.absent(
+    metrics.includes('blind_peer_add_cores_rx{client_name="app2",client_version="1.2"}'),
+    'app2 cap respected'
+  )
+
+  t.ok(
+    metrics.includes('blind_peer_add_cores_rx{client_name="other",client_version="other"} 3'),
+    'unknown, null and missing client names are other'
+  )
+  t.ok(
+    metrics.includes('blind_peer_core_activations{client_name="app1",client_version="3.2"} 2'),
+    'blind_peer_core_activations is labeled'
+  )
+  t.absent(metrics.includes('blind_peer_add_cores_rx 0'), 'no unlabeled add-cores series')
 })
 
 test('TopKWindow tracks the top-k keys across a rolling window', async (t) => {

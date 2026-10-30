@@ -5,6 +5,7 @@
   "main": "index.js",
   "dependencies": {
     "b4a": "^1.6.7",
+    "bare-semver": "^1.1.0",
     "blind-peer-encodings": "^3.3.0",
     "blind-peer-muxer": "^1.8.0",
     "blind-push": "^1.0.1",
