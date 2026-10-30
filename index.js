@@ -31,6 +31,7 @@ const BlindPeerDB = require('./lib/db.js')
 const TopKWindow = require('./lib/top-k.js')
 const BlindPeerError = require('./lib/errors.js')
 const PerKeyRateLimit = require('./lib/per-key-rate-limit.js')
+const StatsTracker = require('./lib/stats-tracker.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
@@ -239,7 +240,8 @@ class BlindPeer extends ReadyResource {
       // temp, no semver guarantees
       notificationErrorSnapshotDelay = 30_000,
       retryRecordLookupTimeout = 5000,
-      perReferrerRateLimitParams
+      perReferrerRateLimitParams,
+      metricsOpts = null
     } = {}
   ) {
     super()
@@ -292,30 +294,7 @@ class BlindPeer extends ReadyResource {
     this.pushGatewayKeys = pushGatewayKeys || []
     this.pushGatewayPoolOpts = pushGatewayPoolOpts || {}
 
-    this.stats = {
-      bytesGcd: 0,
-      coresAdded: 0,
-      activations: 0,
-      activatedReplications: 0,
-      wakeups: 0,
-      addCoresRx: 0,
-      notificationsRx: 0,
-      notificationsSent: 0,
-      notificationErrors: 0,
-      muxerPaired: 0,
-      muxerErrors: 0,
-      coreTrackersCreated: 0,
-      coreTrackersDestroyed: 0,
-      coreResetDownload: 0,
-      referrerRateLimited: 0,
-      gc: {
-        prio0Gcd: 0,
-        prio1Gcd: 0,
-        prio2Gcd: 0,
-        firstTimeCoresGcd: 0,
-        coresGcd: 0
-      }
-    }
+    this.statsTracker = new StatsTracker({ metricsOpts })
 
     const {
       bucketCount = 6,
@@ -361,6 +340,10 @@ class BlindPeer extends ReadyResource {
 
   get nrAnnouncedCores() {
     return this.announcedCores.size
+  }
+
+  get stats() {
+    return this.statsTracker._stats
   }
 
   getActiveReplicationSessions() {
@@ -453,7 +436,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onwakeup(discoveryKey, muxer) {
-    this.stats.wakeups++
+    this.statsTracker.incWakeups()
 
     const auth = await this.store.storage.getAuth(discoveryKey)
     if (!auth) return
@@ -525,12 +508,14 @@ class BlindPeer extends ReadyResource {
 
     await this.db.flush()
     if (this.closing) return
-    this.stats.bytesGcd += bytesCleared
-    this.stats.gc.coresGcd += coresGcd
-    this.stats.gc.firstTimeCoresGcd += newCoresGcd
-    this.stats.gc.prio0Gcd += prio0Gcd
-    this.stats.gc.prio1Gcd += prio1Gcd
-    this.stats.gc.prio2Gcd += prio2Gcd
+    this.statsTracker.addGcStats({
+      bytesCleared,
+      coresGcd,
+      newCoresGcd,
+      prio0Gcd,
+      prio1Gcd,
+      prio2Gcd
+    })
 
     this.emit('gc-done', { bytesCleared })
   }
@@ -554,7 +539,7 @@ class BlindPeer extends ReadyResource {
 
   _oncoreopen(core) {
     const session = new Hypercore({ core, weak: true })
-    this.stats.coreTrackersCreated++
+    this.statsTracker.incCoreTrackersCreated()
     const id = b4a.toString(core.discoveryKey, 'hex')
     const tracker = new CoreTracker(this, session)
 
@@ -566,7 +551,7 @@ class BlindPeer extends ReadyResource {
       if (this.activeReplication.get(id) === tracker) {
         this.activeReplication.delete(id)
       }
-      this.stats.coreTrackersDestroyed++
+      this.statsTracker.incCoreTrackersDestroyed()
     })
     session.on('invalid-request', (err, req, from) => {
       this.emit('invalid-request', session, err, req, from)
@@ -615,13 +600,13 @@ class BlindPeer extends ReadyResource {
     const self = this
     BlindPeerMuxer.pair(conn, function () {
       self.emit('muxer-paired', conn)
-      self.stats.muxerPaired++
+      self.statsTracker.incMuxerPaired()
       new BlindPeerMuxer(conn, {
         async oncores(request) {
           try {
             return await self._onaddcores(conn, request)
           } catch (e) {
-            self.stats.muxerErrors++
+            self.statsTracker.incMuxerErrors()
             self.emit('muxer-error', e, conn)
             throw e
           }
@@ -630,7 +615,7 @@ class BlindPeer extends ReadyResource {
           try {
             return await self._onnotification(conn, request)
           } catch (e) {
-            self.stats.notificationErrors++
+            self.statsTracker.incNotificationErrors(conn)
             self.emit('notification-error', e, conn, request)
             throw e // unexpected error: crash the connection
           }
@@ -670,7 +655,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _activateCore(stream, record, force) {
-    this.stats.activations++
+    this.statsTracker.incActivations(stream)
 
     const discKey = crypto.discoveryKey(record.key)
 
@@ -695,7 +680,7 @@ class BlindPeer extends ReadyResource {
     if (stream.destroying) return
     core.replicate(stream)
 
-    this.stats.activatedReplications++
+    this.statsTracker.incActivatedReplications()
   }
 
   async _resolvePeers(key) {
@@ -812,7 +797,7 @@ class BlindPeer extends ReadyResource {
       await this._onwakeup(discoveryKey, muxer)
     }
 
-    this.stats.coresAdded++
+    this.statsTracker.incCoresAdded()
     this.emit('add-core', record, true, stream)
 
     await this._activateCore(stream, record)
@@ -826,12 +811,12 @@ class BlindPeer extends ReadyResource {
       this.emit('connection-banned', stream)
       throw new Error('Timed out')
     }
-    this.stats.addCoresRx++
+    this.statsTracker.incAddCoresRx(stream)
 
     if (this.perReferrerRateLimit && request.referrer) {
       const referrerKey = b4a.toString(request.referrer, 'hex')
       if (!this.perReferrerRateLimit.tryAcquire(referrerKey)) {
-        this.stats.referrerRateLimited++
+        this.statsTracker.incReferrerRateLimited()
         this.emit('per-referrer-rate-limited', referrerKey)
         throw BlindPeerError.RATE_LIMITED()
       }
@@ -909,7 +894,7 @@ class BlindPeer extends ReadyResource {
         if (entry.priority === 2) {
           const record = await this.db.getCoreRecord(entry.key)
           if (record && record.priority < 2) {
-            this.stats.coreResetDownload++
+            this.statsTracker.incCoreResetDownload()
 
             entry.needsActivation = true
             entry.needsForceActivation = true
@@ -952,7 +937,7 @@ class BlindPeer extends ReadyResource {
     const activateProms = []
     for (const entry of overview.values()) {
       if (!entry.needsActivation) continue
-      this.stats.coresAdded++
+      this.statsTracker.incCoresAdded()
       this.emit('add-core', entry, true, stream)
       activateProms.push(this._activateCore(stream, entry, entry.needsForceActivation ?? false))
     }
@@ -1017,7 +1002,7 @@ class BlindPeer extends ReadyResource {
   }
 
   async _onnotification(stream, request) {
-    this.stats.notificationsRx++
+    this.statsTracker.incNotificationsRx(stream)
     const startTime = Date.now()
     this.emit('notification-rx', request, stream)
 
@@ -1076,7 +1061,7 @@ class BlindPeer extends ReadyResource {
         }
       )
 
-      this.stats.notificationsSent++
+      this.statsTracker.incNotificationsSent()
       this.emit('notification-sent', request, payload, stream, Date.now() - startTime)
     } finally {
       await core.close()
@@ -1238,13 +1223,13 @@ class BlindPeer extends ReadyResource {
 
   registerMetrics(promClient) {
     this.wakeup.registerMetrics(promClient)
+    this.statsTracker.registerMetrics(promClient)
     if (this.gatewayPool) {
       this.gatewayPool.registerMetrics(promClient, { prefix: 'blind_peer_push_notifications_' })
     }
 
     const self = this
     new promClient.Gauge({
-      // eslint-disable-line no-new
       name: 'blind_peer_bytes_allocated',
       help: 'The amount of bytes allocated by the hyperdb (as reported in its digest)',
       collect() {
@@ -1253,7 +1238,6 @@ class BlindPeer extends ReadyResource {
     })
 
     new promClient.Gauge({
-      // eslint-disable-line no-new
       name: 'blind_peer_cores',
       help: 'The amount of cores (as reported in its digest)',
       collect() {
@@ -1262,70 +1246,6 @@ class BlindPeer extends ReadyResource {
     })
 
     new promClient.Gauge({
-      // eslint-disable-line no-new
-      name: 'blind_peer_cores_added',
-      help: 'The total amount of add-core RPC requests that have been processed',
-      collect() {
-        this.set(self.stats.coresAdded)
-      }
-    })
-
-    new promClient.Gauge({
-      // eslint-disable-line no-new
-      name: 'blind_peer_bytes_gcd',
-      help: 'The total amount of bytes garbage collected since the process started',
-      collect() {
-        this.set(self.stats.bytesGcd)
-      }
-    })
-
-    new promClient.Gauge({
-      name: 'blind_peer_gc_prio_0',
-      help: 'Number of times a core of priority 0 got garbage collected',
-      collect() {
-        this.set(self.stats.gc.prio0Gcd)
-      }
-    })
-    new promClient.Gauge({
-      name: 'blind_peer_gc_prio_1',
-      help: 'Number of times a core of priority 1 got garbage collected',
-      collect() {
-        this.set(self.stats.gc.prio1Gcd)
-      }
-    })
-    new promClient.Gauge({
-      name: 'blind_peer_gc_prio_2',
-      help: 'Number of times a core of priority 2 got garbage collected',
-      collect() {
-        this.set(self.stats.gc.prio2Gcd)
-      }
-    })
-    new promClient.Gauge({
-      name: 'blind_peer_gc_cores_total',
-      help: 'Number of times a core got garbage collected',
-      collect() {
-        this.set(self.stats.gc.coresGcd)
-      }
-    })
-    new promClient.Gauge({
-      name: 'blind_peer_gc_cores_first_time_total',
-      help: 'Number of cores that got garbage collected for the first time',
-      collect() {
-        this.set(self.stats.gc.firstTimeCoresGcd)
-      }
-    })
-
-    new promClient.Gauge({
-      // eslint-disable-line no-new
-      name: 'blind_peer_core_activations',
-      help: 'The total amount of hypercore activations since the process started',
-      collect() {
-        this.set(self.stats.activations)
-      }
-    })
-
-    new promClient.Gauge({
-      // eslint-disable-line no-new
       name: 'blind_peer_active_replication_sessions',
       help: 'The total amount of hypercore replication sessions currently explicitly tracked',
       collect() {
@@ -1334,23 +1254,6 @@ class BlindPeer extends ReadyResource {
     })
 
     new promClient.Gauge({
-      name: 'blind_peer_replication_sessions_opened',
-      help: 'The total amount of hypercore replication sessions ever opened',
-      collect() {
-        this.set(self.stats.activatedReplications)
-      }
-    })
-
-    new promClient.Gauge({
-      name: 'blind_peer_wakeups',
-      help: 'The total amount of hypercore wakeups since the process started',
-      collect() {
-        this.set(self.stats.wakeups)
-      }
-    })
-
-    new promClient.Gauge({
-      // eslint-disable-line no-new
       name: 'blind_peer_db_flushes',
       help: 'The total amount of database flushes since the process started',
       collect() {
@@ -1359,7 +1262,6 @@ class BlindPeer extends ReadyResource {
     })
 
     new promClient.Gauge({
-      // eslint-disable-line no-new
       name: 'blind_peer_announced_cores',
       help: 'The amount of announced cores',
       collect() {
@@ -1367,38 +1269,6 @@ class BlindPeer extends ReadyResource {
       }
     })
 
-    new promClient.Gauge({
-      // eslint-disable-line no-new
-      name: 'blind_peer_muxer_errors',
-      help: 'The amount of errors on the protomux muxer',
-      collect() {
-        this.set(self.stats.muxerErrors)
-      }
-    })
-    new promClient.Gauge({
-      // eslint-disable-line no-new
-      name: 'blind_peer_muxer_paired',
-      help: 'The amount of blind-peer-muxer sessions paired',
-      collect() {
-        this.set(self.stats.muxerPaired)
-      }
-    })
-    new promClient.Gauge({
-      // eslint-disable-line no-new
-      name: 'blind_peer_add_cores_rx',
-      help: 'The amount of add-cores requests received',
-      collect() {
-        this.set(self.stats.addCoresRx)
-      }
-    })
-    new promClient.Gauge({
-      // eslint-disable-line no-new
-      name: 'blind_peer_referrer_rate_limited',
-      help: 'The number of requests rejected by the per-referrer rate limit',
-      collect() {
-        this.set(self.stats.referrerRateLimited)
-      }
-    })
     new promClient.Gauge({
       name: 'blind_peer_add_cores_top5_by_remote_key',
       help: 'The total number of requests from the top 5 peers in the last minute',
@@ -1422,7 +1292,6 @@ class BlindPeer extends ReadyResource {
     })
     if (self.rocks.stats) {
       new promClient.Gauge({
-        // eslint-disable-line no-new
         name: 'blind_peer_rocks_gets',
         help: 'The amount of get ops from RocksDB',
         collect() {
@@ -1430,7 +1299,6 @@ class BlindPeer extends ReadyResource {
         }
       })
       new promClient.Gauge({
-        // eslint-disable-line no-new
         name: 'blind_peer_rocks_puts',
         help: 'The amount of put ops to RocksDB',
         collect() {
@@ -1438,7 +1306,6 @@ class BlindPeer extends ReadyResource {
         }
       })
       new promClient.Gauge({
-        // eslint-disable-line no-new
         name: 'blind_peer_rocks_deletes',
         help: 'The amount of delete ops from RocksDB',
         collect() {
@@ -1446,7 +1313,6 @@ class BlindPeer extends ReadyResource {
         }
       })
       new promClient.Gauge({
-        // eslint-disable-line no-new
         name: 'blind_peer_rocks_range_deletes',
         help: 'The amount of range delete ops from RocksDB',
         collect() {
@@ -1454,7 +1320,6 @@ class BlindPeer extends ReadyResource {
         }
       })
       new promClient.Gauge({
-        // eslint-disable-line no-new
         name: 'blind_peer_rocks_read_batches',
         help: 'The amount of read batches from RocksDB',
         collect() {
@@ -1462,7 +1327,6 @@ class BlindPeer extends ReadyResource {
         }
       })
       new promClient.Gauge({
-        // eslint-disable-line no-new
         name: 'blind_peer_rocks_write_batches',
         help: 'The amount of write batches to RocksDB',
         collect() {
@@ -1483,54 +1347,6 @@ class BlindPeer extends ReadyResource {
         help: 'Whether push notifications can be forwarded (1) or not (0)',
         collect() {
           this.set(self.gatewayPool ? 1 : 0)
-        }
-      })
-
-      new promClient.Gauge({
-        name: 'blind_peer_push_notifications_rx',
-        help: 'Number of push notification requests received',
-        collect() {
-          this.set(self.stats.notificationsRx)
-        }
-      })
-
-      new promClient.Gauge({
-        name: 'blind_peer_push_notifications_sent',
-        help: 'Number of push notification sent to a push gateway',
-        collect() {
-          this.set(self.stats.notificationsSent)
-        }
-      })
-
-      new promClient.Gauge({
-        name: 'blind_peer_push_notifications_errors',
-        help: 'Number of errors when forwarding a push notification to a push gateway',
-        collect() {
-          this.set(self.stats.notificationErrors)
-        }
-      })
-
-      new promClient.Gauge({
-        name: 'blind_peer_core_trackers_created',
-        help: 'How many core trackers were created',
-        collect() {
-          this.set(self.stats.coreTrackersCreated)
-        }
-      })
-
-      new promClient.Gauge({
-        name: 'blind_peer_core_trackers_destroyed',
-        help: 'How many core trackers were destroyed',
-        collect() {
-          this.set(self.stats.coreTrackersDestroyed)
-        }
-      })
-
-      new promClient.Gauge({
-        name: 'blind_peer_core_reset_download',
-        help: 'How many core trigger reset download',
-        collect() {
-          this.set(self.stats.coreResetDownload)
         }
       })
     }
