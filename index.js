@@ -292,11 +292,7 @@ class BlindPeer extends ReadyResource {
     this.routerPool = null
     this.adminRouter = adminRouter
     this.pushGatewayKeys = pushGatewayKeys || []
-    this.pushGatewayPoolOpts = pushGatewayPoolOpts || {
-      // sending through push-gateway occasionally hits regional rate limits.
-      // when that happens, this lets us fail over to another gateways
-      retryableCodes: ['messaging/message-rate-exceeded']
-    }
+    this.pushGatewayPoolOpts = pushGatewayPoolOpts || {}
 
     this.statsTracker = new StatsTracker({ metricsOpts })
 
@@ -412,11 +408,13 @@ class BlindPeer extends ReadyResource {
       )
     }
     if (this.pushGatewayKeys.length) {
-      this.gatewayPool = new ProtomuxRpcClientPool(
-        this.pushGatewayKeys,
-        this.rpcClient,
-        this.pushGatewayPoolOpts
-      )
+      this.gatewayPool = new ProtomuxRpcClientPool(this.pushGatewayKeys, this.rpcClient, {
+        ...this.pushGatewayPoolOpts,
+        // sending through push-gateway occasionally hits regional rate limits.
+        // when that happens, this lets us fail over to another gateways
+        // note: this is intentionally not overridable by consumers
+        retryableCodes: ['messaging/message-rate-exceeded']
+      })
     }
 
     await this.topKByPeer.ready()
