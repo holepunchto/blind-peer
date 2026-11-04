@@ -292,7 +292,11 @@ class BlindPeer extends ReadyResource {
     this.routerPool = null
     this.adminRouter = adminRouter
     this.pushGatewayKeys = pushGatewayKeys || []
-    this.pushGatewayPoolOpts = pushGatewayPoolOpts || {}
+    this.pushGatewayPoolOpts = pushGatewayPoolOpts || {
+      // sending through push-gateway occasionally hits regional rate limits.
+      // when that happens, this lets us fail over to another gateways
+      retryableCodes: ['messaging/message-rate-exceeded']
+    }
 
     this.statsTracker = new StatsTracker({ metricsOpts })
 
