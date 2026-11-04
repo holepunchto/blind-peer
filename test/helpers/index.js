@@ -235,13 +235,14 @@ async function setupAdminClient(t, { bootstrap = null, serverPublicKey, keyPair 
   return rpc
 }
 
-async function setupPushGateway(t, bootstrap) {
+async function setupPushGateway(t, bootstrap, { send } = {}) {
   const sentMessages = []
   const dht = new HyperDHT({ bootstrap })
   const router = new ProtomuxRPCRouter()
   // push service stub to simulate real fcm send
   const pushServiceStub = {
     send: async (message) => {
+      if (send) await send(message)
       sentMessages.push(message)
     }
   }

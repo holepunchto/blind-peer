@@ -408,11 +408,13 @@ class BlindPeer extends ReadyResource {
       )
     }
     if (this.pushGatewayKeys.length) {
-      this.gatewayPool = new ProtomuxRpcClientPool(
-        this.pushGatewayKeys,
-        this.rpcClient,
-        this.pushGatewayPoolOpts
-      )
+      this.gatewayPool = new ProtomuxRpcClientPool(this.pushGatewayKeys, this.rpcClient, {
+        ...this.pushGatewayPoolOpts,
+        // sending through push-gateway occasionally hits regional rate limits.
+        // when that happens, this lets us fail over to another gateways
+        // note: this is intentionally not overridable by consumers
+        retryableCodes: ['messaging/message-rate-exceeded']
+      })
     }
 
     await this.topKByPeer.ready()

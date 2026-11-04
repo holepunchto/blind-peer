@@ -479,3 +479,80 @@ test('sendNotification does not create a second ref to an already-added blind pe
 
   t.is(client.blindPeers.size, 1, 'sendNotification reused the existing ref')
 })
+
+test('push notification retries with another gateway when firebase rate limit is exceeded', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  let sendCalls = 0
+  const send = () => {
+    // the first attempt hits the firebase rate limit
+    if (sendCalls++ === 0) throw firebaseError('messaging/message-rate-exceeded')
+  }
+
+  const gw1 = await setupPushGateway(t, bootstrap, { send })
+  const gw2 = await setupPushGateway(t, bootstrap, { send })
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gw1.gateway.publicKey, gw2.gateway.publicKey]
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+  await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
+
+  const initKey = blindPeer.gatewayPool.chosenKey
+
+  await muxer.requestSendNotification(notificationRequest(core))
+
+  t.is(sendCalls, 2, 'push service called twice')
+  t.is(gw1.sentMessages.length + gw2.sentMessages.length, 1, 'one push forwarded')
+  t.not(b4a.equals(blindPeer.gatewayPool.chosenKey, initKey), 'switched to the other gateway')
+  t.is(blindPeer.stats.notificationsSent, 1)
+  t.is(blindPeer.stats.notificationErrors, 0)
+})
+
+test('push notification does not retry on non-retryable firebase errors', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  let sendCalls = 0
+  const send = () => {
+    sendCalls++
+    throw firebaseError('messaging/invalid-argument')
+  }
+
+  const gw1 = await setupPushGateway(t, bootstrap, { send })
+  const gw2 = await setupPushGateway(t, bootstrap, { send })
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
+    pushGatewayKeys: [gw1.gateway.publicKey, gw2.gateway.publicKey]
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+  await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
+
+  const initKey = blindPeer.gatewayPool.chosenKey
+  const notificationError = once(blindPeer, 'notification-error')
+
+  await t.exception(() => muxer.requestSendNotification(notificationRequest(core)))
+
+  const [err] = await notificationError
+  t.is(err.code, 'REQUEST_ERROR')
+  t.is(err.cause.code, 'messaging/invalid-argument', 'firebase error code forwarded')
+  t.is(sendCalls, 1, 'push service called once')
+  t.alike(blindPeer.gatewayPool.chosenKey, initKey, 'did not switch gateway')
+})
+
+function notificationRequest(core) {
+  return {
+    block: { key: core.key, index: core.length - 1 },
+    destination: { key: core.key, discoveryKey: crypto.discoveryKey(core.key) }
+  }
+}
+
+function firebaseError(code) {
+  // mimics FirebaseMessagingError from firebase-admin
+  const err = new Error('firebase error')
+  err.code = code
+  return err
+}
