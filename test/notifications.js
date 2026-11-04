@@ -33,10 +33,12 @@ test('client can ask a blind-peer to create and forward a push notification', as
   await core.setUserData('referrer', core.key)
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
 
+  const upgradeLength = 1
+
   await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
   await Promise.all([
     once(blindPeer, 'notification-sent'),
-    client.sendNotification(core, { extra: b4a.from('extra') })
+    client.sendNotification(core, { extra: b4a.from('extra'), upgradeLength })
   ])
 
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
@@ -55,6 +57,11 @@ test('client can ask a blind-peer to create and forward a push notification', as
   t.alike(result.extra, b4a.from('extra'), 'notification extra')
   t.alike(result.result.key, core.key, 'verified payload targets the sender core')
   t.is(result.result.block.index, core.length - 1, 'verified payload contains the latest block')
+  t.is(
+    result.result.proof.upgrade.length,
+    upgradeLength,
+    'verified payload contains the chosen upgrade length'
+  )
   t.is(blindPeer.stats.notificationsRx, 1, 'blind-peer notification rx stat')
   t.is(blindPeer.stats.notificationsSent, 1, 'blind-peer notification sent stat')
   t.is(client.stats.notificationsTx, 1, 'blind-peering notification tx stat')
