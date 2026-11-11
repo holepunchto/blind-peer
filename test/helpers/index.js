@@ -136,6 +136,7 @@ async function setupBlindPeer(
     notificationErrorSnapshotDelay,
     retryRecordLookupTimeout,
     perReferrerRateLimitParams,
+    maxMissingCoresPerConnection,
     metricsOpts
   } = {}
 ) {
@@ -160,6 +161,7 @@ async function setupBlindPeer(
     notificationErrorSnapshotDelay,
     retryRecordLookupTimeout,
     perReferrerRateLimitParams,
+    maxMissingCoresPerConnection,
     metricsOpts
   })
 

@@ -821,16 +821,15 @@ test('peer gets a core it asked for while the blind peer was adding it', async (
 test('blind peer remembers a bounded number of missing cores per connection', async (t) => {
   const { bootstrap } = await getTestnet(t)
 
-  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { maxMissingCoresPerConnection: 4 })
 
   const { swarm, store } = await setupPeer(t, bootstrap)
   const connected = once(blindPeer.swarm, 'connection')
   const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
   const [conn] = await connected
 
-  const { maxPerStream } = blindPeer.missingCores
   const channels = []
-  for (let i = 0; i < maxPerStream + 10; i++) {
+  for (let i = 0; i < 6; i++) {
     const id = crypto.randomBytes(32)
     const channel = muxer.stream.userData.createChannel({ protocol: 'hypercore/alpha', id })
     channel.open()
@@ -838,11 +837,27 @@ test('blind peer remembers a bounded number of missing cores per connection', as
   }
 
   await waitUntil(t, () => channels.every((c) => c.closed), 'the blind peer rejected them')
-  t.is(blindPeer.missingCores.ids.get(conn).size, maxPerStream, 'remembers at most the max')
+  t.is(blindPeer.missingCores.ids.get(conn).size, 4, 'remembers at most the max')
 
   muxer.stream.destroy()
   await waitUntil(t, () => blindPeer.missingCores.streams.size === 0, 'forgets them on close')
   t.is(blindPeer.missingCores.ids.size, 0, 'forgets the connection')
+})
+
+test('blind peer does not remember missing cores if the max is 0', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await initBlindPeer(t, bootstrap, { maxMissingCoresPerConnection: 0 })
+
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+  const id = crypto.randomBytes(32)
+  const channel = muxer.stream.userData.createChannel({ protocol: 'hypercore/alpha', id })
+  channel.open()
+
+  await waitUntil(t, () => channel.closed, 'the blind peer rejected it')
+  t.is(blindPeer.missingCores.ids.size, 0, 'remembers nothing')
 })
 
 test('missing cores keeps the newest per stream', (t) => {

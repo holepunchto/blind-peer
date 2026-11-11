@@ -37,9 +37,6 @@ const MissingCores = require('./lib/missing-cores.js')
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
 
-// Per connection, how many cores we remember that the peer asked for before we had them
-const MAX_MISSING_CORES = 64
-
 class CoreTracker {
   constructor(blindPeer, core) {
     this.blindPeer = blindPeer
@@ -245,6 +242,7 @@ class BlindPeer extends ReadyResource {
       notificationErrorSnapshotDelay = 30_000,
       retryRecordLookupTimeout = 5000,
       perReferrerRateLimitParams,
+      maxMissingCoresPerConnection = 64,
       metricsOpts = null
     } = {}
   ) {
@@ -289,7 +287,7 @@ class BlindPeer extends ReadyResource {
       : null
     this._retryRecordLookupTimeout = retryRecordLookupTimeout
     this._coresPerConnection = new Map()
-    this.missingCores = new MissingCores(MAX_MISSING_CORES)
+    this.missingCores = new MissingCores(maxMissingCoresPerConnection)
 
     this.rpcClient = null
     this.routerKey = routerKey || null
@@ -616,7 +614,7 @@ class BlindPeer extends ReadyResource {
 
     if (this.ownsStore) {
       this.store.replicate(conn)
-      this._trackMissingCores(conn)
+      if (this.missingCores.maxPerStream > 0) this._trackMissingCores(conn)
     }
     if (this.ownsWakeup) this.wakeup.addStream(conn)
 
