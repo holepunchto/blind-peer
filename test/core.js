@@ -862,6 +862,19 @@ test('missing cores keeps the newest per stream', (t) => {
   t.is(missing.ids.size + missing.streams.size, 0, 'nothing left')
 })
 
+test('missing cores keeps a core asked for again as the newest', (t) => {
+  const missing = new MissingCores(2)
+
+  missing.add('a', 'core1')
+  missing.add('a', 'core2')
+  missing.add('a', 'core1') // eg when the peer starts downloading it again
+  missing.add('a', 'core3')
+
+  const streams = missing.take('core1')
+  t.alike(streams && [...streams], ['a'], 'kept the core asked for again')
+  t.is(missing.take('core2'), null, 'dropped the oldest')
+})
+
 test('per referrer rate limit sheds load', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const perReferrerRateLimitParams = { capacity: 2, intervalMs: 100 }
