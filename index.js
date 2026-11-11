@@ -32,9 +32,13 @@ const TopKWindow = require('./lib/top-k.js')
 const BlindPeerError = require('./lib/errors.js')
 const PerKeyRateLimit = require('./lib/per-key-rate-limit.js')
 const StatsTracker = require('./lib/stats-tracker.js')
+const MissingCores = require('./lib/missing-cores.js')
 
 // Enable Small wants in Hypercore. Must be before anywhere that uses Hypercore
 Hypercore.enable(Hypercore.SMALL_WANTS)
+
+// Per connection, how many cores we remember that the peer asked for before we had them
+const MAX_MISSING_CORES = 64
 
 class CoreTracker {
   constructor(blindPeer, core) {
@@ -285,6 +289,7 @@ class BlindPeer extends ReadyResource {
       : null
     this._retryRecordLookupTimeout = retryRecordLookupTimeout
     this._coresPerConnection = new Map()
+    this.missingCores = new MissingCores(MAX_MISSING_CORES)
 
     this.rpcClient = null
     this.routerKey = routerKey || null
@@ -548,6 +553,9 @@ class BlindPeer extends ReadyResource {
     this.activeReplication.set(id, tracker)
     tracker.refresh().catch(safetyCatch)
 
+    const streams = this.missingCores.take(id)
+    if (streams !== null) this._replicateMissing(session, streams)
+
     session.on('close', () => {
       tracker.destroy()
       if (this.activeReplication.get(id) === tracker) {
@@ -557,6 +565,32 @@ class BlindPeer extends ReadyResource {
     })
     session.on('invalid-request', (err, req, from) => {
       this.emit('invalid-request', session, err, req, from)
+    })
+  }
+
+  _replicateMissing(session, streams) {
+    session.ready().then(() => {
+      for (const stream of streams) session.replicate(stream)
+    }, safetyCatch)
+  }
+
+  // A passive store rejects cores it does not have yet, and a peer that keeps such a core open
+  // does not ask again on the same connection. So remember what it asked for, and open the
+  // core with it once we have it.
+  _trackMissingCores(stream) {
+    const mux = stream.userData
+    const ondiscoverykey = mux._notify.get('hypercore/alpha##') // set by store.replicate
+    if (!ondiscoverykey) return
+
+    mux.pair({ protocol: 'hypercore/alpha' }, async (discoveryKey) => {
+      await ondiscoverykey(discoveryKey)
+      if (stream.destroying) return
+      if (mux.opened({ protocol: 'hypercore/alpha', id: discoveryKey })) return
+
+      const id = b4a.toString(discoveryKey, 'hex')
+      const tracker = this.activeReplication.get(id) // set if we got the core in the meantime
+      if (tracker) this._replicateMissing(tracker.core, [stream])
+      else this.missingCores.add(stream, id)
     })
   }
 
@@ -580,13 +614,17 @@ class BlindPeer extends ReadyResource {
       return
     }
 
-    if (this.ownsStore) this.store.replicate(conn)
+    if (this.ownsStore) {
+      this.store.replicate(conn)
+      this._trackMissingCores(conn)
+    }
     if (this.ownsWakeup) this.wakeup.addStream(conn)
 
     const replicatingCores = new Map()
     this._coresPerConnection.set(conn, replicatingCores)
     conn.once('close', () => {
       this._coresPerConnection.delete(conn)
+      this.missingCores.delete(conn)
       for (const core of replicatingCores.values()) core.close().catch(safetyCatch)
     })
 

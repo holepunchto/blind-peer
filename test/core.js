@@ -4,6 +4,7 @@ const { once } = require('events')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const HyperDHTAddress = require('hyperdht-address')
+const Wakeup = require('protomux-wakeup')
 const BlindPeer = require('..')
 const MissingCores = require('../lib/missing-cores.js')
 const {
@@ -692,6 +693,116 @@ test('adding a core does not switch it to active mode', async (t) => {
       'did not gossip the core on existing channel (blind peer still passive)'
     )
   }
+})
+
+test('peer gets a core it asked for before the blind peer had it', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap)
+  const coreCopy = store2.get({ key: core.key })
+  await coreCopy.ready()
+
+  const stream = swarm2.dht.connect(blindPeer.publicKey)
+  t.teardown(() => stream.destroy())
+  store2.replicate(stream)
+  await stream.opened
+
+  const channel = { protocol: 'hypercore/alpha', id: core.discoveryKey }
+  t.ok(stream.userData.opened(channel), 'sanity check: asked the blind peer for the core')
+  await waitUntil(t, () => !stream.userData.opened(channel), 'the blind peer rejected the core')
+
+  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+
+  await t.execution(coreCopy.get(1, { timeout: 5000 }), 'got the core from the blind peer')
+  t.is(stream.destroyed, false, 'over the same connection')
+})
+
+test('peer gets a core it asked for before it was added to the same referrer', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+
+  const { core: referrer, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const core = store.get({ name: 'core2' })
+  await core.append('Block 0')
+  const channel = { protocol: 'hypercore/alpha', id: core.discoveryKey }
+
+  // already in the referrer when it asks for the core
+  const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap)
+  const own2 = store2.get({ name: 'own' })
+  await own2.append('own')
+  const muxer2 = await setupMuxer(t, swarm2, store2, blindPeer.publicKey)
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    muxer2.addCores({ referrer: referrer.key, cores: [{ key: own2.key, length: own2.length }] })
+  ])
+
+  const coreCopy = store2.get({ key: core.key })
+  await coreCopy.ready()
+  t.ok(muxer2.stream.userData.opened(channel), 'sanity check: asked the blind peer for the core')
+  await waitUntil(t, () => !muxer2.stream.userData.opened(channel), 'the blind peer rejected it')
+
+  // also in the referrer, has the core stored but not open, so does not ask for it
+  const { swarm: swarm3, store: store3 } = await setupPeer(t, bootstrap)
+  const closedCopy = store3.get({ key: core.key })
+  await closedCopy.ready()
+  await closedCopy.close()
+  await closedCopy.core.close() // Force close, rather than relying on the gc
+  const own3 = store3.get({ name: 'own' })
+  await own3.append('own')
+  const wakeup = new Wakeup()
+  const announced = new Promise((resolve) => wakeup.session(referrer.key, { onannounce: resolve }))
+  const muxer3 = await setupMuxer(t, swarm3, store3, blindPeer.publicKey)
+  wakeup.addStream(muxer3.stream)
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    muxer3.addCores({ referrer: referrer.key, cores: [{ key: own3.key, length: own3.length }] })
+  ])
+
+  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    client.addCore(core, { referrer: referrer.key })
+  ])
+
+  await t.execution(coreCopy.get(0, { timeout: 5000 }), 'got the core from the blind peer')
+  t.is(muxer2.stream.destroyed, false, 'over the same connection')
+
+  await announced
+  await sleep(500) // give the blind peer time to (incorrectly) open it
+  t.absent(muxer3.stream.userData.opened(channel), 'the other peer only got the announce')
+})
+
+test('blind peer remembers a bounded number of missing cores per connection', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+
+  const { swarm, store } = await setupPeer(t, bootstrap)
+  const connected = once(blindPeer.swarm, 'connection')
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+  const [conn] = await connected
+
+  const { maxPerStream } = blindPeer.missingCores
+  const channels = []
+  for (let i = 0; i < maxPerStream + 10; i++) {
+    const id = crypto.randomBytes(32)
+    const channel = muxer.stream.userData.createChannel({ protocol: 'hypercore/alpha', id })
+    channel.open()
+    channels.push(channel)
+  }
+
+  await waitUntil(t, () => channels.every((c) => c.closed), 'the blind peer rejected them')
+  t.is(blindPeer.missingCores.ids.get(conn).size, maxPerStream, 'remembers at most the max')
+
+  muxer.stream.destroy()
+  await waitUntil(t, () => blindPeer.missingCores.streams.size === 0, 'forgets them on close')
+  t.is(blindPeer.missingCores.ids.size, 0, 'forgets the connection')
 })
 
 test('missing cores keeps the newest per stream', (t) => {
