@@ -5,6 +5,7 @@ const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 const HyperDHTAddress = require('hyperdht-address')
 const BlindPeer = require('..')
+const MissingCores = require('../lib/missing-cores.js')
 const {
   setupCoreHolder,
   setupBlindPeer,
@@ -691,6 +692,23 @@ test('adding a core does not switch it to active mode', async (t) => {
       'did not gossip the core on existing channel (blind peer still passive)'
     )
   }
+})
+
+test('missing cores keeps the newest per stream', (t) => {
+  const missing = new MissingCores(2)
+
+  missing.add('a', 'core1')
+  missing.add('a', 'core2')
+  missing.add('b', 'core1')
+  missing.add('a', 'core3')
+
+  t.alike([...missing.take('core1')], ['b'], 'dropped the oldest of a')
+  t.alike([...missing.take('core3')], ['a'])
+  t.is(missing.take('core3'), null, 'takes once')
+
+  missing.delete('a')
+  t.is(missing.take('core2'), null, 'forgets a stream on delete')
+  t.is(missing.ids.size + missing.streams.size, 0, 'nothing left')
 })
 
 test('per referrer rate limit sheds load', async (t) => {
