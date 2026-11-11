@@ -893,6 +893,20 @@ test('missing cores keeps a core asked for again as the newest', (t) => {
   t.is(missing.take('core2'), null, 'dropped the oldest')
 })
 
+test('blind peer does not track missing cores if the protomux internals changed', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await setupBlindPeer(t, bootstrap)
+
+  let paired = 0
+  const pair = () => paired++
+  const track = (mux) => blindPeer._trackMissingCores({ userData: mux })
+
+  t.execution(() => track({ pair }), 'pairings kept elsewhere')
+  t.execution(() => track({ _notify: new Map([['hypercore/alpha##', {}]]), pair }), 'not callable')
+  t.is(paired, 0, 'did not track')
+})
+
 test('per referrer rate limit sheds load', async (t) => {
   const { bootstrap } = await getTestnet(t)
   const perReferrerRateLimitParams = { capacity: 2, intervalMs: 100 }

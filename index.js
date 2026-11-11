@@ -580,8 +580,9 @@ class BlindPeer extends ReadyResource {
   // core with it once we have it.
   _trackMissingCores(stream) {
     const mux = stream.userData
+    if (!(mux._notify instanceof Map)) return // protomux internals changed
     const ondiscoverykey = mux._notify.get('hypercore/alpha##') // set by store.replicate
-    if (!ondiscoverykey) return
+    if (typeof ondiscoverykey !== 'function') return
 
     mux.pair({ protocol: 'hypercore/alpha' }, async (discoveryKey) => {
       await ondiscoverykey(discoveryKey)
