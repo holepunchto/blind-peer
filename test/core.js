@@ -776,6 +776,46 @@ test('peer gets a core it asked for before it was added to the same referrer', a
   await announced
   await sleep(500) // give the blind peer time to (incorrectly) open it
   t.absent(muxer3.stream.userData.opened(channel), 'the other peer only got the announce')
+  t.is(blindPeer.missingCores.streams.size, 0, 'remembers only what it could not open')
+})
+
+test('peer gets a core it asked for while the blind peer was adding it', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+
+  // hold the blind peer's lookup of the core until the core got added
+  const { storage } = blindPeer.store
+  const hasCore = storage.hasCore.bind(storage)
+  let found = null
+  let release = null
+  const released = new Promise((resolve) => (release = resolve))
+  storage.hasCore = async (discoveryKey, opts) => {
+    const has = await hasCore(discoveryKey, opts)
+    if (found === null && b4a.equals(discoveryKey, core.discoveryKey)) {
+      found = has
+      await released
+    }
+    return has
+  }
+
+  const { swarm: swarm2, store: store2 } = await setupPeer(t, bootstrap)
+  const coreCopy = store2.get({ key: core.key })
+  await coreCopy.ready()
+
+  const stream = swarm2.dht.connect(blindPeer.publicKey)
+  t.teardown(() => stream.destroy())
+  store2.replicate(stream)
+  await waitUntil(t, () => found !== null, 'the blind peer looked up the core')
+  t.is(found, false, 'sanity check: did not have it yet')
+
+  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+  release()
+
+  await t.execution(coreCopy.get(1, { timeout: 5000 }), 'got the core from the blind peer')
 })
 
 test('blind peer remembers a bounded number of missing cores per connection', async (t) => {
