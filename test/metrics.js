@@ -88,6 +88,9 @@ test('Prometheus metrics', async (t) => {
       'blind_peer_core_trackers_destroyed'
     )
     t.ok(metrics.includes('blind_peer_core_reset_download 0'), 'blind_peer_core_reset_download')
+    t.ok(metrics.includes('blind_peer_missing_cores 0'), 'blind_peer_missing_cores')
+    t.ok(metrics.includes('blind_peer_missing_cores_dropped 0'), 'blind_peer_missing_cores_dropped')
+    t.ok(metrics.includes('blind_peer_missing_cores_opened 0'), 'blind_peer_missing_cores_opened')
   }
 
   await blindPeer.listen()

@@ -568,7 +568,10 @@ class BlindPeer extends ReadyResource {
 
   _replicateMissing(session, streams) {
     session.ready().then(() => {
-      for (const stream of streams) session.replicate(stream)
+      for (const stream of streams) {
+        session.replicate(stream)
+        this.statsTracker.incMissingCoresOpened()
+      }
     }, safetyCatch)
   }
 
@@ -1289,6 +1292,22 @@ class BlindPeer extends ReadyResource {
       help: 'The total amount of hypercore replication sessions currently explicitly tracked',
       collect() {
         this.set(self.getActiveReplicationSessions())
+      }
+    })
+
+    new promClient.Gauge({
+      name: 'blind_peer_missing_cores',
+      help: 'The amount of cores peers asked for before we had them, counted per peer',
+      collect() {
+        this.set(self.missingCores.size)
+      }
+    })
+
+    new promClient.Gauge({
+      name: 'blind_peer_missing_cores_dropped',
+      help: 'The total amount of missing cores dropped because a peer asked for more than the max',
+      collect() {
+        this.set(self.missingCores.dropped)
       }
     })
 

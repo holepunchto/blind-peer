@@ -720,6 +720,7 @@ test('peer gets a core it asked for before the blind peer had it', async (t) => 
 
   await t.execution(coreCopy.get(1, { timeout: 5000 }), 'got the core from the blind peer')
   t.is(stream.destroyed, false, 'over the same connection')
+  t.ok(blindPeer.stats.missingCoresOpened > 0, 'counted')
 })
 
 test('peer gets a core it asked for before it was added to the same referrer', async (t) => {
@@ -838,6 +839,8 @@ test('blind peer remembers a bounded number of missing cores per connection', as
 
   await waitUntil(t, () => channels.every((c) => c.closed), 'the blind peer rejected them')
   t.is(blindPeer.missingCores.ids.get(conn).size, 4, 'remembers at most the max')
+  t.is(blindPeer.missingCores.size, 4, 'counts them')
+  t.is(blindPeer.missingCores.dropped, 2, 'counts the dropped ones')
 
   muxer.stream.destroy()
   await waitUntil(t, () => blindPeer.missingCores.streams.size === 0, 'forgets them on close')
