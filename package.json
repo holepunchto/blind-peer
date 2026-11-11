@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "autobase": "^7.0.18",
-    "autobee": "^2.0.0",
+    "autobee": "2.5.0",
     "bare-events": "^2.8.2",
     "bare-os": "^3.9.3",
     "bare-performance": "^2.1.1",
