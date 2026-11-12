@@ -1,10 +1,12 @@
 const test = require('brittle')
 const b4a = require('b4a')
 const {
+  clientOpts,
   initBlindPeer,
   getTestnet,
   setupAutobeeHolder,
   sleep,
+  waitForEvents,
   waitUntil,
   assertUntilIs,
   createClient
@@ -124,4 +126,60 @@ test('client adds views if autobee was initially empty (no views)', async (t) =>
     b4a.toString(bee.system.bee.core.key, 'hex')
   ]
   t.alike(addedKeys.sort(), expectedKeys.sort(), 'correct cores were added')
+})
+
+test('client coalesces bumps before and after becoming trusted', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  const { swarm, store, bee } = await setupAutobeeHolder(t, bootstrap)
+  await bee.append(JSON.stringify({ block: 1 }))
+
+  let appendingCounter = 0
+  let trusted = false
+  bee.isLocalTrusted = () => Promise.resolve(trusted)
+
+  const coresCalls = countCoresCalls()
+  const client = createClient(t, swarm.dht, store, { ...clientOpts, keys: [blindPeer.publicKey] })
+
+  await Promise.all([waitForEvents(blindPeer, 'add-cores-done', 2), client.addAutobase(bee)])
+
+  t.alike(coresCalls, { normal: 1, recursive: 0 }, 'initial normal call')
+
+  emitAppending()
+  emitAppending()
+  emitAppending()
+  await sleep(1000) // appending events are bumped after 500ms timeout
+
+  // 1 for first event, 1 for the coalesced events
+  t.alike(coresCalls, { normal: 3, recursive: 0 }, 'untrusted triggers coalesced')
+
+  trusted = true
+
+  emitAppending()
+  await sleep(1000)
+
+  // 1 normal call the first time, and first recursive call
+  t.alike(coresCalls, { normal: 4, recursive: 1 }, 'switched to recursive once trusted')
+
+  emitAppending()
+  emitAppending()
+  emitAppending()
+  await sleep(1000)
+
+  // only recursive calls, 1 for first event, 1 for the coalesced events
+  t.alike(coresCalls, { normal: 4, recursive: 3 }, 'trusted triggers coalesced')
+
+  function emitAppending() {
+    bee.emit('appending', [{ trusted: [{ key: b4a.alloc(32, appendingCounter++), length: 1 }] }])
+  }
+
+  function countCoresCalls() {
+    const calls = { normal: 0, recursive: 0 }
+    const cores = bee.cores.bind(bee)
+    bee.cores = (opts = {}) => {
+      calls[opts.recursive ? 'recursive' : 'normal']++
+      return cores(opts)
+    }
+    return calls
+  }
 })
