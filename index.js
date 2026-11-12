@@ -230,7 +230,7 @@ class BlindPeer extends ReadyResource {
       port,
       bootstrap = null,
       announcingInterval = 100,
-      wakeupGcTickTime = null,
+      wakeupGcTickTime = undefined,
       replicationLagThreshold = 100,
       topK = {},
       adminRouter = null,
