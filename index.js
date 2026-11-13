@@ -894,14 +894,16 @@ class BlindPeer extends ReadyResource {
         if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
 
         if (this.unknownCores.has(IdEnc.normalize(entry.key))) {
-          recordsToAdd.push({
+          const record = {
             key: entry.key,
             priority: entry.priority,
             announce: entry.announce,
             referrer: entry.referrer
-          })
+          }
+          recordsToAdd.push(record)
           this.unknownCores.delete(IdEnc.normalize(entry.key))
           this.statsTracker.incUnknownCoresReAdded()
+          this.emit('unknown-core-readded', record, stream)
         }
 
         // special case: reset block/byte metadata to force a full core re-download
