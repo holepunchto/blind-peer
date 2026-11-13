@@ -110,8 +110,10 @@ test('core in corestore but missing from db is re-added after UNKNOWN_CORE', asy
   }
   await t.exception(() => muxer.requestSendNotification(request), /UNKNOWN_CORE/)
   t.is(blindPeer.unknownCores.size, 1, 'core tracked as unknown')
+  t.is(blindPeer.stats.unknownCoresReAdded, 0, 'sanity: not re-added yet')
 
   await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
   t.ok(await blindPeer.db.getCoreRecord(core.key), 'record re-added to the db')
   t.is(blindPeer.unknownCores.size, 0, 'removed from the set')
+  t.is(blindPeer.stats.unknownCoresReAdded, 1, 'counter incremented')
 })

@@ -901,6 +901,7 @@ class BlindPeer extends ReadyResource {
             referrer: entry.referrer
           })
           this.unknownCores.delete(IdEnc.normalize(entry.key))
+          this.statsTracker.incUnknownCoresReAdded()
         }
 
         // special case: reset block/byte metadata to force a full core re-download
