@@ -116,7 +116,11 @@ test('core in corestore but missing from db is re-added after UNKNOWN_CORE', asy
   blindPeer.on('unknown-core-readded', (record) => readded.push(record))
 
   await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
-  t.ok(await blindPeer.db.getCoreRecord(core.key), 'record re-added to the db')
+  const record = await blindPeer.db.getCoreRecord(core.key)
+  t.ok(record, 'record re-added to the db')
+  t.is(record.length, core.length, 'stored length restored')
+  t.is(record.bytesAllocated, core.byteLength, 'bytesAllocated restored')
+  t.is(blindPeer.digest.bytesAllocated, core.byteLength, 'digest bytesAllocated includes the core')
   t.is(readded.length, 1, 'unknown-core-readded emitted once')
   t.ok(b4a.equals(readded[0].key, core.key), 'event refers to the re-added core')
   t.is(blindPeer.unknownCores.size, 0, 'removed from the set')
