@@ -1,7 +1,13 @@
 const test = require('brittle')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
-const { setupCoreHolder, initBlindPeer, getTestnet, setupMuxer } = require('./helpers')
+const {
+  setupCoreHolder,
+  initBlindPeer,
+  getTestnet,
+  setupMuxer,
+  waitUntilStoredOn
+} = require('./helpers')
 
 test('muxer requestAddCores resolves with the per-core response', async (t) => {
   const { bootstrap } = await getTestnet(t)
@@ -78,4 +84,45 @@ test('muxer requestSendNotification for an unknown core rejects without closing 
 
   const res = await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
   t.is(res.cores.length, 1, 'channel still usable')
+})
+
+test('core in corestore but missing from db is re-added after UNKNOWN_CORE', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap, {
+    pushGatewayKeys: ['a'.repeat(64)],
+    retryRecordLookupTimeout: 10
+  })
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+
+  await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
+  await waitUntilStoredOn(t, [blindPeer], core, 1)
+
+  // Simulate the edge case: core stays in the corestore, but its db record is gone
+  blindPeer.db.deleteCore(core.key)
+  await blindPeer.flush()
+  t.is(await blindPeer.db.getCoreRecord(core.key), null, 'sanity: record removed')
+
+  const request = {
+    block: { key: core.key, index: core.length }, // block the blind peer does not have
+    destination: { key: core.key, discoveryKey: crypto.discoveryKey(core.key) }
+  }
+  await t.exception(() => muxer.requestSendNotification(request), /UNKNOWN_CORE/)
+  t.is(blindPeer.unknownCores.size, 1, 'core tracked as unknown')
+  t.is(blindPeer.stats.unknownCoresReAdded, 0, 'sanity: not re-added yet')
+
+  const readded = []
+  blindPeer.on('unknown-core-readded', (record) => readded.push(record))
+
+  await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
+  const record = await blindPeer.db.getCoreRecord(core.key)
+  t.ok(record, 'record re-added to the db')
+  t.is(record.length, core.length, 'stored length restored')
+  t.is(record.bytesAllocated, core.byteLength, 'bytesAllocated restored')
+  t.is(blindPeer.digest.bytesAllocated, core.byteLength, 'digest bytesAllocated includes the core')
+  t.is(readded.length, 1, 'unknown-core-readded emitted once')
+  t.ok(b4a.equals(readded[0].key, core.key), 'event refers to the re-added core')
+  t.is(blindPeer.unknownCores.size, 0, 'removed from the set')
+  t.is(blindPeer.stats.unknownCoresReAdded, 1, 'counter incremented')
 })

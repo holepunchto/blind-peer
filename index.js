@@ -276,6 +276,7 @@ class BlindPeer extends ReadyResource {
     this.enableGc = enableGc
     this.lock = new ScopeLock({ debounce: true })
     this.announcedCores = new Map()
+    this.unknownCores = new Set()
     this.replicationLagThreshold = replicationLagThreshold
     this.perReferrerRateLimit = perReferrerRateLimitParams
       ? new PerKeyRateLimit(
@@ -892,6 +893,27 @@ class BlindPeer extends ReadyResource {
         if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
         if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
 
+        if (this.unknownCores.has(IdEnc.normalize(entry.key))) {
+          const core = this.store.get({ key: entry.key })
+          try {
+            await core.ready()
+            const record = {
+              key: entry.key,
+              priority: entry.priority,
+              announce: entry.announce,
+              referrer: entry.referrer,
+              length: core.length,
+              bytesAllocated: core.byteLength
+            }
+            recordsToAdd.push(record)
+            this.unknownCores.delete(IdEnc.normalize(entry.key))
+            this.statsTracker.incUnknownCoresReAdded()
+            this.emit('unknown-core-readded', record, stream)
+          } finally {
+            await core.close()
+          }
+        }
+
         // special case: reset block/byte metadata to force a full core re-download
         if (entry.priority === 2) {
           const record = await this.db.getCoreRecord(entry.key)
@@ -1026,6 +1048,8 @@ class BlindPeer extends ReadyResource {
           if (this.closing) return
           record = await this.db.getCoreRecord(core.key)
           if (!record) {
+            // should only be a few, size limit is a sanity check to avoid arbitrary growth
+            if (this.unknownCores.size < 1000) this.unknownCores.add(IdEnc.normalize(core.key))
             throw BlindPeerError.UNKNOWN_CORE('Cannot replicate because the core is not known')
           }
         }
