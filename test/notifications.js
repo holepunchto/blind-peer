@@ -29,6 +29,15 @@ test('client can ask a blind-peer to create and forward a push notification', as
     pushGatewayKeys: [gateway.publicKey]
   })
 
+  // capture blind-peer's response
+  const original = blindPeer._onnotification.bind(blindPeer)
+  let capturedResponse = null
+
+  blindPeer._onnotification = async (...args) => {
+    capturedResponse = await original(...args)
+    return capturedResponse
+  }
+
   const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
   await core.setUserData('referrer', core.key)
   const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey] })
@@ -42,6 +51,7 @@ test('client can ask a blind-peer to create and forward a push notification', as
   ])
 
   t.is(sentMessages.length, 1, 'gateway received one forwarded push')
+  t.is(capturedResponse.length, core.length, 'push notification length is correct')
 
   const rawPayload = b4a.from(sentMessages[0].android.data.payload, 'base64')
   const notification = blindPush.decode(rawPayload)
