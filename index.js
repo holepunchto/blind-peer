@@ -890,8 +890,11 @@ class BlindPeer extends ReadyResource {
       } else {
         entry.ownLength = storageInfo.head?.length || 0
         entry.ownContigLength = storageInfo.hints?.contiguousLength || 0
-        if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
-        if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
+        // a remote that lists the core at length 0 has no blocks to send us
+        if (entry.remoteLength > 0) {
+          if (entry.ownLength !== entry.remoteLength) entry.needsActivation = true
+          if (entry.ownLength > entry.ownContigLength) entry.needsActivation = true
+        }
 
         if (this.unknownCores.has(IdEnc.normalize(entry.key))) {
           const core = this.store.get({ key: entry.key })

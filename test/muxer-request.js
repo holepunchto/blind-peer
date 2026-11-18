@@ -6,6 +6,7 @@ const {
   initBlindPeer,
   getTestnet,
   setupMuxer,
+  setupPeer,
   waitUntilStoredOn
 } = require('./helpers')
 
@@ -21,6 +22,25 @@ test('muxer requestAddCores resolves with the per-core response', async (t) => {
   t.ok(b4a.equals(res.cores[0].key, core.key), 'response refers to the requested core')
   t.is(res.cores[0].length, 0, 'blind peer did not have the core yet')
   t.is(res.cores[0].activated, true, 'new core is activated')
+})
+
+test('muxer requestAddCores does not activate a core listed at length 0', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+  await muxer.requestAddCores({ cores: [{ key: core.key, length: core.length }] })
+  await waitUntilStoredOn(t, [blindPeer], core, 1)
+
+  // a peer that does not store the core lists it at length 0
+  const other = await setupPeer(t, bootstrap)
+  const otherMuxer = await setupMuxer(t, other.swarm, other.store, blindPeer.publicKey)
+
+  const res = await otherMuxer.requestAddCores({ cores: [{ key: core.key, length: 0 }] })
+  t.is(res.cores[0].length, core.length, 'blind peer has the core')
+  t.is(res.cores[0].activated, false, 'not activated')
+  t.is(blindPeer.getActiveReplicationSessions(), 1, 'only the holder connection replicates it')
 })
 
 test('muxer requestAddCores rejects with RATE_LIMITED when rate limited', async (t) => {
