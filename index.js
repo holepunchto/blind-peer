@@ -438,22 +438,31 @@ class BlindPeer extends ReadyResource {
     return session
   }
 
-  async _onwakeup(discoveryKey, muxer) {
-    this.statsTracker.incWakeups()
+  async _onwakeup(discoveryKey, muxer, source = 'direct') {
+    let result = 'unknown_topic'
+    try {
+      const auth = await this.store.storage.getAuth(discoveryKey)
+      if (!auth) return
 
-    const auth = await this.store.storage.getAuth(discoveryKey)
-    if (!auth) return
+      result = 'stream_closed'
+      const stream = muxer.stream
+      if (stream.destroying || stream.destroyed) return
 
-    const stream = muxer.stream
-    if (stream.destroying || stream.destroyed) return
+      result = 'stream_exists'
+      const session = this._getSession(auth.key, discoveryKey)
+      if (session.hasStream(stream)) return
 
-    const session = this._getSession(auth.key, discoveryKey)
+      result = 'added_inactive'
+      session.addStream(stream)
+      // if new peer, send back the active handler for this peer
+      const peer = session.getPeer(stream)
+      if (!peer?.active) return
 
-    if (session.hasStream(stream)) return
-    session.addStream(stream)
-    // if new peer, send back the active handler for this peer
-    const peer = session.getPeer(stream)
-    if (peer && peer.active) session.handlers.onpeeractive(peer, session)
+      result = 'added_active'
+      session.handlers.onpeeractive(peer, session)
+    } finally {
+      this.statsTracker.incWakeups(source, result)
+    }
   }
 
   async listen() {
@@ -797,7 +806,7 @@ class BlindPeer extends ReadyResource {
       const discoveryKey = core.discoveryKey
       await core.close()
 
-      await this._onwakeup(discoveryKey, muxer)
+      await this._onwakeup(discoveryKey, muxer, 'onaddcore')
     }
 
     this.statsTracker.incCoresAdded()
@@ -946,7 +955,7 @@ class BlindPeer extends ReadyResource {
       await core.ready()
       const discoveryKey = core.discoveryKey
       await core.close()
-      await this._onwakeup(discoveryKey, muxer)
+      await this._onwakeup(discoveryKey, muxer, 'onaddcores')
 
       // TODO: will process the result in V2
       // TODO: handle no referrer

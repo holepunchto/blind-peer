@@ -1,6 +1,7 @@
 const test = require('brittle')
 const { once } = require('events')
 const promClient = require('bare-prom-client')
+const Wakeup = require('protomux-wakeup')
 const IdEnc = require('hypercore-id-encoding')
 const crypto = require('hypercore-crypto')
 const { AdminQueryTopKEncoding } = require('blind-peer-encodings')
@@ -16,7 +17,8 @@ const {
   createClient,
   waitForCoresDownloaded,
   waitForEvents,
-  runGc
+  runGc,
+  assertUntilIs
 } = require('./helpers')
 
 test('Prometheus metrics', async (t) => {
@@ -53,7 +55,7 @@ test('Prometheus metrics', async (t) => {
       metrics.includes('blind_peer_replication_sessions_opened 0'),
       'blind_peer_replication_sessions_opened included'
     )
-    t.ok(metrics.includes('blind_peer_wakeups 0'), 'blind_peer_wakeups')
+    t.ok(metrics.includes('# TYPE blind_peer_wakeups gauge'), 'blind_peer_wakeups')
     t.ok(metrics.includes('blind_peer_db_flushes 0'), 'blind_peer_db_flushes')
     t.ok(metrics.includes('blind_peer_announced_cores 0'), 'blind_peer_announced_cores')
     t.ok(metrics.includes('protomux_wakeup_topics_added 0'), 'protomux_wakeup_topics_added')
@@ -482,4 +484,44 @@ test('untrusted peers cannot query top-k over admin RPC', async (t) => {
       'query-top-k rejects untrusted admin RPC requests'
     )
   }
+})
+
+test('wakeup metrics', async (t) => {
+  const { bootstrap } = await getTestnet(t)
+  const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+  const { blindPeer } = await initBlindPeer(t, bootstrap)
+  blindPeer.registerMetrics(promClient)
+  t.teardown(() => {
+    promClient.register.clear()
+  })
+
+  const wakeup = new Wakeup()
+  t.teardown(() => wakeup.destroy())
+
+  const client = createClient(t, swarm.dht, store, { keys: [blindPeer.publicKey], wakeup })
+
+  await Promise.all([once(blindPeer, 'add-cores-done'), client.addCore(core)])
+  t.is(blindPeer.stats.wakeups, 0, 'no wakeup without referrer')
+
+  const core2 = store.get({ name: 'core2' })
+  await core2.append('block')
+
+  wakeup.session(core2.key)
+  await assertUntilIs(t, () => blindPeer.stats.wakeups, 1, 'direct wakeup')
+
+  await Promise.all([
+    once(blindPeer, 'add-cores-done'),
+    client.addCore(core2, { referrer: core2.key })
+  ])
+
+  const metrics = await promClient.register.metrics()
+  t.is(blindPeer.stats.wakeups, 2, 'referrer triggered add-cores wakeup')
+  t.ok(
+    metrics.includes('blind_peer_wakeups{source="direct",result="unknown_topic"} 1'),
+    '1 direct wakeup for unknown topic'
+  )
+  t.ok(
+    metrics.includes('blind_peer_wakeups{source="onaddcores",result="added_inactive"} 1'),
+    '1 addCores wakeup added'
+  )
 })
