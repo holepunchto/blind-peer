@@ -46,7 +46,6 @@ class CoreTracker {
     this.updated = false
     this.id = null
     this.referrerDiscoveryKey = null
-    this.channel = null
     this.downloadRange = null
     this.announceToReferrerBound = this.announceToReferrer.bind(this)
 
@@ -108,7 +107,6 @@ class CoreTracker {
     if (this.destroyed) return
 
     this.id = this.core.id
-    this.channel = 'hypercore/alpha##' + b4a.toString(this.core.discoveryKey, 'hex')
 
     const record = await this.blindPeer.db.get('@blind-peer/cores', { key: this.core.key })
     if (this.destroyed || !record || (this.record && !force)) return
@@ -139,7 +137,7 @@ class CoreTracker {
         const mux = peer.stream.userData
 
         // already replicating with that peer
-        if (mux._infos.get(this.channel)) {
+        if (mux.opened({ protocol: 'hypercore/alpha', id: this.core.discoveryKey })) {
           continue
         }
 
