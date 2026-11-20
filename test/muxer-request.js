@@ -57,7 +57,11 @@ test('muxer requestSendNotification resolves once processed', async (t) => {
     destination: { key: core.key, discoveryKey: crypto.discoveryKey(core.key) }
   }
 
-  t.is(await muxer.requestSendNotification(request), null, 'resolves with an empty response')
+  t.alike(
+    await muxer.requestSendNotification(request),
+    { length: 0 },
+    'resolves with an empty response'
+  )
   t.is(blindPeer.stats.notificationsRx, 1)
 })
 
