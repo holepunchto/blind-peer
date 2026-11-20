@@ -1059,10 +1059,9 @@ class BlindPeer extends ReadyResource {
 
       const coreInfoBefore = this._snapshotCore(core, stream.remotePublicKey, request.block.index)
 
-      let payload = null
-      let length = 0
+      let notification
       try {
-        const notification = await blindPush.createNotification(core, {
+        notification = await blindPush.createNotification(core, {
           roomKey: request.destination.key,
           roomDiscoveryKey: request.destination.discoveryKey,
           index: request.block.index,
@@ -1071,8 +1070,6 @@ class BlindPeer extends ReadyResource {
           extra: request.extra,
           timeout: this.notificationTimeout
         })
-
-        ;({ length = 0, ...payload } = notification)
       } catch (e) {
         // we want to catch everything here to prevent bugs in the debug flow from crashing the process
         this._delaySnapshotOnNotificationError(coreInfoBefore, stream, request).catch((e) =>
@@ -1081,6 +1078,8 @@ class BlindPeer extends ReadyResource {
 
         throw e
       }
+
+      const { length = 0, ...payload } = notification
 
       await this.gatewayPool.makeRequest(
         'forward-push',
