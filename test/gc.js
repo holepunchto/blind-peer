@@ -1,6 +1,7 @@
 const test = require('brittle')
 const { once } = require('events')
 const b4a = require('b4a')
+const Hyperswarm = require('hyperswarm')
 const {
   setupCoreHolder,
   getTestnet,
@@ -261,6 +262,94 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
     t.is(blindPeer.stats.coreResetDownload, 1, 'core did not reset after addCore again')
   }
 })
+
+test.solo(
+  'priority 2 redownload of an inactive gcd core is counted in bytesAllocated and digest',
+  async (t) => {
+    const { bootstrap } = await getTestnet(t)
+
+    const enableGc = false
+    const { blindPeer } = await initBlindPeer(t, bootstrap, { enableGc, maxBytes: 1 })
+
+    const { core, swarm, store } = await setupCoreHolder(t, bootstrap)
+    for (let i = 2; i < 10; i++) {
+      await core.append(`Block ${i}`)
+    }
+
+    const muxer = await setupMuxer(t, swarm, store, blindPeer.publicKey)
+    await Promise.all([
+      once(blindPeer, 'add-cores-done'),
+      muxer.addCores({
+        referrer: core.key,
+        priority: 0,
+        announce: false,
+        cores: [{ key: core.key, length: core.length }]
+      })
+    ])
+    await waitForCoresDownloaded(blindPeer, [core])
+    await blindPeer.flush()
+
+    const fullBytes = core.byteLength
+    t.is(blindPeer.digest.bytesAllocated, fullBytes, 'digest counts the fully downloaded core')
+
+    // Disconnect the holder so the core becomes inactive on the blind peer
+    // (its CoreTracker gets destroyed, like long-idle cores in production).
+    // The holder's store stays open so it can serve the core again later.
+    muxer.close()
+    await swarm.destroy()
+    await assertUntilIs(t, () => blindPeer.activeReplication.size, 0, 'core inactive', {
+      timeout: 15_000
+    })
+
+    await runGc(blindPeer)
+    t.is(blindPeer.digest.bytesAllocated, 0, 'digest is 0 after gc')
+    {
+      const blindCore = blindPeer.store.get({ key: core.key })
+      await blindCore.ready()
+      await assertUntilIs(t, () => blindCore.contiguousLength, 0, 'blocks cleared from disk')
+      await blindCore.close()
+    }
+    await assertUntilIs(t, () => blindPeer.activeReplication.size, 0, 'core inactive after gc', {
+      timeout: 15_000
+    })
+
+    // Holder reconnects and re-adds the core with priority 2 (forces a full redownload)
+    const swarm2 = new Hyperswarm({ bootstrap })
+    swarm2.on('connection', (c) => store.replicate(c))
+    t.teardown(() => swarm2.destroy(), { order: -1 })
+    swarm2.join(core.discoveryKey)
+
+    const muxer2 = await setupMuxer(t, swarm2, store, blindPeer.publicKey)
+    await Promise.all([
+      once(blindPeer, 'add-cores-done'),
+      muxer2.addCores({
+        referrer: core.key,
+        priority: 2,
+        announce: false,
+        cores: [{ key: core.key, length: core.length }]
+      })
+    ])
+    t.is(blindPeer.stats.coreResetDownload, 1, 'sanity: core got reset')
+
+    {
+      const blindCore = blindPeer.store.get({ key: core.key })
+      await blindCore.ready()
+      await assertUntilIs(
+        t,
+        () => blindCore.contiguousLength,
+        core.length,
+        'all blocks back on disk'
+      )
+      await blindCore.close()
+    }
+    await blindPeer.flush()
+
+    const record = await blindPeer.db.getCoreRecord(core.key)
+    t.is(record.bytesCleared, 0, 'sanity: bytesCleared was reset')
+    t.is(record.bytesAllocated, fullBytes, 'record.bytesAllocated counts the redownloaded bytes')
+    t.is(blindPeer.digest.bytesAllocated, fullBytes, 'digest counts the redownloaded bytes')
+  }
+)
 
 test('gc stats', async (t) => {
   const { bootstrap } = await getTestnet(t)
