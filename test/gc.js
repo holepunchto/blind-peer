@@ -263,7 +263,7 @@ test('priority 2 add-cores redownloads blocks cleared by gc', async (t) => {
   }
 })
 
-test.solo(
+test(
   'priority 2 redownload of an inactive gcd core is counted in bytesAllocated and digest',
   async (t) => {
     const { bootstrap } = await getTestnet(t)

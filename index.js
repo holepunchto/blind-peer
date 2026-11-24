@@ -117,6 +117,13 @@ class CoreTracker {
     if (this.downloadRange) this.downloadRange.destroy()
     this.downloadRange = this.core.download({ start: this.record.blocksCleared, end: -1 })
 
+    // Blocks can be (re)downloaded without a length change (eg after a priority-2
+    // reset), which never fires 'append', so re-sync the accounting on load.
+    const bytesAllocated = Math.max(0, this.core.byteLength - record.bytesCleared)
+    if (record.bytesAllocated !== bytesAllocated || record.length !== this.core.length) {
+      this.updated = true
+    }
+
     if (this.updated) this._onupdate()
     if (this.activated) this._onactive()
   }
