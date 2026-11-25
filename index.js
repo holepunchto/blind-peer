@@ -1338,6 +1338,37 @@ class BlindPeer extends ReadyResource {
       }
     })
     if (self.rocks.stats) {
+
+      // Queried on the hypercore-storage column family, which holds the core data (not the default one)
+      const storageProperties = [
+        ['blind_peer_storage_total_sst_files_bytes', 'rocksdb.total-sst-files-size'],
+        ['blind_peer_storage_live_sst_files_bytes', 'rocksdb.live-sst-files-size'],
+        ['blind_peer_storage_estimate_live_data_bytes', 'rocksdb.estimate-live-data-size'],
+        [
+          'blind_peer_storage_pending_compaction_bytes',
+          'rocksdb.estimate-pending-compaction-bytes'
+        ],
+        ['blind_peer_storage_running_compactions', 'rocksdb.num-running-compactions'],
+        ['blind_peer_storage_total_blob_files_bytes', 'rocksdb.total-blob-file-size'],
+        ['blind_peer_storage_live_blob_files_bytes', 'rocksdb.live-blob-file-size'],
+        ['blind_peer_storage_live_blob_files_garbage_bytes', 'rocksdb.live-blob-file-garbage-size']
+      ]
+
+      for (const [name, property] of storageProperties) {
+        new promClient.Gauge({
+          name,
+          help: `RocksDB property ${property} of the hypercore storage`,
+          async collect() {
+            if (self.closing) return
+            try {
+              this.set(Number(await self.store.storage.db.getProperty(property)))
+            } catch (err) {
+              safetyCatch(err)
+            }
+          }
+        })
+      }
+
       new promClient.Gauge({
         name: 'blind_peer_rocks_gets',
         help: 'The amount of get ops from RocksDB',
